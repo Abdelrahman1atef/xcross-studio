@@ -3,6 +3,7 @@ import 'package:meta/meta.dart';
 import 'package:xcross/src/shared/artifact/plist_mutations.dart';
 import 'package:xcross/src/shared/diagnostics/xcross_diagnostics.dart'; // studio: 002
 import 'package:xcross/src/shared/flutter/build/app_extension_builder.dart';
+import 'package:xcross/src/shared/flutter/build/flutter_app_entitlements.dart'; // studio: 003
 import 'package:xcross/src/shared/flutter/build/info_plist.dart';
 import 'package:xcross/src/shared/flutter/build/ios_bundle_resources.dart'; // studio: 002
 import 'package:xcross/src/shared/flutter/build/ios_bundle_versions.dart';
@@ -311,10 +312,39 @@ final class FlutterBundleAssembler<T extends PlatformHostInterface>
     // Carry the app's own App Groups forward so the sign/install stage can
     // provision them alongside its extensions'.
     plistXml = AppExtensionPlist.setAppGroups(plistXml, _hostAppGroups());
+    plistXml = _withDeclaredEntitlements(plistXml); // studio: 003
 
     await runtime.host.fileSystem
         .file(runtime.host.paths.context.join(bundleDir, 'Info.plist'))
         .writeAsString(plistXml);
+  }
+
+  // studio: 003 — push, associated domains, … reach the signer (#149).
+  String _withDeclaredEntitlements(String plistXml) {
+    final entitlements = FlutterAppEntitlements(
+      runtime.host.fileSystem,
+      runtime.host.paths.context,
+    );
+    final path = entitlements.locate(
+      projectRoot,
+      fromProject: runtime.extensions.applicationEntitlements(projectRoot),
+    );
+    if (path == null) return plistXml;
+    try {
+      return FlutterAppEntitlements.withSigningKeys(
+        plistXml,
+        entitlements.read(path),
+      );
+    } on FormatException catch (error) {
+      runtime.warnings.warn(
+        XcrossCodes.buildEntitlementsUnreadable,
+        subject: path,
+        message:
+            '${runtime.host.paths.context.basename(path)} is ignored: '
+            '${error.message}.',
+      );
+      return plistXml;
+    }
   }
 
   /// App Groups declared by the application target's entitlements file.

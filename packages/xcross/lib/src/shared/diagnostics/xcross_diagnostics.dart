@@ -78,6 +78,12 @@ abstract final class XcrossCodes {
     'Storyboards cannot be compiled without Xcode; use a UILaunchScreen '
         'dictionary in Info.plist instead.',
   );
+  // studio: 003
+  static const buildEntitlementsUnreadable = DiagnosticCode(
+    'build.entitlements_unreadable',
+    'Fix the .entitlements file (it must be an XML property list '
+        'dictionary); until then push and associated domains are not applied.',
+  );
   static const buildResourceMissing = DiagnosticCode(
     'build.resource_missing',
     'Remove the stale reference from the Xcode project or restore the file.',
@@ -97,6 +103,7 @@ abstract final class XcrossCodes {
     buildAssetCatalogSkipped,
     buildStoryboardSkipped,
     buildResourceMissing,
+    buildEntitlementsUnreadable,
   ];
 }
 
