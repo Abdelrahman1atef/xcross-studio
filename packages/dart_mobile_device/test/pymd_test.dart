@@ -6,6 +6,7 @@ import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:cli_kit/shared/process/process.dart';
 import 'package:cli_kit/shared/process/process_models.dart';
 import 'package:dart_mobile_device/host/macos/macos_device_host.dart';
+import 'package:dart_mobile_device/shared/errors/errors.dart';
 import 'package:dart_mobile_device/src/target/iphone/device/pymd/pymd_launch_command.dart';
 import 'package:dart_mobile_device/target/iphone/device/pymd/pymd.dart';
 import 'package:meta/meta.dart';
@@ -169,6 +170,28 @@ void main() {
         hostPolicy: MacOSDeviceHost(runner),
       );
     }
+
+    test(
+      'AC-009-7 resolve skips a python without pymobiledevice3 for the next one',
+      () async {
+        touch('usr/bin/python3');
+        final python = touch('usr/bin/python');
+        final pymd = pymdFor({python.path});
+
+        final invocation = await pymd.resolve();
+
+        expect(invocation.executable, python.path);
+        expect(invocation.prefixArgs, ['-m', 'pymobiledevice3']);
+      },
+    );
+
+    test('AC-009-7 resolve fails only when no interpreter has it', () async {
+      touch('usr/bin/python3');
+      touch('usr/bin/python');
+      final pymd = pymdFor(const {});
+
+      await expectLater(pymd.resolve(), throwsA(isA<TunnelError>()));
+    });
 
     test('finds the python of a pipx venv behind the CLI symlink', () async {
       final system = touch('usr/bin/python3');

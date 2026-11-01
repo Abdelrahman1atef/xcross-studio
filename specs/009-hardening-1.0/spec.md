@@ -31,6 +31,11 @@ is found automatically.
    `WindowsApps` folder count, and the `python`/`python3` Store redirect stubs are skipped. Found on the dev PC on
    2026-11-01; upstream candidate.
 
+7. **AC-009-7**: pymobiledevice3 lookup probes `python3`, `python` and `py` in turn and uses the first that can
+   `import pymobiledevice3`. The Swift 6.4.2 winget package installs Python 3.10 as a dependency, which made `python`
+   (without the module) hide the working `py` and turned doctor's "Device tools" from ✓ to ✗. Found on the dev PC on
+   2026-11-01.
+
 ## Upstream issue triage
 
 | Issue | State upstream | Fork status |

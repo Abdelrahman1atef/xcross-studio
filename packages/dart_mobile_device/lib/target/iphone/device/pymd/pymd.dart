@@ -107,14 +107,18 @@ final class Pymd {
     }
 
     // Fallback: Python launcher -m pymobiledevice3.
-    final py = await _resolvePython();
-    if (py == null) throw TunnelError(_notFoundMessage);
-
-    final probe = await runner.run(py, ['-c', 'import pymobiledevice3']);
-    if (probe.exitCode != 0) throw TunnelError(_notFoundMessage);
-
-    _cached = PymdInvocation(py, ['-m', 'pymobiledevice3']);
-    return _cached!;
+    // studio: 009 — probe every interpreter in order, not only the first on
+    // PATH: a Python without the module (e.g. the 3.10 that the Swift
+    // toolchain installer adds on Windows) must not hide a `py` that has it.
+    for (final name in const ['python3', 'python', 'py']) {
+      final py = await runner.which(name);
+      if (py == null) continue;
+      final probe = await runner.run(py, ['-c', 'import pymobiledevice3']);
+      if (probe.exitCode != 0) continue;
+      _cached = PymdInvocation(py, ['-m', 'pymobiledevice3']);
+      return _cached!;
+    }
+    throw TunnelError(_notFoundMessage);
   }
 
   /// One-line probe: succeeds (printing the real interpreter path) only on
