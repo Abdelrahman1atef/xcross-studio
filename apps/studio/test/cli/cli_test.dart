@@ -4,7 +4,7 @@ import 'package:xcross_studio/src/cli/output_line.dart';
 import 'package:xcross_studio/src/cli/xcross_commands.dart';
 import 'package:xcross_studio/src/cli/xcross_events.dart';
 import 'package:xcross_studio/src/host/host_platform.dart';
-import 'package:xcross_studio/src/ui/plugins_section.dart';
+import 'package:xcross_studio/features/plugins/plugins_page.dart';
 
 void main() {
   group('AC-008-4 command lines', () {

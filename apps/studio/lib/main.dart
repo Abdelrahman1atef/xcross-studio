@@ -2,14 +2,13 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import 'app/app.dart';
+import 'app/services.dart';
 import 'src/cli/process_launcher.dart';
 import 'src/cli/xcross_commands.dart';
 import 'src/host/host_platform.dart';
 import 'src/state/job.dart';
-import 'src/state/log_session.dart';
 import 'src/state/settings.dart';
-import 'src/ui/services.dart';
-import 'src/ui/studio_app.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -32,16 +31,13 @@ Future<void> main() async {
     launcher: launcher,
     invocation: () => settings.invocation,
   );
-  final logs = LogSession(jobs);
   runApp(
     StudioApp(
-      services: (child) => Services(
+      services: StudioServices(
         host: host,
         launcher: launcher,
         settings: settings,
         jobs: jobs,
-        logs: logs,
-        child: child,
       ),
     ),
   );
