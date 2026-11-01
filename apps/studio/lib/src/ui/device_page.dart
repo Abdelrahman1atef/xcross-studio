@@ -205,6 +205,25 @@ class _DevicePageState extends State<DevicePage> {
                         icon: const Icon(Icons.install_mobile),
                         label: const Text('Sign & install'),
                       ),
+                      const SizedBox(width: 8),
+                      // Feature 011: write <name>-signed.ipa, install nothing.
+                      OutlinedButton.icon(
+                        onPressed:
+                            settings.lastIpa == null ||
+                                (_install?.isRunning ?? false)
+                            ? null
+                            : () => setState(
+                                () => _install = services.jobs.run(
+                                  'Sign only',
+                                  XcrossCommands.sign(
+                                    settings.lastIpa!,
+                                    udid: settings.udid,
+                                  ),
+                                ),
+                              ),
+                        icon: const Icon(Icons.draw),
+                        label: const Text('Sign only (.ipa)'),
+                      ),
                     ],
                   ),
                   if (_install != null) ...[

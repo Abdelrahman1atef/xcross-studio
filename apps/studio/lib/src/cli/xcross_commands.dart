@@ -119,6 +119,15 @@ abstract final class XcrossCommands {
     if (!launch) '--no-launch',
   ];
 
+  /// `xcross sign` (feature 011): a signed .ipa next to the input, nothing
+  /// installed. [udid] is registered and included in the profile.
+  static List<String> sign(String path, {String? output, String? udid}) => [
+    'sign',
+    path,
+    if (_set(output)) ...['-o', output!],
+    if (_set(udid)) ...['--udid', udid!],
+  ];
+
   static List<String> devices() => const ['devices', '--json'];
 
   static List<String> appList({String? udid}) => [

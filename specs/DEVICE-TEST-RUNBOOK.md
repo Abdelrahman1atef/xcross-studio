@@ -39,6 +39,7 @@ committed files.
 | 3 | same, with a DeviceSupport `16.x` folder from your own Xcode in `~/.xcross/DeviceSupport/` | image mounted, app opens by itself (skip if you have no such folder) |
 | 4 | `& $X install $IPA` | re-signed, installed, guidance printed |
 | 5 | `& $X install notes.txt` | `error: [install.unsupported_input]` |
+| 6 (011) | `& $X sign $IPA`, then `& $X install --no-resign <name>-signed.ipa`, then `& $X app info <bundle-id>` | `✔ Signed` summary (team, development profile, expiry); installs without re-signing; signer development. Rows: `specs/011-sign-ipa/device-check.md` |
 
 ## 3. Feature 003: entitlements
 

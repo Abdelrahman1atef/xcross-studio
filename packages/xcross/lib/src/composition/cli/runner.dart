@@ -10,6 +10,7 @@ import 'package:completion/completion.dart';
 import 'package:dart_mobile_device/shared/device/models/device.dart'; // studio: 005
 import 'package:dart_mobile_device/shared/errors/errors.dart';
 import 'package:dart_mobile_device/target/iphone/device/device_prepare.dart';
+import 'package:dart_mobile_device/target/iphone/device/pymd/pymd_devices.dart'; // studio: 011
 import 'package:dart_mobile_device/target/iphone/diagnostics/pymd_device_diagnostics.dart';
 import 'package:darwin_sdk_kit/shared/errors/errors.dart';
 import 'package:meta/meta.dart';
@@ -24,6 +25,7 @@ import 'package:xcross/src/composition/cli/compose_command.dart';
 import 'package:xcross/src/composition/cli/doctor_sections.dart';
 import 'package:xcross/src/composition/cli/flutter_command.dart';
 import 'package:xcross/src/composition/cli/install_command.dart'; // studio: 005
+import 'package:xcross/src/composition/cli/sign_command.dart'; // studio: 011
 import 'package:xcross/src/composition/ios_target.dart';
 import 'package:xcross/src/composition/xcross_application.dart';
 import 'package:xcross/src/shared/cli/basic/auth_command.dart';
@@ -47,6 +49,7 @@ import 'package:xcross/src/shared/update/self_update.dart';
 import 'package:xcross/src/shared/update/update_check.dart';
 import 'package:xcross/src/target/iphone/cli/basic/tunnel_command.dart';
 import 'package:xcross/src/target/iphone/device/core_device_launch_profile.dart'; // studio: 005
+import 'package:xcross/src/target/iphone/device/device_backend.dart'; // studio: 011
 import 'package:xcross/src/target/iphone/device/device_run_operation.dart'; // studio: 005
 
 /// Namespace for building and running the xcross CLI.
@@ -166,6 +169,7 @@ abstract final class XcrossCli {
               required udid,
               required ddiDirectory,
               required launch,
+              required resign,
             }) async {
               final operation = await DeviceRunOperation.resolve(
                 pymd,
@@ -182,6 +186,20 @@ abstract final class XcrossCli {
                 mode: DeviceSearchMode.usb,
               );
               final pack = PackResult(outputPath: appPath, bundleId: bundleId);
+              // studio: 011 — install as signed (an IPA from `xcross sign`).
+              if (!resign) {
+                final device = prechecked.device;
+                await PymdDevices(pymd).install(
+                  appPath,
+                  udid: device.udid,
+                  overTunnel: device.source == DeviceSource.tunneld,
+                );
+                runtime.log.logInfo(
+                  'Installed',
+                  '$bundleId (open it from its icon)',
+                );
+                return;
+              }
               if (!launch) {
                 await operation.backend.install(
                   appPath,
@@ -199,6 +217,34 @@ abstract final class XcrossCli {
                 ddiDirectory: ddiDirectory,
               );
             },
+      ),
+      // studio: 011 — `xcross sign` writes a signed IPA, installs nothing.
+      SignCommand(
+        fileSystem: runtime.host.fileSystem,
+        paths: runtime.host.paths.context,
+        temporaryRoot: runtime.host.paths.temporaryRoot,
+        write: runtime.log.output.write,
+        connectedDevices: () async {
+          try {
+            return [
+              for (final device in await PymdDevices(
+                pymd,
+              ).devices(mode: DeviceSearchMode.usb))
+                device.udid,
+            ];
+          } on Object {
+            return const [];
+          }
+        },
+        signApp:
+            ({required appPath, required bundleId, required deviceUdids}) =>
+                NativeBackend(
+                  pymd,
+                  hostServices: runtime.appleHostServices,
+                  createNativeLibraryLoader: runtime.createNativeLibraryLoader,
+                  httpClients: runtime.signingHttpClients,
+                  prompt: runtime.commandPrompt,
+                ).sign(appPath, bundleId: bundleId, deviceUdids: deviceUdids),
       ),
       // studio: XCross Studio feature 010 (specs/010-device-logs).
       LogsCommand(

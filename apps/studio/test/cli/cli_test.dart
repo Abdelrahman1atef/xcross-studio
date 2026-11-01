@@ -42,6 +42,14 @@ void main() {
       );
     });
 
+    test('AC-011-1 sign writes an IPA without installing', () {
+      expect(XcrossCommands.sign('/a/app.ipa'), ['sign', '/a/app.ipa']);
+      expect(
+        XcrossCommands.sign('/a/app.ipa', output: '/o/x.ipa', udid: 'U1'),
+        ['sign', '/a/app.ipa', '-o', '/o/x.ipa', '--udid', 'U1'],
+      );
+    });
+
     test('device commands always ask for JSON', () {
       expect(XcrossCommands.devices(), ['devices', '--json']);
       expect(XcrossCommands.appList(udid: 'U1'), [

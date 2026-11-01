@@ -394,6 +394,7 @@ Edit it with `xcross config`, inspect it with `xcross config show`, prove it wit
 | `xcross ide idea` | Write a JetBrains DAP run configuration (needs LSP4IJ) |
 | `xcross update` | Update xcross to the latest release, verified against its checksums |
 | `xcross completion` | Print a shell-completion script |
+| `xcross sign <ipa\|app> [-o <out.ipa>] [--udid <id>]... [--bundle-id <id>]` | <!-- studio: --> Re-sign any app with your Apple ID or App Store Connect key and write an installable `.ipa` (nothing is installed; `--udid` adds testers' devices). Install it later with `xcross install --no-resign` or any tool |
 | `xcross install <ipa\|app> [--udid <id>] [--ddi <dir>]` | <!-- studio: --> Sign any app with your Apple ID and install it on the iPhone (iOS 15+); iOS 15/16 open via your own developer disk image or from the icon |
 | `xcross logs [--app <bundle-id>] [--preset push\|crash\|flutter] [--json]` | <!-- studio: --> Live iPhone log over USB (iOS 16 and 17+), with filters, presets, `--save`, NDJSON. XCross Studio fork addition |
 | `xcross app info <bundle-id>` | <!-- studio: --> Installed app's version, signer type, team and entitlements as installed (push / associated domains ✔/✖) |

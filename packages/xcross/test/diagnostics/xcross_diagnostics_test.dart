@@ -13,7 +13,7 @@ void main() {
     for (final code in XcrossCodes.all) {
       expect(
         code.code,
-        matches(RegExp(r'^(device|toolchain|build|install)\.[a-z_]+$')),
+        matches(RegExp(r'^(device|toolchain|build|install|sign)\.[a-z_]+$')),
       );
       expect(code.hint, isNotEmpty);
     }
