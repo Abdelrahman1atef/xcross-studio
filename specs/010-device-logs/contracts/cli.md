@@ -56,6 +56,18 @@ xcross crashes pull (<name> | --latest) [--udid <id>] [--app <bundle-id>] [--out
 - **pull**: saves the report to `--out` (default `./crash-reports`) and prints the exception type, the signal and the
   faulting thread's top frames.
 
+## `xcross devices` and `xcross app list` (feature 008)
+
+```text
+xcross devices [--json]
+xcross app list [--udid <id>] [--json]
+```
+
+- **devices**: the iPhones connected by USB (`device` events: `udid`, `name`, `osVersion`, `connection`). Human form:
+  `<name>  iOS <version>  <udid>`. No devices → no events (human: "No iPhone is connected by USB.").
+- **app list**: the user apps installed on the iPhone, sorted by bundle id (`app` events: `bundleId`, `name`,
+  `version`, `build`, `executable`). Human form: `<bundle-id>  <name>  <version>`.
+
 ## Exit codes
 
 | Code | When |

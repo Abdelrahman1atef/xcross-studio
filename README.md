@@ -398,6 +398,8 @@ Edit it with `xcross config`, inspect it with `xcross config show`, prove it wit
 | `xcross logs [--app <bundle-id>] [--preset push\|crash\|flutter] [--json]` | <!-- studio: --> Live iPhone log over USB (iOS 16 and 17+), with filters, presets, `--save`, NDJSON. XCross Studio fork addition |
 | `xcross app info <bundle-id>` | <!-- studio: --> Installed app's version, signer type, team and entitlements as installed (push / associated domains ✔/✖) |
 | `xcross crashes list\|pull` | <!-- studio: --> List crash reports on the iPhone and pull one with its exception summary |
+| `xcross devices [--json]` | <!-- studio: --> List the iPhones connected by USB with their iOS version (used by the XCross Studio GUI) |
+| `xcross app list [--json]` | <!-- studio: --> List the apps you installed on the iPhone (used by the GUI's app picker) |
 | `xcross inspect <ipa\|app> [--json] [--normalize]` | <!-- studio: --> Read-only report of what is inside an `.ipa` or `.app`: Info.plist, entitlements per Mach-O, provisioning profile summary, icons, launch screen, frameworks and extensions. XCross Studio fork addition |
 
 <details>
@@ -446,6 +448,25 @@ input and never contacts the network or a device.
 **Reporting a bug:** attach the output of `xcross inspect <ipa> --json --normalize`. By design it contains no device
 UDIDs, certificate data, API keys or Info.plist values outside a short allow-list, and no absolute paths.
 </details>
+
+<!-- studio: 008 -->
+## XCross Studio desktop app (Windows and Linux)
+
+`apps/studio` is a Flutter desktop GUI over this CLI: **Setup** (notice, which `xcross` to use, doctor, Apple sign-in
+with a 2FA input box), **Project & Build** (open a Flutter project, check it, build an `.ipa`), **Device & Install**
+(pick the iPhone, build & run, sign & install any `.ipa`, developer disk image folder for iOS 15/16), **Device logs**
+(live log table with presets Push/Crash/Flutter, filters, pause, save; app info with push/associated-domains ✔/✖; push
+checklist; crash reports) and **Console** (every command and its output). It runs `xcross` as a subprocess and holds no
+build logic.
+
+```sh
+cd apps/studio
+flutter run -d windows   # or: flutter run -d linux
+```
+
+In Setup choose **Run from source** and pick this repository to use the XCross Studio CLI (`dart run
+packages/xcross/bin/xcross.dart`), or point it at a compiled `xcross` executable. See
+[specs/008-json-events-gui](specs/008-json-events-gui/spec.md).
 
 ## Compose Multiplatform
 

@@ -1,13 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:xcross-studio:devicelog:schema:1",
-  "title": "xcross logs / app info / crashes --json events (v 1)",
+  "title": "xcross logs / app info / app list / crashes / devices --json events (v 1)",
   "description": "One JSON object per line (NDJSON). Every object has v=1 and a type. ASCII-only (non-ASCII escaped). Additive optional fields keep v=1.",
   "oneOf": [
     { "$ref": "#/$defs/devicelog" },
     { "$ref": "#/$defs/diagnosis" },
     { "$ref": "#/$defs/crash" },
     { "$ref": "#/$defs/appinfo" },
+    { "$ref": "#/$defs/app" },
+    { "$ref": "#/$defs/device" },
     { "$ref": "#/$defs/notice" }
   ],
   "$defs": {
@@ -75,6 +77,33 @@
         "entitlements": { "type": "object" },
         "push": { "type": ["string", "null"], "description": "aps-environment value, null when missing." },
         "associatedDomains": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "app": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "bundleId", "name", "version", "build", "executable"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "app" },
+        "bundleId": { "type": "string" },
+        "name": { "type": ["string", "null"] },
+        "version": { "type": ["string", "null"] },
+        "build": { "type": ["string", "null"] },
+        "executable": { "type": ["string", "null"] }
+      }
+    },
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "udid", "name", "osVersion", "connection"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "device" },
+        "udid": { "type": "string", "description": "Needed for --udid; printed only by xcross devices." },
+        "name": { "type": "string" },
+        "osVersion": { "type": ["string", "null"] },
+        "connection": { "enum": ["usb", "wifi"] }
       }
     },
     "notice": {

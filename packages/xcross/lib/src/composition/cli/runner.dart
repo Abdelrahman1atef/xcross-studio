@@ -17,6 +17,7 @@ import 'package:studio_ext/shared/inspect/inspect_command.dart'; // studio:
 import 'package:studio_ext/target/iphone/device/app_command.dart'; // studio: 010
 import 'package:studio_ext/target/iphone/device/crashes_command.dart'; // studio: 010
 import 'package:studio_ext/target/iphone/device/device_log_backend.dart'; // studio: 010
+import 'package:studio_ext/target/iphone/device/devices_command.dart'; // studio: 008
 import 'package:studio_ext/target/iphone/device/logs_command.dart'; // studio: 010
 import 'package:xcross/src/composition/cli/cache_command.dart';
 import 'package:xcross/src/composition/cli/compose_command.dart';
@@ -207,6 +208,11 @@ abstract final class XcrossCli {
         interrupts: () => ProcessSignal.sigint.watch().map((_) {}),
       ),
       AppCommand(backend: PymdDeviceLogBackend(pymd), writeBytes: stdout.add),
+      // studio: 008 — device picker for the GUI.
+      DevicesCommand(
+        backend: PymdDeviceLogBackend(pymd),
+        writeBytes: stdout.add,
+      ),
       CrashesCommand(
         backend: PymdDeviceLogBackend(pymd),
         fileSystem: runtime.host.fileSystem,
@@ -310,13 +316,14 @@ abstract final class XcrossCli {
     }
   }
 
-  // studio: 010 — `logs --json`, `app info --json`, `crashes list --json`.
+  // studio: 010 — `logs --json`, `app info --json`, `crashes list --json`;
+  // 008 — `devices --json`, `app list --json`.
   static bool _deviceJson(ArgResults? command) {
     final leaf = command?.command ?? command;
     if (leaf == null) return false;
     final known =
-        {'logs', 'info', 'list'}.contains(leaf.name) &&
-        {'logs', 'app', 'crashes'}.contains(command?.name);
+        {'logs', 'info', 'list', 'devices'}.contains(leaf.name) &&
+        {'logs', 'app', 'crashes', 'devices'}.contains(command?.name);
     return known && leaf.options.contains('json') && leaf.flag('json');
   }
 

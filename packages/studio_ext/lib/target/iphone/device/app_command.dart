@@ -13,6 +13,7 @@ final class AppCommand extends Command<void> {
     required void Function(List<int>) writeBytes,
   }) {
     addSubcommand(AppInfoCommand(backend: backend, writeBytes: writeBytes));
+    addSubcommand(AppListCommand(backend: backend, writeBytes: writeBytes));
   }
 
   @override
@@ -76,6 +77,69 @@ final class AppInfoCommand extends Command<void> {
               : info.toHuman(showSensitive: args.flag('show-sensitive')),
         ),
       );
+    } on DeviceFailure catch (failure) {
+      throw failure.toCliError();
+    }
+  }
+}
+
+/// `xcross app list [--json]`: the user apps installed on the iPhone
+/// (feature 008, for the GUI's app picker).
+final class AppListCommand extends Command<void> {
+  AppListCommand({
+    required DeviceLogBackend backend,
+    required void Function(List<int>) writeBytes,
+  }) : _backend = backend,
+       _writeBytes = writeBytes {
+    argParser
+      ..addOption('udid', help: 'Device UDID (when several are connected).')
+      ..addFlag('json', negatable: false, help: 'One app JSON line per app.');
+  }
+
+  final DeviceLogBackend _backend;
+  final void Function(List<int>) _writeBytes;
+
+  @override
+  String get name => 'list';
+
+  @override
+  String get description => 'List the apps you installed on the iPhone.';
+
+  @override
+  String get invocation => 'xcross app list [--udid <id>] [--json]';
+
+  @override
+  Future<void> run() async {
+    final args = argResults!;
+    try {
+      final udid = await _backend.ensureDevice(args.option('udid'));
+      final apps = await _backend.installedApps(udid);
+      final out = StringBuffer();
+      for (final bundleId in apps.keys.toList()..sort()) {
+        final entry = apps[bundleId]!;
+        String? text(String key) => switch (entry[key]) {
+          final String value when value.isNotEmpty => value,
+          _ => null,
+        };
+        final name = text('CFBundleDisplayName') ?? text('CFBundleName');
+        final version = text('CFBundleShortVersionString');
+        if (args.flag('json')) {
+          out.write(
+            ndjsonLine({
+              'v': 1,
+              'type': 'app',
+              'bundleId': bundleId,
+              'name': name,
+              'version': version,
+              'build': text('CFBundleVersion'),
+              'executable': text('CFBundleExecutable'),
+            }),
+          );
+        } else {
+          out.writeln('$bundleId  ${name ?? '-'}  ${version ?? '-'}');
+        }
+      }
+      _writeBytes(utf8.encode(out.toString()));
     } on DeviceFailure catch (failure) {
       throw failure.toCliError();
     }

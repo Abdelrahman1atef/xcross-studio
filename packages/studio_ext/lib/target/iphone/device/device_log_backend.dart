@@ -25,6 +25,9 @@ abstract interface class DeviceLogBackend {
   /// Checks the host service, resolves one USB device and returns its UDID.
   Future<String> ensureDevice(String? udid);
 
+  /// Checks the host service and lists the USB devices (feature 008).
+  Future<List<Device>> usbDevices();
+
   Future<SyslogSession> syslog(String udid);
 
   /// `apps list --type User`: bundle id → app properties.
@@ -56,25 +59,7 @@ final class PymdDeviceLogBackend implements DeviceLogBackend {
 
   @override
   Future<String> ensureDevice(String? udid) async {
-    final problem = await pymd.hostPolicy.deviceServiceProblem(
-      pymd.resolvedUsbmuxAddress(),
-    );
-    if (problem != null) {
-      final end = problem.indexOf('. ');
-      throw DeviceFailure(
-        DeviceCodes.hostServiceUnavailable,
-        end < 0 ? problem : problem.substring(0, end + 1),
-        hint: end < 0 ? null : problem.substring(end + 2),
-      );
-    }
-    // Listed directly (not through the interactive resolver): it prints no
-    // progress to stdout, which would corrupt --json, and never prompts.
-    final List<Device> devices;
-    try {
-      devices = await PymdDevices(pymd).devices(mode: DeviceSearchMode.usb);
-    } on TunnelError catch (error) {
-      throw _trustOr(error.message);
-    }
+    final devices = await usbDevices();
     if (udid != null) {
       final wanted = PymdDevices.normalizeUdid(udid);
       for (final device in devices) {
@@ -88,7 +73,10 @@ final class PymdDeviceLogBackend implements DeviceLogBackend {
       );
     }
     if (devices.isEmpty) {
-      throw DeviceFailure(DeviceCodes.notFound, 'No iPhone is connected by USB.');
+      throw DeviceFailure(
+        DeviceCodes.notFound,
+        'No iPhone is connected by USB.',
+      );
     }
     if (devices.length > 1) {
       throw DeviceFailure(
@@ -98,6 +86,28 @@ final class PymdDeviceLogBackend implements DeviceLogBackend {
       );
     }
     return devices.single.udid;
+  }
+
+  @override
+  Future<List<Device>> usbDevices() async {
+    final problem = await pymd.hostPolicy.deviceServiceProblem(
+      pymd.resolvedUsbmuxAddress(),
+    );
+    if (problem != null) {
+      final end = problem.indexOf('. ');
+      throw DeviceFailure(
+        DeviceCodes.hostServiceUnavailable,
+        end < 0 ? problem : problem.substring(0, end + 1),
+        hint: end < 0 ? null : problem.substring(end + 2),
+      );
+    }
+    // Listed directly (not through the interactive resolver): it prints no
+    // progress to stdout, which would corrupt --json, and never prompts.
+    try {
+      return await PymdDevices(pymd).devices(mode: DeviceSearchMode.usb);
+    } on TunnelError catch (error) {
+      throw _trustOr(error.message);
+    }
   }
 
   Exception _trustOr(String message) => _trust.hasMatch(message)

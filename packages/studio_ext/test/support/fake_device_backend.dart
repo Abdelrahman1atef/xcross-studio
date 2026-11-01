@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:dart_mobile_device/shared/device/models/device.dart';
 import 'package:studio_ext/target/iphone/device/device_log_backend.dart';
 
 /// One `pymobiledevice3 syslog live --format json` line.
@@ -50,7 +51,11 @@ final class FakeDeviceBackend implements DeviceLogBackend {
     this.ensureError,
     this.keepOpen = false,
     this.streamErrors = const [],
+    this.devices = const [],
   });
+
+  /// What [usbDevices] returns.
+  final List<Device> devices;
 
   final List<String> lines;
   final Map<String, Map<String, Object?>> apps;
@@ -69,6 +74,13 @@ final class FakeDeviceBackend implements DeviceLogBackend {
     calls.add('ensure:${udid ?? '-'}');
     if (ensureError case final error?) throw error;
     return '00008020-001A2B3C4D5E6F70';
+  }
+
+  @override
+  Future<List<Device>> usbDevices() async {
+    calls.add('devices');
+    if (ensureError case final error?) throw error;
+    return devices;
   }
 
   @override
