@@ -25,6 +25,12 @@ is found automatically.
 5. **AC-009-5**: The packages carry `LICENSE` (AGPL-3.0) and `NOTICE.txt` (not affiliated with Apple, no Apple
    software included, pymobiledevice3 installed separately).
 
+6. **AC-009-6**: Tool lookup (`which`) finds Windows app execution aliases. `winget.exe` in
+   `%LOCALAPPDATA%\Microsoft\WindowsApps` is a reparse point that Dart sees as a link it can't follow, so
+   `xcross setup` used to say "winget is not installed on this host" on Windows 11. Only links directly in a
+   `WindowsApps` folder count, and the `python`/`python3` Store redirect stubs are skipped. Found on the dev PC on
+   2026-11-01; upstream candidate.
+
 ## Upstream issue triage
 
 | Issue | State upstream | Fork status |

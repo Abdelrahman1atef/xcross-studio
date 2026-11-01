@@ -223,8 +223,27 @@ final class ProcessToolLookup<T extends PlatformHostInterface>
   }
 
   bool _isAcceptedTool(String path, bool Function(String path)? accept) =>
-      host.fileSystem.file(path).existsSync() &&
+      (host.fileSystem.file(path).existsSync() || _isWindowsAppAlias(path)) &&
       (accept == null || accept(path));
+
+  // studio: 009 — Windows app execution aliases (winget.exe and friends in
+  // %LOCALAPPDATA%\Microsoft\WindowsApps) are reparse points that Dart sees
+  // as links it cannot follow, so File.existsSync() is false and the tool
+  // looked missing ("winget is not installed on this host" from
+  // `xcross setup`). Only links directly in a `WindowsApps` folder count, so
+  // dangling links elsewhere still fail. The python/python3 aliases are
+  // skipped: without a Store Python they are redirect stubs that open the
+  // Microsoft Store.
+  bool _isWindowsAppAlias(String path) {
+    final context = host.paths.context;
+    final parts = context.split(context.dirname(path));
+    if (parts.isEmpty || parts.last.toLowerCase() != 'windowsapps') {
+      return false;
+    }
+    final name = context.basenameWithoutExtension(path).toLowerCase();
+    if (name == 'python' || name == 'python3') return false;
+    return host.fileSystem.link(path).existsSync();
+  }
 
   String? _configuredToolOverride(
     Map<String, String>? tools,
