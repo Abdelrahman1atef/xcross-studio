@@ -8,14 +8,17 @@ import 'package:dart_mobile_device/target/iphone/device/pymd/pymd.dart';
 import 'package:meta/meta.dart';
 import 'package:xcross/src/shared/cli/command_prompt.dart';
 import 'package:xcross/src/shared/device/signing_http_client_factory.dart';
+import 'package:xcross/src/shared/diagnostics/xcross_diagnostics.dart'; // studio: 005
 import 'package:xcross/src/shared/errors/errors.dart';
 import 'package:xcross/src/shared/flutter/hot_reload/vm_service_output.dart';
 import 'package:xcross/src/shared/flutter/vm_service_connector.dart';
 import 'package:xcross/src/shared/models/pack_result.dart';
 import 'package:xcross/src/target/iphone/device/core_device_launch_profile.dart';
 import 'package:xcross/src/target/iphone/device/core_device_launcher.dart';
+import 'package:xcross/src/target/iphone/device/ddi_locator.dart'; // studio: 005
 import 'package:xcross/src/target/iphone/device/device_backend.dart';
 import 'package:xcross/src/target/iphone/device/device_precheck.dart'; // studio: 002
+import 'package:xcross/src/target/iphone/device/legacy_device_launcher.dart'; // studio: 005
 
 @internal
 typedef OsMajorVersion = Future<int?> Function(Device device);
@@ -41,10 +44,16 @@ final class DeviceRunOperation {
     required LaunchInstalledApp launch,
     // studio: 002 — host device service check for the pre-build precheck.
     Future<String?> Function()? serviceProblem,
+    // studio: 005 — iOS 15/16 launch through the user's disk image.
+    this.legacyLauncher,
+    this.ddiLocator,
   }) : _osMajorVersion = osMajorVersion,
        _terminate = terminate,
        _launch = launch,
        _serviceProblem = serviceProblem ?? _noServiceProblem;
+
+  final LegacyDeviceLauncher? legacyLauncher;
+  final DdiLocator? ddiLocator;
 
   static Future<String?> _noServiceProblem() async => null;
 
@@ -82,6 +91,16 @@ final class DeviceRunOperation {
       // studio: 002
       serviceProblem: () =>
           pymd.hostPolicy.deviceServiceProblem(pymd.resolvedUsbmuxAddress()),
+      // studio: 005
+      legacyLauncher: LegacyDeviceLauncher(
+        run: (args, {timeout}) => pymd.run(args, timeout: timeout),
+        log: pymd.runner.log,
+      ),
+      ddiLocator: DdiLocator(
+        fileSystem: pymd.runner.host.fileSystem,
+        paths: pymd.runner.host.paths.context,
+        environment: pymd.runner.effectiveEnvironment,
+      ),
     );
   }
 
@@ -113,6 +132,8 @@ final class DeviceRunOperation {
     Future<bool> Function()? onRestartRequested,
     // studio: 002 — the device from [precheck]; skips resolution and the gate.
     PrecheckedDevice? prechecked,
+    // studio: 005 — `--ddi` for iOS 15/16 launch.
+    String? ddiDirectory,
   }) async {
     if (pack.kind != PackOutputKind.app) {
       throw XcrossError(
@@ -122,18 +143,28 @@ final class DeviceRunOperation {
     final device =
         prechecked?.device ??
         await backend.resolveDevice(selector: selector, mode: mode);
+    var legacy = prechecked?.legacy ?? false;
+    var osVersion = prechecked?.osVersion;
     if (prechecked == null) {
       log.logInfo('Device', '${device.name} ${log.dim(device.udid)}');
-      final major = await _osMajorVersion(device);
+      final major =
+          DevicePrecheck.majorOf(device.osVersion) ??
+          await _osMajorVersion(device);
       if (major == null) {
         log.logWarn(
           'Could not read the device OS version; attempting the native '
           'CoreDevice path.',
         );
       }
-      if (major != null && major < 17) {
-        throw XcrossError('Native device launching requires iOS 17 or later.');
+      // studio: 005 — iOS 15/16 install and launch through the legacy path.
+      if (major != null && major < 15) {
+        throw codedError(
+          XcrossCodes.deviceIosUnsupported,
+          '${device.name} runs iOS $major; xcross needs iOS 15 or later.',
+        );
       }
+      legacy = major != null && major < 17;
+      osVersion = device.osVersion ?? (major == null ? null : '$major');
     }
     // Launch the exact id install() produced: the device may carry stale
     // team-qualified builds of this app under other identities, and the
@@ -144,6 +175,16 @@ final class DeviceRunOperation {
       bundleId: pack.bundleId,
       projectRoot: pack.projectRoot,
     );
+    // studio: 005 — no CoreDevice on iOS 15/16.
+    if (legacy) {
+      await legacyLauncher?.launch(
+        udid: device.udid,
+        bundleId: installedBundleId,
+        osVersion: osVersion,
+        ddi: ddiLocator?.find(osVersion ?? '16', explicitDir: ddiDirectory),
+      );
+      return device;
+    }
     await _terminate(udid: device.udid, bundleId: installedBundleId);
     await _launch(
       udid: device.udid,

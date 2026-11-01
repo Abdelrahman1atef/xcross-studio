@@ -19,8 +19,22 @@ final class DiagnosticCode {
 abstract final class XcrossCodes {
   static const deviceIosUnsupported = DiagnosticCode(
     'device.ios_unsupported',
-    'Use a device on iOS 17 or later. iOS 16 install and launch support is '
-        'planned (feature 005).',
+    'Use a device on iOS 15 or later (iOS 15/16 install and open from the '
+        'icon; iOS 17+ also supports hot reload).',
+  );
+  // studio: 005
+  static const deviceLegacyDebugUnsupported = DiagnosticCode(
+    'device.legacy_debug_unsupported',
+    'Run with --release or --profile on iOS 15/16; debug (hot reload) builds '
+        'need a debugger, which xcross supports on iOS 17 or later.',
+  );
+  static const installUnsupportedInput = DiagnosticCode(
+    'install.unsupported_input',
+    'Pass an .ipa file or a .app bundle directory.',
+  );
+  static const installNoApp = DiagnosticCode(
+    'install.no_app',
+    'The IPA must contain exactly one app under Payload/.',
   );
   static const deviceNotFound = DiagnosticCode(
     'device.not_found',
@@ -74,6 +88,9 @@ abstract final class XcrossCodes {
     deviceNotFound,
     deviceHostServiceUnavailable,
     deviceQueryTimeout,
+    deviceLegacyDebugUnsupported,
+    installUnsupportedInput,
+    installNoApp,
     toolchainPathLinkerUnusable,
     buildPodspecOnlyPlugin,
     buildPluginManifestMissing,

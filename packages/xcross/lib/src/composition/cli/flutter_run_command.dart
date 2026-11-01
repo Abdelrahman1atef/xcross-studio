@@ -11,6 +11,7 @@ import 'package:xcross/src/composition/cli/flutter_build_command.dart';
 import 'package:xcross/src/composition/ios_target.dart';
 import 'package:xcross/src/shared/cli/device_selection.dart';
 import 'package:xcross/src/shared/cli/internal/parsed_command.dart';
+import 'package:xcross/src/shared/diagnostics/xcross_diagnostics.dart'; // studio: 005
 import 'package:xcross/src/shared/errors/errors.dart';
 import 'package:xcross/src/shared/flutter/build/flutter_pack_operation.dart';
 import 'package:xcross/src/shared/flutter/build/hot_reload_setup.dart';
@@ -249,6 +250,15 @@ final class FlutterRunCommand<T extends PlatformHostInterface>
       selector: _deviceSelector,
       mode: _searchMode,
     );
+    // studio: 005 — debug (JIT) needs a debugger; not on iOS 15/16 yet.
+    final prechecked = _prechecked;
+    if (prechecked != null && prechecked.legacy && !buildMode.isPrecompiled) {
+      throw codedError(
+        XcrossCodes.deviceLegacyDebugUnsupported,
+        '${prechecked.device.name} runs iOS ${prechecked.osVersion}; debug '
+        '(hot reload) builds cannot start there without a debugger.',
+      );
+    }
     final pack = await _pack(buildOptions);
 
     final hotReload = buildMode.isPrecompiled

@@ -7,6 +7,7 @@ import 'package:cli_kit/shared/logging/logging.dart';
 import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:cli_kit/shared/tui/tui.dart';
 import 'package:completion/completion.dart';
+import 'package:dart_mobile_device/shared/device/models/device.dart'; // studio: 005
 import 'package:dart_mobile_device/shared/errors/errors.dart';
 import 'package:dart_mobile_device/target/iphone/device/device_prepare.dart';
 import 'package:dart_mobile_device/target/iphone/diagnostics/pymd_device_diagnostics.dart';
@@ -21,6 +22,7 @@ import 'package:xcross/src/composition/cli/cache_command.dart';
 import 'package:xcross/src/composition/cli/compose_command.dart';
 import 'package:xcross/src/composition/cli/doctor_sections.dart';
 import 'package:xcross/src/composition/cli/flutter_command.dart';
+import 'package:xcross/src/composition/cli/install_command.dart'; // studio: 005
 import 'package:xcross/src/composition/ios_target.dart';
 import 'package:xcross/src/composition/xcross_application.dart';
 import 'package:xcross/src/shared/cli/basic/auth_command.dart';
@@ -38,10 +40,13 @@ import 'package:xcross/src/shared/config/config.dart';
 import 'package:xcross/src/shared/config/config_store.dart';
 import 'package:xcross/src/shared/errors/errors.dart';
 import 'package:xcross/src/shared/flutter/errors.dart';
+import 'package:xcross/src/shared/models/pack_result.dart'; // studio: 005
 import 'package:xcross/src/shared/update/install_layout.dart';
 import 'package:xcross/src/shared/update/self_update.dart';
 import 'package:xcross/src/shared/update/update_check.dart';
 import 'package:xcross/src/target/iphone/cli/basic/tunnel_command.dart';
+import 'package:xcross/src/target/iphone/device/core_device_launch_profile.dart'; // studio: 005
+import 'package:xcross/src/target/iphone/device/device_run_operation.dart'; // studio: 005
 
 /// Namespace for building and running the xcross CLI.
 @internal
@@ -147,6 +152,52 @@ abstract final class XcrossCli {
       InspectCommand(
         fileSystem: runtime.host.fileSystem,
         write: runtime.log.output.write,
+      ),
+      // studio: XCross Studio feature 005 (specs/005-ios16-install-launch).
+      InstallCommand(
+        fileSystem: runtime.host.fileSystem,
+        paths: runtime.host.paths.context,
+        temporaryRoot: runtime.host.paths.temporaryRoot,
+        installOnDevice:
+            ({
+              required appPath,
+              required bundleId,
+              required udid,
+              required ddiDirectory,
+              required launch,
+            }) async {
+              final operation = await DeviceRunOperation.resolve(
+                pymd,
+                sockets: application.sockets,
+                httpClients: runtime.signingHttpClients,
+                connector: runtime.vmConnector,
+                vmOutput: runtime.vmOutput,
+                hostServices: runtime.appleHostServices,
+                createNativeLibraryLoader: runtime.createNativeLibraryLoader,
+                prompt: runtime.commandPrompt,
+              );
+              final prechecked = await operation.precheck(
+                selector: udid,
+                mode: DeviceSearchMode.usb,
+              );
+              final pack = PackResult(outputPath: appPath, bundleId: bundleId);
+              if (!launch) {
+                await operation.backend.install(
+                  appPath,
+                  device: prechecked.device,
+                  bundleId: bundleId,
+                );
+                return;
+              }
+              await operation.run(
+                pack: pack,
+                selector: udid,
+                mode: DeviceSearchMode.usb,
+                launchProfile: const CoreDeviceLaunchProfile.native(),
+                prechecked: prechecked,
+                ddiDirectory: ddiDirectory,
+              );
+            },
       ),
       // studio: XCross Studio feature 010 (specs/010-device-logs).
       LogsCommand(

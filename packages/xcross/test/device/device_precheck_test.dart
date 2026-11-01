@@ -17,7 +17,7 @@ void main() {
     name: 'iPhone X',
     udid: 'U16',
     type: ConnectionType.usb,
-    osVersion: '16.7.10',
+    osVersion: '14.8',
   );
   const modern = Device(name: 'Phone', udid: 'U17', type: ConnectionType.usb);
 
@@ -54,7 +54,8 @@ void main() {
     ),
   );
 
-  test('AC-002-1 iOS 16 is rejected before the build within 5 s', () async {
+  // studio: 005 - minimum is iOS 15 now; iOS 14 stands in for unsupported.
+  test('AC-002-1 unsupported iOS is rejected before the build within 5 s', () async {
     final stopwatch = Stopwatch()..start();
     await expectLater(
       precheck(resolve: iphoneX).run(mode: DeviceSearchMode.all),
@@ -63,7 +64,7 @@ void main() {
           (e) => e.message,
           'message',
           allOf(
-            startsWith('[device.ios_unsupported] iPhone X runs iOS 16.7.10'),
+            startsWith('[device.ios_unsupported] iPhone X runs iOS 14.8'),
             contains('hint: '),
           ),
         ),

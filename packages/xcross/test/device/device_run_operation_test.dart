@@ -60,7 +60,8 @@ void main() {
     },
   );
 
-  test('run rejects iOS 16 before terminate or install', () async {
+  // studio: 005 - the minimum is iOS 15; iOS 15/16 take the legacy path.
+  test('run rejects iOS 14 before terminate or install', () async {
     final events = <String>[];
     final operation = DeviceRunOperation(
       log: testLog(),
@@ -72,7 +73,7 @@ void main() {
         ),
         events: events,
       ),
-      osMajorVersion: (_) async => 16,
+      osMajorVersion: (_) async => 14,
       terminate: ({required udid, required bundleId}) async {
         events.add('terminate');
       },

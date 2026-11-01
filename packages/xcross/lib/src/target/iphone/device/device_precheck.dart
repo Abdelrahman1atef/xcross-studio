@@ -9,12 +9,23 @@ import 'package:xcross/src/shared/errors/errors.dart';
 /// The device chosen before the build; install and launch reuse it.
 @internal
 final class PrecheckedDevice {
-  const PrecheckedDevice({required this.device, required this.osMajor});
+  const PrecheckedDevice({
+    required this.device,
+    required this.osMajor,
+    this.osVersion,
+  });
 
   final Device device;
 
   /// Null when the OS version could not be read (the run continues).
   final int? osMajor;
+
+  /// Full version when known, e.g. `16.7.16` (studio: 005).
+  final String? osVersion;
+
+  /// iOS 15/16: no CoreDevice; install over usbmux, launch through the
+  /// user's developer disk image (studio: 005).
+  bool get legacy => osMajor != null && osMajor! < 17;
 }
 
 @internal
@@ -30,7 +41,7 @@ final class DevicePrecheck {
     required this.serviceProblem,
     required this.resolveDevice,
     required this.osMajor,
-    this.minimumIos = 17,
+    this.minimumIos = 15, // studio: 005 — iOS 15/16 run the legacy path
   });
 
   final Log log;
@@ -78,7 +89,11 @@ final class DevicePrecheck {
         'iOS $minimumIos or later to install and launch.',
       );
     }
-    return PrecheckedDevice(device: device, osMajor: major);
+    return PrecheckedDevice(
+      device: device,
+      osMajor: major,
+      osVersion: device.osVersion ?? (major == null ? null : '$major'),
+    );
   }
 
   /// First sentence of the host's explanation is the message, the rest the
