@@ -5,7 +5,7 @@ Prerequisites: `xcross auth` done; a Flutter project whose `ios/Runner/Runner.en
 
 | # | AC | Command | Expected | Result |
 |---|---|---|---|---|
-| 1 | AC-003-1 | `xcross flutter build ipa` then `xcross inspect build/xcross-ios/<name>.ipa --json` | `bundle.xcrossPrivateKeys.XCrossEntitlements: true` | ⏳ |
+| 1 | AC-003-1 | `xcross flutter build ipa` then `xcross inspect build/xcross-ios/<name>.ipa --json` | `bundle.xcrossPrivateKeys.XCrossEntitlements: true` | ✅ Windows host 2026-11-01, Flutter template app, debug build (release blocked: no Windows gen_snapshot for Flutter 3.47.8): `XCrossEntitlements: true`, `XCrossCapabilities: true` |
 | 2 | AC-003-4 | `xcross flutter run --release`, then `xcross app info <bundle-id>` | `✔ push entitlement` (`aps-environment`) | ⏳ |
 | 3 | AC-003-4 | same with `associated-domains` declared | `✔ associated domains` | ⏳ |
 | 4 | AC-003-3 | break the XML in `Runner.entitlements`, build | `warning: [build.entitlements_unreadable] …`; build continues | ⏳ |

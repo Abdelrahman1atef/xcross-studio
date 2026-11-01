@@ -18,20 +18,24 @@ committed files.
    No rebuild? Use `dart run D:\Programing\xcross-studio\packages\xcross\bin\xcross.dart` in place of `& $X`.
 2. Connect the iPhone by USB, unlock it, tap **Trust**. Check with `& $X devices`, which should show
    `iPhone … iOS 16.7.16 …`.
-3. Run `& $X flutter doctor` (there is no top-level `xcross doctor`). On 2026-11-01 this PC reported:
-   device service ✓ and Python tools ✓, but **no Swift toolchain, no clang/LLVM, no Darwin SDK and no sign-in**.
-   Nothing can be built until step 4 is done. Rows that need no build can run first: 010, plus `install` / `sign` /
-   `app info` / `logs` on an existing `.ipa`.
-4. **One-time toolchain setup** (needed for every build row; allow 30–60 min, mostly the SDK extraction):
+3. **Toolchain: done on 2026-11-01.** Swift 6.4.2, LLVM 23.1.4 and the Darwin SDK (from `Xcode_27.1.xip`) are
+   installed, and `& $X flutter doctor` shows the whole iOS toolchain ✓. **Open a new terminal (and restart the
+   GUI)** so PATH and SDKROOT include them. Still to do:
+   - `& $X auth`: Apple ID + password, then type the 2FA code. Doctor's "Authentication" is ✗ until then.
+   - Connect and trust the iPhone; "Device" turns ✓.
+4. **Release/profile builds need Flutter 3.47.6, not 3.47.8.** iOS 16 runs only release/profile. Those need an
+   iOS AOT compiler (`gen_snapshot`) built for Windows, which xcross downloads from `arxdeus/xcross_gen_snapshot`.
+   The newest 3.47 build there is **3.47.6**, so `flutter build --release` fails with "No prebuilt iOS AOT compiler
+   … for Flutter 3.47.8". Fix without touching your main Flutter:
 
    ```powershell
-   & $X setup                         # installs Swift, LLVM, Python via winget (asks before each installer)
-   # open a NEW terminal so PATH picks up Swift and LLVM, set $X again, then:
-   & $X sdk install "$env:USERPROFILE\Downloads\Xcode_27.1.xip"   # once; builds the Darwin SDK
-   & $X auth                          # Apple ID + password; type the 2FA code
-   & $X flutter doctor                # every iOS toolchain line should now be ✓
+   git clone --depth 1 --branch 3.47.6 https://github.com/flutter/flutter.git D:\Programing\flutter-3.47.6
+   D:\Programing\flutter-3.47.6\bin\flutter.bat --version      # downloads its Dart SDK once
+   $env:FLUTTER_ROOT = "D:\Programing\flutter-3.47.6"          # xcross uses this Flutter for this terminal
    ```
 
+   For the GUI, or for good, set `roots.flutterSdk: D:\Programing\flutter-3.47.6` in the xcross config
+   (`& $X config show` prints its path). Debug builds work with 3.47.8 today, but iOS 16 can't run them.
 5. Pick a Flutter test project (`$P`) and, if available, an `.ipa` from another source (`$IPA`).
 
 ## 1. Feature 010: device logs (rows 6–9)

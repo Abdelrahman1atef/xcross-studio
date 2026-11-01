@@ -6,7 +6,7 @@ template image is a 1×1 transparent PNG) and/or change the storyboard backgroun
 
 | # | AC | Command | Expected | Result |
 |---|---|---|---|---|
-| 1 | SC-002 | `xcross flutter build ipa`, then `xcross inspect build/xcross-ios/<name>.ipa` | `Assets.car` present, icons ✔ resolved, launch screen `UILaunchScreen` with image from the asset catalog | ⏳ |
+| 1 | SC-002 | `xcross flutter build ipa`, then `xcross inspect build/xcross-ios/<name>.ipa` | `Assets.car` present, icons ✔ resolved, launch screen `UILaunchScreen` with image from the asset catalog | ✅ Windows host 2026-11-01, Flutter template app, debug build (release blocked: no Windows gen_snapshot for Flutter 3.47.8): `Assets.car` 344 KB, AppIcon20/29/40… resolved, `UILaunchScreen` image `LaunchImage` from the asset catalog |
 | 2 | AC-004-1 | `xcross flutter run --release` | the home screen shows the app icon (not the blank grid) | ⏳ |
 | 3 | AC-004-2 | delete the app, reboot the phone, install again, open it | the launch screen shows the background colour and the launch image | ⏳ |
 | 4 | AC-004-2 | open a screen that uses `Image.asset` / a plugin reading a catalog image (if any) | unchanged (Flutter assets are not catalog images) | ⏳ |
