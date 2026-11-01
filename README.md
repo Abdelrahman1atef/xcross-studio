@@ -454,19 +454,14 @@ UDIDs, certificate data, API keys or Info.plist values outside a short allow-lis
 <!-- studio: 008 -->
 ## XCross Studio desktop app (Windows and Linux)
 
-`apps/studio` is a Flutter desktop GUI over this CLI: **Setup** (notice, which `xcross` to use, doctor, Apple sign-in
-with a 2FA input box), **Project & Build** (open a Flutter project, check it, build an `.ipa`), **Device & Install**
-(pick the iPhone, build & run, sign & install any `.ipa`, developer disk image folder for iOS 15/16), **Device logs**
-(live log table with presets Push/Crash/Flutter, filters, pause, save; app info with push/associated-domains ✔/✖; push
-checklist; crash reports) and **Console** (every command and its output). It runs `xcross` as a subprocess and holds no
-build logic.
+`apps/studio` is a Flutter desktop GUI over this CLI, built on the XCross Studio design system ([docs/XCross_Studio_Design_System.md](docs/XCross_Studio_Design_System.md)). The sidebar has **Overview** (readiness from `xcross flutter doctor`, next step, recent builds), **Build & Run** (mode, iPhone, command preview, reported steps, artifact and install), **Devices** (iPhone readiness, sign & install or sign only, installed apps, iOS 17+ tunnel), **Signing** (Apple ID or API key with risk notes, sign out), **Logs & Debug** (live iPhone log with presets and filters, app info, push checklist, crashes, every tool command), **Plugins** (SwiftPM / podspec-only / override badges, draft overrides) and **Settings** (which `xcross` to use, toolchain readout, IDE setup, theme, shortcuts). A first-run wizard walks through `xcross setup`, `xcross sdk install <Xcode.xip>`, sign-in, the device and the first build. It runs `xcross` as a subprocess and holds no build logic.
 
 ```sh
 cd apps/studio
 flutter run -d windows   # or: flutter run -d linux
 ```
 
-In Setup choose **Run from source** and pick this repository to use the XCross Studio CLI (`dart run
+In Settings choose **Run from source** and pick this repository to use the XCross Studio CLI (`dart run
 packages/xcross/bin/xcross.dart`), or point it at a compiled `xcross` executable. See
 [specs/008-json-events-gui](specs/008-json-events-gui/spec.md).
 

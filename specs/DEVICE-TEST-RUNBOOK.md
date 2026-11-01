@@ -88,8 +88,11 @@ runner is unchanged. Rows: `specs/007-native-runner-code/device-check.md`.
 ## 5. Feature 008: the desktop app
 
 Run `D:\Programing\xcross-studio\dist\xcross-studio-windows-x64\xcross_studio.exe`; it uses the bundled `xcross`
-automatically. Click through rows 1–13 of `specs/008-json-events-gui/device-check.md`: doctor, device list, build, run,
-install, live logs with filters, app info badges, push checklist, crashes, Stop, sign-in.
+automatically. The window follows the 013 design system: sidebar Overview, Build & Run, Devices, Signing, Logs &
+Debug, Plugins, Settings; console dock at the bottom; status bar with Toolchain / Signing / Device readiness. On a
+PC where checks fail the setup wizard opens first. Click through rows 1–14 of
+`specs/008-json-events-gui/device-check.md` (now named by the new screens) and rows 1–10 of
+`specs/013-gui-design-system/device-check.md`.
 
 ## 6. Feature 006: plugin overrides
 
