@@ -469,6 +469,8 @@ In Setup choose **Run from source** and pick this repository to use the XCross S
 packages/xcross/bin/xcross.dart`), or point it at a compiled `xcross` executable. See
 [specs/008-json-events-gui](specs/008-json-events-gui/spec.md).
 
+New here? Read **[docs/studio-getting-started.md](docs/studio-getting-started.md)**.
+
 **Packages** (built by `apps/studio/tool/package.dart` and by the *Studio GUI* CI workflow, which uploads them as
 artifacts): Windows `xcross-studio-windows-x64-setup.exe` (per-user, no admin) or the portable `.zip`; Linux
 `xcross-studio_<version>_amd64.deb` (depends on `usbmuxd`; launcher `xcross-studio`, CLI at
