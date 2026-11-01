@@ -149,7 +149,8 @@ void main() {
           FlutterBuildContext(request: packer.request, flutterRoot: '/flutter'),
         ).buildSubstitutionMap(),
       );
-      for (final value in ['1.0.7</string>', '7</string>']) {
+      // Anchored on '>' so '7</string>' does not also match '1.0.7</string>'.
+      for (final value in ['>1.0.7</string>', '>7</string>']) {
         expect(RegExp(RegExp.escape(value)).allMatches(xml), hasLength(2));
       }
       expect(xml, isNot(contains('1.0.6')));
