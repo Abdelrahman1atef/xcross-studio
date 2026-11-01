@@ -68,10 +68,33 @@ abstract final class XcrossCodes {
     "Check the plugin's ios/ or darwin/ folder; its platform channels will "
         'not respond at runtime.',
   );
+  // studio: 004 — catalogs are compiled now; this is the failure fallback.
   static const buildAssetCatalogSkipped = DiagnosticCode(
     'build.asset_catalog_skipped',
-    'Asset catalogs are not compiled yet (feature 004); add loose PNGs plus '
-        'CFBundleIcons for the app icon meanwhile.',
+    'The catalog could not be compiled (see the message); fix or remove the '
+        'asset it names. Loose PNGs plus CFBundleIcons in Info.plist still '
+        'give the app an icon.',
+  );
+  static const buildAssetUnsupported = DiagnosticCode(
+    'build.asset_unsupported',
+    'Use PNG (or JPEG) images at 1x/2x/3x, colour sets with explicit '
+        'components, and one app icon set; other asset types are left out.',
+  );
+  static const buildAssetInvalid = DiagnosticCode(
+    'build.asset_invalid',
+    'Fix the file or its Contents.json entry (open the catalog in an editor '
+        'or re-export the image); the rest of the catalog is compiled.',
+  );
+  static const buildLaunchScreenApproximated = DiagnosticCode(
+    'build.launch_screen_approximated',
+    'Without Xcode the launch storyboard becomes a UILaunchScreen: one '
+        'background colour and one centred image from the asset catalog. '
+        'Move the rest into the first Flutter frame.',
+  );
+  static const buildLaunchScreenUnreadable = DiagnosticCode(
+    'build.launch_screen_unreadable',
+    'Fix the storyboard XML, or add a UILaunchScreen dictionary to '
+        'Info.plist yourself; the app starts with a blank launch screen.',
   );
   static const buildStoryboardSkipped = DiagnosticCode(
     'build.storyboard_skipped',
@@ -101,6 +124,10 @@ abstract final class XcrossCodes {
     buildPodspecOnlyPlugin,
     buildPluginManifestMissing,
     buildAssetCatalogSkipped,
+    buildAssetUnsupported,
+    buildAssetInvalid,
+    buildLaunchScreenApproximated,
+    buildLaunchScreenUnreadable,
     buildStoryboardSkipped,
     buildResourceMissing,
     buildEntitlementsUnreadable,

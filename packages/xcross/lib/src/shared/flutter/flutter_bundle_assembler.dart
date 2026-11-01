@@ -4,6 +4,7 @@ import 'package:xcross/src/shared/artifact/plist_mutations.dart';
 import 'package:xcross/src/shared/diagnostics/xcross_diagnostics.dart'; // studio: 002
 import 'package:xcross/src/shared/flutter/build/app_extension_builder.dart';
 import 'package:xcross/src/shared/flutter/build/flutter_app_entitlements.dart'; // studio: 003
+import 'package:xcross/src/shared/flutter/build/flutter_asset_catalogs.dart'; // studio: 004
 import 'package:xcross/src/shared/flutter/build/info_plist.dart';
 import 'package:xcross/src/shared/flutter/build/ios_bundle_resources.dart'; // studio: 002
 import 'package:xcross/src/shared/flutter/build/ios_bundle_versions.dart';
@@ -180,29 +181,65 @@ final class FlutterBundleAssembler<T extends PlatformHostInterface>
     );
 
     await _embedAppExtensions(bundleDir, extensions);
-    _reportSkippedResources(
-      await runtime.resources.stage(
-        projectRoot: projectRoot,
-        bundleDir: bundleDir,
-      ),
+    final skipped = await runtime.resources.stage(
+      projectRoot: projectRoot,
+      bundleDir: bundleDir,
     );
+    // studio: 004 — compile catalogs + launch storyboard before reporting.
+    final assets = await _compileAssetCatalogs(
+      bundleDir,
+      skipped,
+      deploymentTarget,
+    );
+    _reportSkippedResources([
+      for (final resource in skipped)
+        if (!assets.handled.contains(resource.path)) resource,
+    ]);
     await _writeInfoPlist(
       bundleDir,
       deploymentTarget: deploymentTarget,
       sdkName: sdkName,
+      assets: assets,
     );
     for (final binary in await runtime.signatures.refresh(bundleDir)) {
       runtime.runner.log.logTrace('refreshed ad-hoc signature of $binary');
     }
   }
 
+  // studio: 004 — Assets.car, loose icons and the UILaunchScreen (#149).
+  Future<FlutterAssetCatalogResult> _compileAssetCatalogs(
+    String bundleDir,
+    List<SkippedResource> skipped,
+    IosDeploymentTarget deploymentTarget,
+  ) async =>
+      FlutterAssetCatalogs(
+        fileSystem: runtime.host.fileSystem,
+        paths: runtime.host.paths.context,
+        warn: (code, {required subject, required message}) =>
+            runtime.warnings.warn(code, subject: subject, message: message),
+        trace: runtime.runner.log.logTrace,
+      ).compile(
+        bundleDir: bundleDir,
+        skipped: skipped,
+        deploymentTarget: deploymentTarget.version,
+        launchStoryboardName: FlutterAssetCatalogs.launchStoryboardName(
+          await _loadPlistTemplate(),
+        ),
+        display: _shownPath,
+      );
+
+  String _shownPath(String path) {
+    final context = runtime.host.paths.context;
+    return context.isWithin(projectRoot, path)
+        ? context.relative(path, from: projectRoot)
+        : path;
+  }
+
   // studio: 002 — every skipped project resource gets a coded warning.
   void _reportSkippedResources(List<SkippedResource> skipped) {
     final context = runtime.host.paths.context;
     for (final resource in skipped) {
-      final shown = context.isWithin(projectRoot, resource.path)
-          ? context.relative(resource.path, from: projectRoot)
-          : resource.path;
+      final shown = _shownPath(resource.path);
       switch (resource.reason) {
         case SkippedResourceReason.assetCatalog:
           runtime.warnings.warn(
@@ -259,6 +296,7 @@ final class FlutterBundleAssembler<T extends PlatformHostInterface>
     String bundleDir, {
     required IosDeploymentTarget deploymentTarget,
     required String sdkName,
+    FlutterAssetCatalogResult assets = FlutterAssetCatalogResult.none,
   }) async {
     var plistXml = await _loadPlistTemplate();
 
@@ -299,13 +337,20 @@ final class FlutterBundleAssembler<T extends PlatformHostInterface>
       plistXml,
       bundleDir,
       // studio: 002 — a removed storyboard reference is reported, not silent.
-      onRemoved: (key, name) => runtime.warnings.warn(
-        XcrossCodes.buildStoryboardSkipped,
-        subject: name,
-        message:
-            'Info.plist $key "$name" has no compiled storyboard and was '
-            'removed.',
-      ),
+      onRemoved: (key, name) {
+        // studio: 004 — the launch storyboard became a UILaunchScreen.
+        if (key == 'UILaunchStoryboardName' &&
+            name == assets.launchStoryboardName) {
+          return;
+        }
+        runtime.warnings.warn(
+          XcrossCodes.buildStoryboardSkipped,
+          subject: name,
+          message:
+              'Info.plist $key "$name" has no compiled storyboard and was '
+              'removed.',
+        );
+      },
     );
     plistXml = InfoPlist.applySceneLifecycle(plistXml);
     plistXml = InfoPlist.normalizeObjCClassNames(plistXml);
@@ -313,10 +358,30 @@ final class FlutterBundleAssembler<T extends PlatformHostInterface>
     // provision them alongside its extensions'.
     plistXml = AppExtensionPlist.setAppGroups(plistXml, _hostAppGroups());
     plistXml = _withDeclaredEntitlements(plistXml); // studio: 003
+    plistXml = _withAssetCatalogKeys(plistXml, assets); // studio: 004
 
     await runtime.host.fileSystem
         .file(runtime.host.paths.context.join(bundleDir, 'Info.plist'))
         .writeAsString(plistXml);
+  }
+
+  // studio: 004 — icon keys and UILaunchScreen from the compiled catalog.
+  String _withAssetCatalogKeys(
+    String plistXml,
+    FlutterAssetCatalogResult assets,
+  ) {
+    try {
+      return FlutterAssetCatalogs.mergeInfoPlist(plistXml, assets);
+    } on FormatException catch (error) {
+      runtime.warnings.warn(
+        XcrossCodes.buildAssetCatalogSkipped,
+        subject: 'Info.plist',
+        message:
+            'The app icon and launch screen keys were not added: '
+            '${error.message}.',
+      );
+      return plistXml;
+    }
   }
 
   // studio: 003 — push, associated domains, … reach the signer (#149).
