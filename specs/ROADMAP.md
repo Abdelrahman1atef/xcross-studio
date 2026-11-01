@@ -15,7 +15,7 @@ Governing rules: [.specify/memory/constitution.md](../.specify/memory/constituti
 | 006 | `plugin-overrides` | M5 | Override `Package.swift` lookup, remote binary targets + resource bundles, Google Maps (`google_maps_flutter_ios_sdk10`), Pusher shim, `xcross plugin shim` | #145 | binary targets: yes | Not started |
 | 007 | `native-runner-code` | M6 | Compile project `ios/Runner/*.swift\|*.m` (AppDelegate) with `--runner=shim` fallback | #149 (AppDelegate note) | maybe | Not started |
 | 008 | `json-events-gui` | M7 | `--json` NDJSON event stream + Flutter desktop GUI (Windows + Linux): Setup, Project (create/open), Build, Device & Install, Logs | — | `--json`: yes | Not started |
-| 010 | `device-logs` | M1b | iPhone log viewer: `xcross logs` (live syslog, filters, presets push/crash/flutter, `--json`), `xcross crashes list\|pull`, `xcross app info <bundle-id>` (installed entitlements) — over plain usbmux, works on iOS 16 and 17+ | — (new) | yes | Spec drafted |
+| 010 | `device-logs` | M1b | iPhone log viewer: `xcross logs` (live syslog, filters, presets push/crash/flutter, `--json`), `xcross crashes list\|pull`, `xcross app info <bundle-id>` (installed entitlements) — over plain usbmux, works on iOS 16 and 17+ | — (new) | yes | Implemented (Windows device-checked in part; Linux deferred) |
 | 009 | `hardening-1.0` | M8 | One sub-spec per unfixed issue: #90, #75, #55, #21 (documented out of scope); close #145–#149; installers (Inno Setup, AppImage, .deb) | #90 #75 #55 #21 | yes | Not started |
 
 Device test matrix for every device-affecting feature: {Windows 11, Ubuntu 24.04} × {iPhone X iOS 16.7, one iOS 17+ device}.

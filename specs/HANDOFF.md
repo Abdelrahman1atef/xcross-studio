@@ -28,7 +28,9 @@ Linux that builds, signs, installs and debugs complete Flutter iOS apps without 
 2. ~~Spec Kit cycle for `001-inspect`~~ done (2026-11-01). Open: **T045 Linux verification (deferred by the user)**
    and quickstart §4 (real IPA / signed `.app`, `--normalize` parity `diff` between Windows and Linux).
 3. ~~`002-quick-wins`~~ implemented and device-checked on the iPhone X from Windows (2026-11-01; `pymobiledevice3`
-   11.49.1 installed natively via `py -m pip`; see `specs/002-quick-wins/device-check.md`). Next: `010-device-logs` (MVP, high value, small: it generalises existing `DeviceLog`).
+   11.49.1 installed natively via `py -m pip`; see `specs/002-quick-wins/device-check.md`). ~~`010-device-logs`~~ implemented on branch `010-device-logs` (from `002-quick-wins`); open device rows in
+   `specs/010-device-logs/device-check.md` (launch an app while `xcross logs --app` runs; crashes on device).
+   Next per ROADMAP: `003-entitlements-signed-ipa`.
 4. ~~Add `windows-latest` to CI~~: already there upstream (windows-2022, windows-11-arm); `studio_ext` was added to the test loops.
 
 ## Decisions already made by the user

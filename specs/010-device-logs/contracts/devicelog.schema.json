@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:xcross-studio:devicelog:schema:1",
+  "title": "xcross logs / app info / crashes --json events (v 1)",
+  "description": "One JSON object per line (NDJSON). Every object has v=1 and a type. ASCII-only (non-ASCII escaped). Additive optional fields keep v=1.",
+  "oneOf": [
+    { "$ref": "#/$defs/devicelog" },
+    { "$ref": "#/$defs/diagnosis" },
+    { "$ref": "#/$defs/crash" },
+    { "$ref": "#/$defs/appinfo" },
+    { "$ref": "#/$defs/notice" }
+  ],
+  "$defs": {
+    "devicelog": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "time", "process", "pid", "subsystem", "category", "level", "message", "highlight"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "devicelog" },
+        "time": { "type": "string", "description": "Device-local timestamp as reported, e.g. 2026-11-01T16:55:51.018604" },
+        "process": { "type": "string" },
+        "pid": { "type": "integer" },
+        "subsystem": { "type": ["string", "null"] },
+        "category": { "type": ["string", "null"] },
+        "level": { "enum": ["debug", "info", "notice", "error", "fault"] },
+        "message": { "type": "string", "description": "Masked unless --show-sensitive." },
+        "highlight": { "enum": ["registration", "delivery", "error", null] }
+      }
+    },
+    "diagnosis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "bundleId", "entitlement", "appSeen", "registrationSeen", "deliverySeen", "permissionDenied", "verdict", "hint"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "diagnosis" },
+        "bundleId": { "type": "string" },
+        "entitlement": { "type": ["string", "null"], "description": "Installed aps-environment value, null when missing." },
+        "appSeen": { "type": "boolean" },
+        "registrationSeen": { "type": "boolean" },
+        "deliverySeen": { "type": "boolean" },
+        "permissionDenied": { "type": "boolean" },
+        "verdict": { "enum": ["missing_entitlement", "permission_denied", "app_not_running", "not_registered", "registered_no_delivery", "delivered"] },
+        "hint": { "type": "string" }
+      }
+    },
+    "crash": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "name", "process", "time", "exceptionType"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "crash" },
+        "name": { "type": "string" },
+        "process": { "type": "string" },
+        "time": { "type": "string", "description": "YYYY-MM-DDTHH:MM:SS from the report name (device-local)." },
+        "exceptionType": { "type": ["string", "null"] }
+      }
+    },
+    "appinfo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "bundleId", "name", "version", "build", "executable", "signer", "teamId", "entitlements", "push", "associatedDomains"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "appinfo" },
+        "bundleId": { "type": "string" },
+        "name": { "type": ["string", "null"] },
+        "version": { "type": ["string", "null"] },
+        "build": { "type": ["string", "null"] },
+        "executable": { "type": ["string", "null"] },
+        "signer": { "enum": ["app-store", "testflight", "development", "distribution", "other"] },
+        "teamId": { "type": ["string", "null"] },
+        "entitlements": { "type": "object" },
+        "push": { "type": ["string", "null"], "description": "aps-environment value, null when missing." },
+        "associatedDomains": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "notice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "message"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "notice" },
+        "message": { "type": "string", "description": "Status such as 'waiting for <exe>'." }
+      }
+    }
+  }
+}

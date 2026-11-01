@@ -24,6 +24,20 @@ final class JsonSchemaLite {
     );
   }
 
+  /// Loads the device-log NDJSON schema from the repository (feature 010).
+  factory JsonSchemaLite.devicelogContract() {
+    final packageLib = Isolate.resolvePackageUriSync(
+      Uri.parse('package:studio_ext/'),
+    )!;
+    final repoRoot = Directory.fromUri(packageLib).parent.parent.parent;
+    final file = File(
+      '${repoRoot.path}/specs/010-device-logs/contracts/devicelog.schema.json',
+    );
+    return JsonSchemaLite(
+      jsonDecode(file.readAsStringSync()) as Map<String, Object?>,
+    );
+  }
+
   final Map<String, Object?> schema;
 
   List<String> validate(Object? value) {

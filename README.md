@@ -394,6 +394,9 @@ Edit it with `xcross config`, inspect it with `xcross config show`, prove it wit
 | `xcross ide idea` | Write a JetBrains DAP run configuration (needs LSP4IJ) |
 | `xcross update` | Update xcross to the latest release, verified against its checksums |
 | `xcross completion` | Print a shell-completion script |
+| `xcross logs [--app <bundle-id>] [--preset push\|crash\|flutter] [--json]` | <!-- studio: --> Live iPhone log over USB (iOS 16 and 17+), with filters, presets, `--save`, NDJSON. XCross Studio fork addition |
+| `xcross app info <bundle-id>` | <!-- studio: --> Installed app's version, signer type, team and entitlements as installed (push / associated domains ✔/✖) |
+| `xcross crashes list\|pull` | <!-- studio: --> List crash reports on the iPhone and pull one with its exception summary |
 | `xcross inspect <ipa\|app> [--json] [--normalize]` | <!-- studio: --> Read-only report of what is inside an `.ipa` or `.app`: Info.plist, entitlements per Mach-O, provisioning profile summary, icons, launch screen, frameworks and extensions. XCross Studio fork addition |
 
 <details>

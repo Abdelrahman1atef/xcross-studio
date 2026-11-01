@@ -5,6 +5,7 @@ import 'dart:io';
 
 import 'package:cli_kit/shared/logging/logging.dart';
 import 'package:dart_mobile_device/target/iphone/device/pymd/pymd.dart';
+import 'package:dart_mobile_device/target/iphone/device/pymd/syslog_entry.dart'; // studio: 010
 import 'package:meta/meta.dart';
 
 @internal
@@ -98,13 +99,9 @@ final class DeviceLog {
   /// (or legacy `dvt oslog --format json`) line, dropping other processes.
   @visibleForTesting
   static String? appLogMessage(String line, int pid) {
-    try {
-      final entry = jsonDecode(line);
-      if (entry is! Map<String, dynamic> || entry['pid'] != pid) return null;
-      return entry['message'] as String?;
-    } on FormatException {
-      return null;
-    }
+    // studio: 010 — the shared parser also used by `xcross logs`.
+    final entry = SyslogEntry.tryParse(line);
+    return entry == null || entry.pid != pid ? null : entry.message;
   }
 
   /// The Flutter engine logs the app's Dart output (`print`, `debugPrint`)

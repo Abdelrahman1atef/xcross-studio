@@ -1,4 +1,6 @@
+import 'dart:io'; // studio: 010
 import 'package:apple_developer_kit/shared/errors/errors.dart';
+import 'package:args/args.dart'; // studio: 010
 import 'package:args/command_runner.dart';
 import 'package:cli_kit/shared/errors/errors.dart';
 import 'package:cli_kit/shared/logging/logging.dart';
@@ -11,6 +13,10 @@ import 'package:dart_mobile_device/target/iphone/diagnostics/pymd_device_diagnos
 import 'package:darwin_sdk_kit/shared/errors/errors.dart';
 import 'package:meta/meta.dart';
 import 'package:studio_ext/shared/inspect/inspect_command.dart'; // studio:
+import 'package:studio_ext/target/iphone/device/app_command.dart'; // studio: 010
+import 'package:studio_ext/target/iphone/device/crashes_command.dart'; // studio: 010
+import 'package:studio_ext/target/iphone/device/device_log_backend.dart'; // studio: 010
+import 'package:studio_ext/target/iphone/device/logs_command.dart'; // studio: 010
 import 'package:xcross/src/composition/cli/cache_command.dart';
 import 'package:xcross/src/composition/cli/compose_command.dart';
 import 'package:xcross/src/composition/cli/doctor_sections.dart';
@@ -142,6 +148,21 @@ abstract final class XcrossCli {
         fileSystem: runtime.host.fileSystem,
         write: runtime.log.output.write,
       ),
+      // studio: XCross Studio feature 010 (specs/010-device-logs).
+      LogsCommand(
+        backend: PymdDeviceLogBackend(pymd),
+        fileSystem: runtime.host.fileSystem,
+        writeBytes: stdout.add,
+        interrupts: () => ProcessSignal.sigint.watch().map((_) {}),
+      ),
+      AppCommand(backend: PymdDeviceLogBackend(pymd), writeBytes: stdout.add),
+      CrashesCommand(
+        backend: PymdDeviceLogBackend(pymd),
+        fileSystem: runtime.host.fileSystem,
+        paths: runtime.host.paths.context,
+        cacheRoot: runtime.host.paths.temporaryRoot,
+        writeBytes: stdout.add,
+      ),
     ];
     for (final command in commands) {
       if (!excluded.contains(command.name.toLowerCase())) {
@@ -230,10 +251,22 @@ abstract final class XcrossCli {
       return command?.name == 'completion' ||
           command?.name == 'flutter' && command?.command?.name == 'dap' ||
           // studio: `inspect --json` prints one machine-readable document.
-          command?.name == 'inspect' && command?.flag('json') == true;
+          command?.name == 'inspect' && command?.flag('json') == true ||
+          // studio: 010 — NDJSON from the device commands.
+          _deviceJson(command);
     } on FormatException {
       return false;
     }
+  }
+
+  // studio: 010 — `logs --json`, `app info --json`, `crashes list --json`.
+  static bool _deviceJson(ArgResults? command) {
+    final leaf = command?.command ?? command;
+    if (leaf == null) return false;
+    final known =
+        {'logs', 'info', 'list'}.contains(leaf.name) &&
+        {'logs', 'app', 'crashes'}.contains(command?.name);
+    return known && leaf.options.contains('json') && leaf.flag('json');
   }
 
   /// One-line credits banner printed before every command dispatch.
