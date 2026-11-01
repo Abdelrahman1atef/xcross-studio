@@ -6,6 +6,9 @@ import 'package:path/path.dart' as p;
 
 import '../cli/xcross_commands.dart';
 
+/// Theme preference (feature 013).
+enum ThemePreference { dark, light, system }
+
 /// What the GUI remembers between runs, in `<config>/settings.json`.
 class Settings extends ChangeNotifier {
   Settings({this.file});
@@ -23,6 +26,16 @@ class Settings extends ChangeNotifier {
   String? lastIpa;
   String? logApp;
   bool acceptedNotice = false;
+
+  // studio: 013 — design system shell.
+  /// The first-run wizard was closed; it no longer opens by itself.
+  bool wizardDismissed = false;
+  ThemePreference theme = ThemePreference.dark;
+  bool consoleOpen = true;
+  double consoleHeight = 220;
+
+  /// The Xcode.xip chosen in the wizard.
+  String? xcodeXip;
 
   static Future<Settings> load(String directory) async {
     final settings = Settings(file: File(p.join(directory, 'settings.json')));
@@ -48,6 +61,15 @@ class Settings extends ChangeNotifier {
     lastIpa = text('lastIpa');
     logApp = text('logApp');
     acceptedNotice = json['acceptedNotice'] == true;
+    wizardDismissed = json['wizardDismissed'] == true;
+    theme =
+        ThemePreference.values.asNameMap()[text('theme')] ??
+        ThemePreference.dark;
+    consoleOpen = json['consoleOpen'] != false;
+    if (json['consoleHeight'] case final num height) {
+      consoleHeight = height.toDouble().clamp(120, 900);
+    }
+    xcodeXip = text('xcodeXip');
   }
 
   Map<String, Object?> toJson() => {
@@ -59,6 +81,11 @@ class Settings extends ChangeNotifier {
     'lastIpa': lastIpa,
     'logApp': logApp,
     'acceptedNotice': acceptedNotice,
+    'wizardDismissed': wizardDismissed,
+    'theme': theme.name,
+    'consoleOpen': consoleOpen,
+    'consoleHeight': consoleHeight,
+    'xcodeXip': xcodeXip,
   };
 
   /// Applies [change], notifies and saves.

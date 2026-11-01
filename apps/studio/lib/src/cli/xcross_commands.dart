@@ -188,10 +188,44 @@ abstract final class XcrossCommands {
     if (_set(udid)) ...['--udid', udid!],
   ];
 
-  static List<String> authAppleId(String appleId, {String? password}) => [
+  static List<String> authAppleId(
+    String appleId, {
+    String? password,
+    String? anisetteUrl,
+  }) => [
     'auth',
     '--apple-id=${appleId.trim()}',
     if (_set(password)) ...['--password', password!],
+    if (_set(anisetteUrl)) '--anisette-url=${anisetteUrl!.trim()}',
+  ];
+
+  /// Omnisette server `xcross auth` uses for Apple ID sign-in when neither
+  /// `--anisette-url` nor `XCROSS_ANISETTE_URL` is set (from its `--help`).
+  static const defaultAnisetteUrl = 'https://mac-ani.jkcoxson.com';
+
+  // studio: 013 — commands behind the setup wizard, Settings and Devices.
+
+  /// `xcross setup`: runs the setup script for the host's package manager
+  /// (winget, Scoop, Chocolatey or direct downloads). [yes] accepts every
+  /// installer without prompting (the GUI asks first).
+  static List<String> setup({bool yes = false}) => ['setup', if (yes) '--yes'];
+
+  /// `xcross sdk install <Xcode.xip>`: builds the Darwin SDK once.
+  static List<String> sdkInstall(String xip) => ['sdk', 'install', xip];
+
+  static List<String> version() => const ['--version'];
+
+  /// `xcross update --check`: reports the target version, installs nothing.
+  static List<String> updateCheck() => const ['update', '--check'];
+
+  /// `xcross ide vscode` / `xcross ide idea` (run in the project folder).
+  static List<String> ide(String editor) => ['ide', editor];
+
+  /// `xcross tunnel`: iOS 17+ developer tunnel (needs an Administrator
+  /// terminal on Windows or sudo on Linux).
+  static List<String> tunnel({bool wifi = false}) => [
+    'tunnel',
+    if (wifi) '--wifi',
   ];
 
   static List<String> authApiKey({

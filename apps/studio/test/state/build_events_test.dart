@@ -10,11 +10,12 @@ import 'package:xcross_studio/src/cli/xcross_commands.dart';
 import 'package:xcross_studio/src/cli/xcross_events.dart';
 import 'package:xcross_studio/src/host/host_platform.dart';
 import 'package:xcross_studio/src/state/job.dart';
-import 'package:xcross_studio/src/state/log_session.dart';
 import 'package:xcross_studio/src/state/settings.dart';
-import 'package:xcross_studio/src/ui/project_page.dart';
-import 'package:xcross_studio/src/ui/services.dart';
-import 'package:xcross_studio/src/ui/widgets.dart';
+import 'package:xcross_studio/app/services.dart';
+import 'package:xcross_studio/design_system/design_system.dart';
+import 'package:xcross_studio/features/build/build_run_page.dart';
+import 'package:xcross_studio/features/common/doctor_checklist.dart';
+import 'package:xcross_studio/features/common/job_views.dart';
 
 import '../support/fake_launcher.dart';
 
@@ -203,35 +204,56 @@ void main() {
   });
 
   group('AC-012-8 views', () {
-    testWidgets('the output view shows steps, download progress and issues', (
-      tester,
-    ) async {
-      final launcher = FakeLauncher(
-        onStart: (process, _) async {
-          buildEvents.take(6).forEach(process.out);
-        },
-      );
-      final job = structuredJob(launcher);
-      unawaited(job.start());
-      await settle(tester);
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(body: JobOutputView(job: job, height: 200)),
-        ),
-      );
-      await tester.pump();
-      expect(find.byType(StepsPanel), findsOneWidget);
-      expect(find.text('Downloading engine  50%'), findsOneWidget);
-      expect(find.byType(LinearProgressIndicator), findsOneWidget);
-      expect(find.text('Resolving dependencies  1.2s'), findsOneWidget);
-      expect(find.textContaining('Compiling Runner'), findsWidgets);
-      expect(find.byType(IssueList), findsOneWidget);
-      expect(find.textContaining('Install AssetKit.'), findsWidgets);
-      await job.cancel();
-      await settle(tester);
-    });
+    Widget host(StudioServices services, Widget child) => Services(
+      services: services,
+      child: MaterialApp(
+        theme: xDarkTheme(),
+        home: Scaffold(body: SingleChildScrollView(child: child)),
+      ),
+    );
 
-    testWidgets('the doctor report lists the checks', (tester) async {
+    StudioServices servicesWith(FakeLauncher launcher, Settings settings) =>
+        StudioServices(
+          host: HostPlatform.current(),
+          launcher: launcher,
+          settings: settings,
+          jobs: JobCenter(
+            launcher: launcher,
+            invocation: () => const XcrossInvocation.binary(),
+          ),
+        );
+
+    testWidgets(
+      'the job panel shows reported steps, real progress and issues',
+      (tester) async {
+        final launcher = FakeLauncher(
+          onStart: (process, _) async {
+            buildEvents.take(6).forEach(process.out);
+          },
+        );
+        final job = structuredJob(launcher);
+        unawaited(job.start());
+        await settle(tester);
+        await tester.pumpWidget(
+          host(servicesWith(launcher, Settings()), JobPanel(job: job)),
+        );
+        await tester.pump();
+        expect(find.byType(XBuildStepper), findsOneWidget);
+        expect(find.text('Downloading engine'), findsOneWidget);
+        expect(find.text('50%'), findsOneWidget);
+        expect(find.byType(LinearProgressIndicator), findsOneWidget);
+        expect(find.textContaining('Resolving dependencies'), findsWidgets);
+        expect(find.textContaining('1.2s'), findsWidgets);
+        expect(find.textContaining('Compiling Runner'), findsWidgets);
+        expect(find.byType(XDiagnosticCard), findsOneWidget);
+        expect(find.text('Code: build.asset_catalog_skipped'), findsOneWidget);
+        expect(find.text('Install AssetKit.'), findsOneWidget);
+        await job.cancel();
+        await settle(tester);
+      },
+    );
+
+    testWidgets('the doctor checklist lists the checks', (tester) async {
       final job = structuredJob(
         FakeLauncher(
           onStart: (process, _) async {
@@ -254,9 +276,8 @@ void main() {
       await settle(tester);
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(
-            body: SingleChildScrollView(child: DoctorReport(job: job)),
-          ),
+          theme: xDarkTheme(),
+          home: Scaffold(body: DoctorChecklist(checks: job.checks)),
         ),
       );
       await tester.pump();
@@ -269,7 +290,7 @@ void main() {
     testWidgets('"Install" uses the IPA named by the artifact event', (
       tester,
     ) async {
-      await tester.binding.setSurfaceSize(const Size(1400, 1600));
+      await tester.binding.setSurfaceSize(const Size(1400, 2400));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final project = await tester.runAsync(() async {
         final dir = await Directory.systemTemp.createTemp('studio_project_');
@@ -288,31 +309,26 @@ void main() {
         },
       );
       final settings = Settings()..projectPath = project!.path;
-      final jobs = JobCenter(
-        launcher: launcher,
-        invocation: () => const XcrossInvocation.binary(),
-      );
       String? installed;
       await tester.pumpWidget(
-        MaterialApp(
-          home: Services(
-            host: HostPlatform.current(),
-            launcher: launcher,
-            settings: settings,
-            jobs: jobs,
-            logs: LogSession(jobs),
-            child: Scaffold(
-              body: ProjectPage(onInstall: (ipa) => installed = ipa),
+        Services(
+          services: servicesWith(launcher, settings),
+          child: MaterialApp(
+            theme: xDarkTheme(),
+            home: Scaffold(
+              body: BuildRunPage(onInstall: (ipa) => installed = ipa),
             ),
           ),
         ),
       );
       await settle(tester);
-      await tester.tap(find.widgetWithText(FilledButton, 'Build'));
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Build IPA'));
       await settle(tester);
       expect(launcher.starts.last.environment['XCROSS_EVENTS'], 'ndjson');
-      final install = find.textContaining('Install demo.ipa');
+      expect(find.text('Built demo.ipa'), findsOneWidget);
+      final install = find.widgetWithText(FilledButton, 'Install demo.ipa');
       expect(install, findsOneWidget);
+      await tester.ensureVisible(install);
       await tester.tap(install);
       expect(installed, '/w/build/xcross-ios/demo.ipa');
     });
