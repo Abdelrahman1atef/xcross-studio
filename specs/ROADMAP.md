@@ -7,7 +7,7 @@ Governing rules: [.specify/memory/constitution.md](../.specify/memory/constituti
 
 | # | Feature (slug) | Milestone | Goal (one line) | Upstream issues | Upstreamable | Status |
 |---|---|---|---|---|---|---|
-| 001 | `inspect` | M0 | `xcross inspect <ipa\|app> --json`: plist, entitlements per Mach-O, profile type, icons, Assets.car, frameworks — the base for golden tests and device evidence | — | yes | Implemented (uncommitted) |
+| 001 | `inspect` | M0 | `xcross inspect <ipa\|app> --json`: plist, entitlements per Mach-O, profile type, icons, Assets.car, frameworks — the base for golden tests and device evidence | — | yes | Implemented |
 | 002 | `quick-wins` | M1 | iOS version check before build; version order `--build-name` > pubspec > xcconfig > pbxproj; PATH guard; loud warnings for skipped podspec/xcassets/storyboard | #145 (warning part), #147 (fail-fast), #148 | yes | Implemented (Windows device-checked; Linux deferred) |
 | 003 | `entitlements-signed-ipa` | M2 | Apply `Runner.entitlements` (push, associated domains); `build --ipa --sign development\|ad-hoc` via reusable signing; **`xcross sign <any.ipa>`** re-signs any IPA with Apple ID or App Store Connect key (Sideloadly replacement, part 1) | #146, #149 (entitlements) | yes | Entitlements implemented (device row tomorrow); `xcross sign` export deferred (`xcross install` signs + installs) |
 | 004 | `icon-launch-screen` | M3 | `Assets.xcassets` → `Assets.car` (AssetKit), `CFBundleIcons`, `UILaunchScreen` from `LaunchScreen.storyboard` | #149 (assets) | warnings only | Implemented (Dart port of AssetKit; device rows tomorrow) |

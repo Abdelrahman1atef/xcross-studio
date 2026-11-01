@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:cli_kit/host/shared/io_tui_terminal.dart';
@@ -6,14 +5,6 @@ import 'package:xcross/src/composition/cli/runner.dart';
 import 'package:xcross/src/composition/native_runtime.dart';
 
 Future<void> main(List<String> args) async {
-  // studio: 008 — the XCross Studio GUI reads output through a pipe, where
-  // Windows would otherwise encode it in the ANSI code page (✔, ✖ and
-  // non-Latin app names become `?`).
-  if (Platform.environment['XCROSS_OUTPUT_ENCODING']?.toLowerCase() ==
-      'utf-8') {
-    stdout.encoding = utf8;
-    stderr.encoding = utf8;
-  }
   var code = 0;
   try {
     final context = createNativeXcrossContext();

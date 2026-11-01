@@ -1,3 +1,4 @@
+import 'dart:convert'; // studio: 008
 import 'dart:io';
 
 import 'package:apple_developer_kit/shared/http/apple_http_client.dart';
@@ -19,6 +20,14 @@ import 'package:xcross/src/target/iphone/device/signing_http_client_factory.dart
 
 @internal
 XcrossHostContext<PlatformHostInterface> createNativeXcrossContext() {
+  // studio: 008 — the XCross Studio GUI reads output through a pipe, where
+  // Windows would otherwise encode it in the ANSI code page (✔, ✖ and
+  // non-Latin app names become `?`).
+  if (Platform.environment['XCROSS_OUTPUT_ENCODING']?.toLowerCase() ==
+      'utf-8') {
+    stdout.encoding = utf8;
+    stderr.encoding = utf8;
+  }
   final snapshot = detectPlatformHostSnapshot();
   final log = Log(
     output: StreamLogOutput(
