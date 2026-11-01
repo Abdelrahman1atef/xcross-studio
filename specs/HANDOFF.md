@@ -16,22 +16,22 @@ Linux that builds, signs, installs and debugs complete Flutter iOS apps without 
 | GitHub fork | **created by the user**: https://github.com/Abdelrahman1atef/xcross-studio |
 | Push-notification test (client app) | **deferred by the user**: do it only after the first XCross Studio build of the client project, using our own tool (`xcross app info` + `xcross logs --preset push`), not the old Sideloadly/rcodesign path |
 | Spec Kit | initialised (`specify init --here --integration claude --script py`); skills in `.claude/skills/speckit-*` |
-| Specs | `001-inspect`: **implemented** (spec, plan, research, data-model, contracts, quickstart, tasks all `[X]`); `010-device-logs/spec.md` Draft; others only in ROADMAP |
-| Feature 001 code | new package `packages/studio_ext` (`xcross inspect <ipa\|app> [--json] [--normalize]`); seams marked `studio:` in root `pubspec.yaml`, `packages/xcross/pubspec.yaml`, `runner.dart`, `no_deep_imports_test.dart`, `unit-tests.yml`, `release.yml` (pub dry-run disabled), README, CHANGELOG |
-| Git | branch `001-inspect` (setup + feature 001) pushed to `origin`; branch `002-quick-wins` (from `001-inspect`) holds feature 002, pushed to `origin`; `main` untouched (= upstream) |
-| Baseline | `dart pub get` OK (Dart 3.13.7); `dart analyze --fatal-warnings` clean (repo_analyzer included); `studio_ext` tests 78 pass / 2 skipped; `xcross` tests 1214 pass / 37 skipped / 1 fail on this PC (`windows_swift_response_test`: needs `clang` on PATH, unrelated) |
+| Specs / features | 001 inspect, 002 quick-wins, 010 device logs, 005 iOS 15/16 + `xcross install`, 003 entitlements, 004 icon + launch screen (Dart port of AssetKit), 008 desktop GUI MVP: **implemented**. 006 plugin overrides: in progress (branch `006-plugin-overrides`). 007, 009: not started (009 has a first piece: portable package + Inno Setup installer + GUI CI) |
+| Git | stacked branches, all pushed to `origin`: `001-inspect` → `002-quick-wins` → `010-device-logs` → `005-ios16-install-launch` → `003-entitlements-signed-ipa` → `004-icon-launch-screen` → merged into `008-json-events-gui` (**the branch with everything**). `main` untouched (= upstream) |
+| CI | Unit Tests were red on Linux/macOS from 002 to 004 because of a wrong count in `version_order_test` AC-002-5 (fixed on 008). Architecture was red on 008 until `apps/**` was excluded from the root analysis. New **Studio GUI** workflow: GUI tests on Windows + Linux, package, installer |
+| Tomorrow | iPhone X test pass: [DEVICE-TEST-RUNBOOK.md](DEVICE-TEST-RUNBOOK.md). Build with `cd apps/studio && dart run tool/package.dart` → `dist/xcross-studio-windows-x64/` (GUI + bundled `xcross/bin/xcross.exe`) |
+| Baseline (008 tip) | `dart analyze --fatal-warnings` clean; studio_ext 140 pass / 3 skipped; xcross 1262 pass / 37 skipped / 1 env fail (`windows_swift_response_test`, needs clang); GUI 20 pass |
 
 ## Suggested next steps
 
-1. Add the `origin` remote (fork above), create branch `000-studio-setup`, commit `.specify/`, `.claude/`, `specs/`
-   (check `.claude/` contents first), push when the user agrees.
-2. ~~Spec Kit cycle for `001-inspect`~~ done (2026-11-01). Open: **T045 Linux verification (deferred by the user)**
-   and quickstart §4 (real IPA / signed `.app`, `--normalize` parity `diff` between Windows and Linux).
-3. ~~`002-quick-wins`~~ implemented and device-checked on the iPhone X from Windows (2026-11-01; `pymobiledevice3`
-   11.49.1 installed natively via `py -m pip`; see `specs/002-quick-wins/device-check.md`). ~~`010-device-logs`~~ implemented on branch `010-device-logs` (from `002-quick-wins`); open device rows in
-   `specs/010-device-logs/device-check.md` (launch an app while `xcross logs --app` runs; crashes on device).
-   Next per ROADMAP: `003-entitlements-signed-ipa`.
-4. ~~Add `windows-latest` to CI~~: already there upstream (windows-2022, windows-11-arm); `studio_ext` was added to the test loops.
+1. Run the device runbook; record results in each `specs/NNN-*/device-check.md`.
+2. Merge `006-plugin-overrides` into `008-json-events-gui` when it is done (expect small conflicts in
+   `xcross_diagnostics.dart`, CHANGELOG, ROADMAP).
+3. Open PRs in stack order (001 … 008) against `main` of the fork, or squash into one release branch.
+4. Linux verification (deferred by the user): the Studio GUI workflow now builds and tests the GUI on Ubuntu; a real
+   Ubuntu host with the iPhone is still needed for the device rows.
+5. Remaining roadmap: 007 native runner code, 009 hardening (signing the installer, AppImage/.deb, upstream issue
+   sub-specs), NDJSON build events for the GUI.
 
 ## Decisions already made by the user
 
