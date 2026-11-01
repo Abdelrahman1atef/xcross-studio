@@ -72,8 +72,8 @@ install, live logs with filters, app info badges, push checklist, crashes, Stop,
 
 ## 6. Feature 006: plugin overrides
 
-A project with a podspec-only plugin (today: `warning: [build.podspec_only_plugin]`). Put a `Package.swift` for it in
-`$P/xcross_overrides/<plugin>/` (the README's "Plugin overrides" section has a starting point), then
+A project with a podspec-only plugin (today: `warning: [build.podspec_only_plugin]`). In `$P` run `& $X plugin list`,
+then `& $X plugin shim <plugin>`, review the drafted `xcross_overrides/<plugin>/<version>/Package.swift`, then
 `& $X flutter run --release`. Expect `[build.plugin_override_applied]`, a successful build, and the plugin working on
 the phone. Rows: `specs/006-plugin-overrides/device-check.md`.
 

@@ -1,5 +1,7 @@
 ## Unreleased (XCross Studio)
 
+- `xcross plugin list` shows each iOS plugin as Swift package, podspec only or overridden; `xcross plugin shim <plugin>` drafts `xcross_overrides/<plugin>/<version>/Package.swift` from the podspec (known pods such as Google Maps, Firebase and Pusher mapped to their Swift packages, mixed Swift/Objective-C split into two targets, review notes printed). ([specs/006-plugin-overrides](specs/006-plugin-overrides/spec.md))
+
 - Release packages for the desktop app: Windows per-user installer (Inno Setup) and portable zip; Linux `.deb` (depends on usbmuxd), AppImage and tar.gz. Each bundles the `xcross` CLI next to the app, `LICENSE` and a not-affiliated-with-Apple `NOTICE.txt`. Built and checked by the *Studio GUI* CI workflow on every push. ([specs/009-hardening-1.0](specs/009-hardening-1.0/spec.md))
 
 - Plugin overrides: put your own `Package.swift` in `xcross_overrides/<plugin>/[<version>/]` (or `~/.xcross/overrides/`) and xcross builds a podspec-only plugin, or replaces a broken manifest, from a staged copy of the plugin's `ios/` folder, without touching the pub cache. `override.yaml` can limit an override to plugin versions (`versions: ">=1.2.0 <2.0.0"`); the override's iOS floor counts for the deployment target. New codes `build.plugin_override_applied` and `build.plugin_override_invalid`. ([specs/006-plugin-overrides](specs/006-plugin-overrides/spec.md), upstream #145)

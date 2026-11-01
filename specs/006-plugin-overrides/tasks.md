@@ -14,5 +14,8 @@ X = `packages/xcross/lib/src`, XT = `packages/xcross/test`. Every edited upstrea
 - [X] T005 Tests `XT/flutter/build/plugin_overrides_test.dart` (AC-006-1…6).
 - [X] T006 Docs: README "Plugin overrides", CHANGELOG, ROADMAP, the 002 diagnostics contract hint, `device-check.md`.
 - [X] T007 Analyze, run the tests, commit, push.
-- [ ] T008 Follow-up: `xcross plugin shim <plugin>` (a draft Package.swift from the podspec), remote binary targets
-  and resource bundles, Google Maps / Pusher shims.
+- [X] T008 `xcross plugin list` and `xcross plugin shim <plugin>` in `packages/studio_ext/lib/shared/plugins/` and
+  `lib/src/shared/plugins/` (podspec reader, Package.swift draft, known-pods table), registered in `runner.dart`
+  (`// studio: 006`). Tests `test/shared/plugins/plugin_shim_test.dart` (AC-006-8…10). Checked against the 144
+  podspecs in this PC's pub cache (30 podspec-only); the `google_maps_flutter_ios` drafts need no notes.
+- [ ] T009 Follow-up: remote binary targets and resource bundles beyond `.process`, Pusher / Google Maps device checks.

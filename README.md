@@ -400,6 +400,7 @@ Edit it with `xcross config`, inspect it with `xcross config show`, prove it wit
 | `xcross crashes list\|pull` | <!-- studio: --> List crash reports on the iPhone and pull one with its exception summary |
 | `xcross devices [--json]` | <!-- studio: --> List the iPhones connected by USB with their iOS version (used by the XCross Studio GUI) |
 | `xcross app list [--json]` | <!-- studio: --> List the apps you installed on the iPhone (used by the GUI's app picker) |
+| `xcross plugin list` / `xcross plugin shim <plugin>` | <!-- studio: --> Show how each iOS plugin is built; draft a `Package.swift` override from a podspec-only plugin's podspec |
 | `xcross inspect <ipa\|app> [--json] [--normalize]` | <!-- studio: --> Read-only report of what is inside an `.ipa` or `.app`: Info.plist, entitlements per Mach-O, provisioning profile summary, icons, launch screen, frameworks and extensions. XCross Studio fork addition |
 
 <details>
@@ -545,6 +546,17 @@ let package = Package(
     ]
 )
 ```
+
+Let xcross draft the `Package.swift` from the plugin's podspec, then review it:
+
+```sh
+xcross plugin list                  # ✖ marks podspec-only plugins
+xcross plugin shim some_plugin      # writes xcross_overrides/some_plugin/<version>/Package.swift
+```
+
+The draft maps common pods (Google Maps, Firebase, Pusher, Alamofire, SDWebImage, Kingfisher) to their Swift packages,
+splits mixed Swift/Objective-C sources into two targets, and prints what still needs a human (unknown pods, resources
+outside the source folder).
 
 The build reports `build.plugin_override_applied` for each override it uses, and `build.plugin_override_invalid` for a
 folder it skips (no `Package.swift`, bad `override.yaml`, other plugin versions). See

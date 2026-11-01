@@ -40,6 +40,25 @@ build. The plugin is compiled, and the build says which override it used.
 7. **AC-006-7**: Device evidence: a podspec-only plugin built with an override works on the iPhone (see
    `device-check.md`).
 
+## User Story 2 - Get a starting Package.swift from the podspec (P2)
+
+Writing a `Package.swift` by hand is the hard part of an override. `xcross plugin shim <plugin>` drafts one.
+
+**Acceptance Scenarios**:
+
+8. **AC-006-8**: The podspec's declarative statements are read: `name`, `version`, `source_files`,
+   `public_header_files`, `dependency` (with requirement), `frameworks`/`libraries`, `ios.deployment_target` /
+   `platform :ios`, `resource_bundles`. Comments and `osx.` lines are ignored.
+9. **AC-006-9**: The draft has one target, or a Swift and an Objective-C target when the plugin mixes the two (SwiftPM
+   can't mix them). Paths are relative to the staged `ios/` folder. `publicHeadersPath` comes from
+   `public_header_files`. Known pods (GoogleMaps, Google-Maps-iOS-Utils, Firebase*, PusherSwift, Alamofire,
+   SDWebImage, Kingfisher) become Swift package dependencies with mapped version requirements; unknown pods become
+   TODO lines. The result has no trailing commas in argument lists, so older Swift toolchains accept it.
+10. **AC-006-10**: `xcross plugin list` shows each iOS plugin as swiftpm / podspec only / override.
+    `xcross plugin shim <plugin> [--global] [--force]` writes `xcross_overrides/<plugin>/<version>/Package.swift`
+    (or `~/.xcross/overrides/…`), refuses to overwrite without `--force`, and prints the review notes. Errors:
+    `plugin.not_found`, `plugin.no_podspec`, `plugin.no_project`, `plugin.override_exists`.
+
 ## Requirements
 
 - **FR-001**: A used override is announced with `build.plugin_override_applied`, naming the folder.

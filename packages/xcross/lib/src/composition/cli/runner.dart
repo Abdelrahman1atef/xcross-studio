@@ -14,6 +14,7 @@ import 'package:dart_mobile_device/target/iphone/diagnostics/pymd_device_diagnos
 import 'package:darwin_sdk_kit/shared/errors/errors.dart';
 import 'package:meta/meta.dart';
 import 'package:studio_ext/shared/inspect/inspect_command.dart'; // studio:
+import 'package:studio_ext/shared/plugins/plugin_command.dart'; // studio: 006
 import 'package:studio_ext/target/iphone/device/app_command.dart'; // studio: 010
 import 'package:studio_ext/target/iphone/device/crashes_command.dart'; // studio: 010
 import 'package:studio_ext/target/iphone/device/device_log_backend.dart'; // studio: 010
@@ -153,6 +154,15 @@ abstract final class XcrossCli {
       InspectCommand(
         fileSystem: runtime.host.fileSystem,
         write: runtime.log.output.write,
+      ),
+      // studio: 006 — `xcross plugin list|shim`.
+      PluginCommand(
+        fileSystem: runtime.host.fileSystem,
+        paths: runtime.host.paths.context,
+        write: runtime.log.output.write,
+        home:
+            runtime.runner.effectiveEnvironment['HOME'] ??
+            runtime.runner.effectiveEnvironment['USERPROFILE'],
       ),
       // studio: XCross Studio feature 005 (specs/005-ios16-install-launch).
       InstallCommand(
