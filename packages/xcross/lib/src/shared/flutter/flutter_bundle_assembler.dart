@@ -9,6 +9,7 @@ import 'package:xcross/src/shared/flutter/build/info_plist.dart';
 import 'package:xcross/src/shared/flutter/build/ios_bundle_resources.dart'; // studio: 002
 import 'package:xcross/src/shared/flutter/build/ios_bundle_versions.dart';
 import 'package:xcross/src/shared/flutter/build/ios_deployment_target.dart';
+import 'package:xcross/src/shared/flutter/build/project_runner.dart'; // studio: 007
 import 'package:xcross/src/shared/flutter/constants.dart';
 import 'package:xcross/src/shared/flutter/extensions/app_extension_plist.dart';
 import 'package:xcross/src/shared/flutter/flutter_build_runtime.dart';
@@ -28,19 +29,24 @@ final class FlutterBundleAssembler<T extends PlatformHostInterface>
   FlutterBuildOptions get options => context.options;
   IosBundleVersions get _versions => context.versions;
   String get outputDirectory => runtime.policy.outputDirectory(projectRoot);
+  // studio: 007 — the project runner's scene delegate (null: the shim's).
+  String? _sceneDelegateClass;
+
   @override
-  Future<String> assemble(FlutterLinkedArtifacts linked) =>
-      _assembleAndPersistBundle(
-        appFramework: linked.compiled.appFramework,
-        xcframework: linked.runner.xcframework,
-        runnerBinary: linked.runner.runnerBinary,
-        sdkName: linked.runner.sdkName,
-        pluginLibraries: linked.compiled.plugins?.dylibPaths ?? const [],
-        pluginFrameworks: linked.compiled.plugins?.frameworkPaths ?? const [],
-        nativeAssetFrameworks: linked.compiled.nativeAssets.frameworks,
-        deploymentTarget: context.deploymentTarget,
-        extensions: linked.extensions,
-      );
+  Future<String> assemble(FlutterLinkedArtifacts linked) {
+    _sceneDelegateClass = linked.runner.sceneDelegateClass; // studio: 007
+    return _assembleAndPersistBundle(
+      appFramework: linked.compiled.appFramework,
+      xcframework: linked.runner.xcframework,
+      runnerBinary: linked.runner.runnerBinary,
+      sdkName: linked.runner.sdkName,
+      pluginLibraries: linked.compiled.plugins?.dylibPaths ?? const [],
+      pluginFrameworks: linked.compiled.plugins?.frameworkPaths ?? const [],
+      nativeAssetFrameworks: linked.compiled.nativeAssets.frameworks,
+      deploymentTarget: context.deploymentTarget,
+      extensions: linked.extensions,
+    );
+  }
 
   Future<String> _assembleAndPersistBundle({
     required String appFramework,
@@ -354,6 +360,10 @@ final class FlutterBundleAssembler<T extends PlatformHostInterface>
     );
     plistXml = InfoPlist.applySceneLifecycle(plistXml);
     plistXml = InfoPlist.normalizeObjCClassNames(plistXml);
+    if (_sceneDelegateClass case final name?) {
+      // studio: 007
+      plistXml = ProjectRunnerBuilder.withSceneDelegate(plistXml, name);
+    }
     // Carry the app's own App Groups forward so the sign/install stage can
     // provision them alongside its extensions'.
     plistXml = AppExtensionPlist.setAppGroups(plistXml, _hostAppGroups());

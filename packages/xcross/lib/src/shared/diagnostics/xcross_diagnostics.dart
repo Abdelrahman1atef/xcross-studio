@@ -139,6 +139,23 @@ abstract final class XcrossCodes {
     'An override folder needs a Package.swift; an override.yaml may only set '
         'versions: to a pub-style constraint such as ">=1.2.0 <2.0.0".',
   );
+  // studio: 007
+  static const buildRunnerProjectFailed = DiagnosticCode(
+    'build.runner_project_failed',
+    'Fix the error in ios/Runner, or unset XCROSS_RUNNER to build with the '
+        'generic runner on purpose; until then AppDelegate code does not run.',
+  );
+  static const buildRunnerLegacyRegistration = DiagnosticCode(
+    'build.runner_legacy_registration',
+    'Register plugins in didInitializeImplicitFlutterEngine (Flutter UIScene '
+        'migration, as in the current app template).',
+  );
+  static const buildRunnerSceneDelegateReplaced = DiagnosticCode(
+    'build.runner_scene_delegate_replaced',
+    'Move that code to AppDelegate (or a plugin); without Xcode the window '
+        'cannot come from Main.storyboard, so xcross supplies the scene '
+        'delegate.',
+  );
   static const buildResourceMissing = DiagnosticCode(
     'build.resource_missing',
     'Remove the stale reference from the Xcode project or restore the file.',
@@ -169,6 +186,9 @@ abstract final class XcrossCodes {
     buildEntitlementsUnreadable,
     buildPluginOverrideApplied, // studio: 006
     buildPluginOverrideInvalid,
+    buildRunnerProjectFailed, // studio: 007
+    buildRunnerLegacyRegistration,
+    buildRunnerSceneDelegateReplaced,
   ];
 }
 

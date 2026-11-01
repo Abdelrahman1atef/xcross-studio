@@ -7,6 +7,7 @@ import 'package:xcross/src/shared/flutter/build/ios_app_extensions.dart';
 import 'package:xcross/src/shared/flutter/build/ios_bundle_versions.dart';
 import 'package:xcross/src/shared/flutter/build/ios_deployment_target.dart';
 import 'package:xcross/src/shared/flutter/build/ios_plugin_package.dart';
+import 'package:xcross/src/shared/flutter/build/project_runner.dart'; // studio: 007
 import 'package:xcross/src/shared/flutter/build/runner_shim.dart';
 import 'package:xcross/src/shared/flutter/errors.dart';
 import 'package:xcross/src/shared/flutter/extensions/app_extension_resources.dart';
@@ -39,6 +40,7 @@ final class FlutterArtifactLinker<T extends PlatformHostInterface>
       flutterRoot,
       deploymentTarget: deploymentTarget,
       pluginsLibrary: compiled.plugins?.libraryPath,
+      pluginModulesDir: compiled.plugins?.modulesDir, // studio: 007
       nativeAssetFrameworks: requiredNativeFrameworks,
       verbose: runtime.runner.log.isVerbose,
     );
@@ -103,6 +105,7 @@ final class FlutterArtifactLinker<T extends PlatformHostInterface>
     required IosDeploymentTarget deploymentTarget,
     required bool verbose,
     String? pluginsLibrary,
+    String? pluginModulesDir, // studio: 007
     List<String> nativeAssetFrameworks = const [],
   }) async {
     final xcframework = runtime
@@ -117,20 +120,43 @@ final class FlutterArtifactLinker<T extends PlatformHostInterface>
       );
     }
 
-    final runnerBinary = await RunnerShim(runtime).buildRunnerBinary(
+    // studio: 007 — XCROSS_RUNNER=project links the app's own Runner sources
+    // (AppDelegate, …); null (default, or any failure) keeps the shim.
+    final projectRunner = await ProjectRunner.forRuntime(
+      runtime,
       projectRoot: projectRoot,
-      sdk: darwin,
-      flutterXcframework: xcframework,
-      outputDir: _buildDirectory('xcross-flutter-runner-bin'),
-      deploymentTarget: deploymentTarget,
-      pluginsLibrary: pluginsLibrary,
-      nativeAssetFrameworks: nativeAssetFrameworks,
-      verbose: verbose,
-    );
+      compile: (sources) => ProjectRunnerBuilder(runtime).build(
+        sources: sources,
+        sdk: darwin,
+        flutterXcframework: xcframework,
+        outputDir: _buildDirectory('xcross-flutter-runner-project'),
+        deploymentTarget: deploymentTarget,
+        pluginsLibrary: pluginsLibrary,
+        pluginModulesDir: pluginModulesDir,
+        nativeAssetFrameworks: nativeAssetFrameworks,
+      ),
+    ).build();
 
+    final runnerBinary =
+        projectRunner ??
+        await RunnerShim(runtime).buildRunnerBinary(
+          projectRoot: projectRoot,
+          sdk: darwin,
+          flutterXcframework: xcframework,
+          outputDir: _buildDirectory('xcross-flutter-runner-bin'),
+          deploymentTarget: deploymentTarget,
+          pluginsLibrary: pluginsLibrary,
+          nativeAssetFrameworks: nativeAssetFrameworks,
+          verbose: verbose,
+        );
+
+    final sceneDelegateClass = projectRunner == null
+        ? null
+        : ProjectRunnerBuilder.sceneDelegateClass;
     return RunnerBinary(
       xcframework: xcframework,
       runnerBinary: runnerBinary,
+      sceneDelegateClass: sceneDelegateClass, // studio: 007
       sdkName: p
           .basenameWithoutExtension(
             runtime.sdkRepository.iosSdk(
