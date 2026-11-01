@@ -9,6 +9,7 @@ analyzer:
   exclude:
     [
       tools/**,
+      apps/**, # studio: 008 — the Flutter GUI has its own options and CI job
       build/**,
       examples/**,
       android/**,
