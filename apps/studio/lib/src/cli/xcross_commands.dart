@@ -198,6 +198,19 @@ abstract final class XcrossCommands {
 
   static List<String> authClean() => const ['auth', 'clean'];
 
+  static List<String> pluginList(String project) => [
+    'plugin',
+    'list',
+    '--project',
+    project,
+  ];
+
+  static List<String> pluginShim(
+    String plugin, {
+    required String project,
+    bool force = false,
+  }) => ['plugin', 'shim', plugin, '--project', project, if (force) '--force'];
+
   /// [command] for display: secrets (`--password`) replaced by `••••`.
   static String display(List<String> command) {
     final shown = <String>[];

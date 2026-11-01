@@ -19,6 +19,7 @@ repository folder: the installed upstream `xcross` does not have the XCross Stud
 | 11 | AC-008-7 | Crashes → list → save | report saved, folder opens | ⏳ |
 | 12 | AC-008-5 | Stop a running log or build | process tree ends (no stray `python`/`xcross` in Task Manager) | ⏳ |
 | 13 | AC-008-5 | Setup → Sign in with Apple ID; type the 2FA code in the input box | signed in | ⏳ |
+| 14 | — | Project → Check plugins → Draft override on a podspec-only plugin | ✖ row turns into "override"; notes shown | ⏳ |
 | — | Linux build | CI `Studio GUI` on ubuntu-24.04 (run 41334807521) | analyze clean, 20 tests pass, `flutter build linux` + CLI bundle packaged, packaged CLI runs | ✅ 2026-11-01 (CI, no device) |
 | — | Windows build | same run on windows-2022 | as above + Inno Setup per-user installer built | ✅ 2026-11-01 (CI) |
 | — | Windows package | local `dart run tool/package.dart`, start `xcross_studio.exe` | GUI starts and runs the bundled `xcross\bin\xcross.exe devices --json` | ✅ 2026-11-01 (no phone connected) |

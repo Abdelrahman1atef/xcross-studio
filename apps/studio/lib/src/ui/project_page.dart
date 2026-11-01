@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import '../cli/xcross_commands.dart';
 import '../state/job.dart';
 import '../state/project_info.dart';
+import 'plugins_section.dart';
 import 'services.dart';
 import 'widgets.dart';
 
@@ -135,6 +136,7 @@ class _ProjectPageState extends State<ProjectPage> {
                 ],
               ),
             ),
+            PluginsSection(project: ready ? project : null),
             Section(
               title: 'Check the project',
               trailing: OutlinedButton.icon(

@@ -4,6 +4,7 @@ import 'package:xcross_studio/src/cli/output_line.dart';
 import 'package:xcross_studio/src/cli/xcross_commands.dart';
 import 'package:xcross_studio/src/cli/xcross_events.dart';
 import 'package:xcross_studio/src/host/host_platform.dart';
+import 'package:xcross_studio/src/ui/plugins_section.dart';
 
 void main() {
   group('AC-008-4 command lines', () {
@@ -85,6 +86,35 @@ void main() {
         '--out',
         '/o',
       ]);
+    });
+
+    test('plugin commands', () {
+      expect(XcrossCommands.pluginList('/p'), [
+        'plugin',
+        'list',
+        '--project',
+        '/p',
+      ]);
+      expect(XcrossCommands.pluginShim('maps', project: '/p', force: true), [
+        'plugin',
+        'shim',
+        'maps',
+        '--project',
+        '/p',
+        '--force',
+      ]);
+      final podspec = PluginStatus.tryParse(
+        '✖ legacy_maps 0.0.1  (podspec only)',
+      );
+      expect(podspec?.name, 'legacy_maps');
+      expect(podspec?.version, '0.0.1');
+      expect(podspec?.needsOverride, isTrue);
+      final spm = PluginStatus.tryParse(
+        '✔ path_provider_foundation  (swiftpm)',
+      );
+      expect(spm?.version, isNull);
+      expect(spm?.kind, 'swiftpm');
+      expect(PluginStatus.tryParse('Draft an override …'), isNull);
     });
 
     test('passwords never appear in the shown command', () {
