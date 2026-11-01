@@ -89,12 +89,24 @@ final class DevicePrecheck {
         'iOS $minimumIos or later to install and launch.',
       );
     }
-    return PrecheckedDevice(
+    final prechecked = PrecheckedDevice(
       device: device,
       osMajor: major,
       osVersion: device.osVersion ?? (major == null ? null : '$major'),
     );
+    reportDevice(log, prechecked); // studio: 012
+    return prechecked;
   }
+
+  // studio: 012 — the chosen device as a `device` event (no UDID).
+  /// Reports [device] to the log's event consumer, when there is one.
+  static void reportDevice(Log log, PrecheckedDevice device) =>
+      log.events?.event('device', {
+        'name': device.device.name,
+        'osVersion': device.osVersion,
+        'legacy': device.legacy,
+        'connection': device.device.type.name,
+      });
 
   /// First sentence of the host's explanation is the message, the rest the
   /// hint.

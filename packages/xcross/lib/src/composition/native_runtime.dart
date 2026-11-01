@@ -10,6 +10,7 @@ import 'package:dart_mobile_device/host/shared/console/native_device_console.dar
 import 'package:dart_mobile_device/host/shared/network/native_device_sockets.dart';
 import 'package:http/http.dart' as http;
 import 'package:meta/meta.dart';
+import 'package:studio_ext/shared/events/ndjson_events.dart'; // studio: 012
 import 'package:xcross/src/composition/xcross_host_context.dart';
 import 'package:xcross/src/composition/xcross_runtime.dart';
 import 'package:xcross/src/host/shared/cli/native_command_prompt.dart';
@@ -29,13 +30,20 @@ XcrossHostContext<PlatformHostInterface> createNativeXcrossContext() {
     stderr.encoding = utf8;
   }
   final snapshot = detectPlatformHostSnapshot();
+  // studio: 012 — XCROSS_EVENTS=ndjson: one JSON event per line on stdout
+  // for the XCross Studio GUI (specs/012-build-events).
+  final events = NdjsonEvents.fromEnvironment(Platform.environment, stdout.add);
   final log = Log(
-    output: StreamLogOutput(
-      stdout: stdout,
-      stderr: stderr,
-      supportsAnsi: stdout.hasTerminal && stdout.supportsAnsiEscapes,
-      terminalColumns: () => stdout.hasTerminal ? stdout.terminalColumns : 80,
-    ),
+    output:
+        events?.logOutput ??
+        StreamLogOutput(
+          stdout: stdout,
+          stderr: stderr,
+          supportsAnsi: stdout.hasTerminal && stdout.supportsAnsiEscapes,
+          terminalColumns: () =>
+              stdout.hasTerminal ? stdout.terminalColumns : 80,
+        ),
+    events: events,
   );
   return composeXcrossHost(
     snapshot.host,

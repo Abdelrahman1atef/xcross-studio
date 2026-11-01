@@ -180,5 +180,10 @@ final class FlutterBuildCommand<T extends PlatformHostInterface>
         ? await IpaPackager(host: runtime.host).package(result.appPath)
         : result.appPath;
     runtime.log.logDone('Wrote $finalPath');
+    // studio: 012 — the .ipa for event consumers (FlutterPackOperation
+    // reports the .app).
+    if (options.ipa) {
+      runtime.log.events?.event('artifact', {'kind': 'ipa', 'path': finalPath});
+    }
   }
 }

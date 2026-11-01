@@ -81,7 +81,9 @@ enum LogLevel { debug, info, notice, error, fault }
 /// The xcross command lines the GUI runs. The GUI holds no build or device
 /// logic: every action is one of these commands.
 abstract final class XcrossCommands {
-  static List<String> doctor() => const ['doctor'];
+  /// The computer check. xcross has no top-level `doctor`; `flutter doctor`
+  /// checks the host too (project checks warn outside a project).
+  static List<String> doctor() => const ['flutter', 'doctor'];
 
   static List<String> flutterDoctor() => const ['flutter', 'doctor'];
 

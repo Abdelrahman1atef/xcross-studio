@@ -149,6 +149,8 @@ class _SetupPageState extends State<SetupPage> {
                         () => _doctor = services.jobs.run(
                           'Doctor',
                           XcrossCommands.doctor(),
+                          workingDirectory: settings.projectPath,
+                          structured: true,
                         ),
                       ),
                 icon: const Icon(Icons.health_and_safety),
@@ -159,7 +161,7 @@ class _SetupPageState extends State<SetupPage> {
                       'Checks the iOS SDK, toolchain, Apple Mobile Device '
                       'Service / usbmuxd, pymobiledevice3 and your sign-in.',
                     )
-                  : JobOutputView(job: _doctor!, showInput: false),
+                  : DoctorReport(job: _doctor!),
             ),
             Section(
               title: 'Apple sign-in',

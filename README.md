@@ -468,6 +468,13 @@ In Setup choose **Run from source** and pick this repository to use the XCross S
 packages/xcross/bin/xcross.dart`), or point it at a compiled `xcross` executable. See
 [specs/008-json-events-gui](specs/008-json-events-gui/spec.md).
 
+<!-- studio: 012 -->
+**Machine-readable output:** with `XCROSS_EVENTS=ndjson` set, `xcross flutter build`, `flutter run`, `install` and
+`flutter doctor` print one JSON event per line on stdout: `step`, `progress`, `log`, `warning`/`error` (with `code` and
+`hint`), `artifact` (the `.app`/`.ipa` path), `device`, `check` and `done` (exit code). The desktop app uses it for its
+step list, progress bar, issue list and Install button. Schema:
+[specs/012-build-events/contracts/events.schema.json](specs/012-build-events/contracts/events.schema.json).
+
 ## Compose Multiplatform
 
 `xcross compose` builds Kotlin Multiplatform iOS targets on Windows x64 and Linux x64 using the same private Darwin SDK, Swift, LLVM, and `xcross auth` signing flow as Flutter. Linux arm64 can run the CLI, but Compose iOS builds are limited by missing upstream Kotlin/Native host artifacts.

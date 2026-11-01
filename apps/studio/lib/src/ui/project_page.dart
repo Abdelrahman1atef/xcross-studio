@@ -74,7 +74,11 @@ class _ProjectPageState extends State<ProjectPage> {
         final info = _info;
         final project = settings.projectPath;
         final ready = info?.isFlutterProject ?? false;
-        final ipa = _build?.status == JobStatus.succeeded ? _builtIpa() : null;
+        // studio: 012 — the `artifact` event names the IPA; older CLIs fall
+        // back to the newest .ipa in the output folder.
+        final ipa = _build?.status == JobStatus.succeeded
+            ? (_build!.artifact('ipa') ?? _builtIpa())
+            : null;
         return ListView(
           padding: const EdgeInsets.all(20),
           children: [
@@ -145,6 +149,7 @@ class _ProjectPageState extends State<ProjectPage> {
                           'Flutter doctor',
                           XcrossCommands.flutterDoctor(),
                           workingDirectory: project,
+                          structured: true,
                         ),
                       ),
                 icon: const Icon(Icons.fact_check),
@@ -232,6 +237,7 @@ class _ProjectPageState extends State<ProjectPage> {
                                     buildNumber: _buildNumber.text,
                                   ),
                                   workingDirectory: project,
+                                  structured: true,
                                 ),
                               ),
                         icon: const Icon(Icons.build),
