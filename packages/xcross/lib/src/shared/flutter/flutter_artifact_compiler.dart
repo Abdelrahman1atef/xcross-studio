@@ -9,6 +9,7 @@ import 'package:xcross/src/shared/flutter/build/ios_deployment_target.dart';
 import 'package:xcross/src/shared/flutter/build/ios_native_assets.dart';
 import 'package:xcross/src/shared/flutter/build/ios_plugin_package.dart';
 import 'package:xcross/src/shared/flutter/build/ios_plugins.dart';
+import 'package:xcross/src/shared/flutter/build/plugin_overrides.dart'; // studio: 006
 import 'package:xcross/src/shared/flutter/errors.dart';
 import 'package:xcross/src/shared/flutter/flutter_assets_compiler.dart';
 import 'package:xcross/src/shared/flutter/flutter_build_runtime.dart';
@@ -178,9 +179,28 @@ final class FlutterArtifactCompiler<T extends PlatformHostInterface>
     required IosDeploymentTarget deploymentTarget,
     required bool verbose,
   }) async {
-    final plugins = await PluginDiscovery(
-      runtime.host.fileSystem,
-    ).discover(projectRoot);
+    final workspace = SwiftPmWorkspace.forProject(
+      projectRoot,
+      policy: runtime.policy,
+    );
+    // studio: 006 — plugins with an xcross_overrides/ folder are re-rooted at
+    // a staged copy that carries the user's Package.swift.
+    final plugins =
+        PluginOverrides(
+          locator: PluginOverrideLocator(
+            fileSystem: runtime.host.fileSystem,
+            paths: runtime.host.paths.context,
+            projectRoot: projectRoot,
+            environment: runtime.host.environment.values,
+          ),
+          warnings: runtime.warnings,
+        ).apply(
+          await PluginDiscovery(runtime.host.fileSystem).discover(projectRoot),
+          stagingRoot: runtime.host.paths.context.join(
+            workspace.root,
+            'overrides',
+          ),
+        );
     final spmPlugins = <IosPlugin>[];
     for (final plugin in plugins) {
       final dir = plugin.platformDirectoryName;
@@ -227,10 +247,6 @@ final class FlutterArtifactCompiler<T extends PlatformHostInterface>
           packageLocalArtifact: packageLocalArtifactJunctionCapability,
         );
 
-    final workspace = SwiftPmWorkspace.forProject(
-      projectRoot,
-      policy: runtime.policy,
-    );
     final builtPlugins = await runtime.plugins.build(
       projectRoot: projectRoot,
       workspace: workspace,
