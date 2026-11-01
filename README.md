@@ -439,7 +439,7 @@ input and never contacts the network or a device.
 
 <!-- studio: 002 -->
 **Diagnostics codes:** errors and warnings from the fork carry stable codes such as `device.ios_unsupported`,
-`toolchain.path_linker_unusable` or `build.asset_catalog_skipped`, each followed by a `hint:` line; see
+`toolchain.path_linker_unusable` or `build.asset_unsupported`, each followed by a `hint:` line; see
 `specs/002-quick-wins/contracts/diagnostics.md`. Bundle versions come from `--build-name`/`--build-number`, then
 `pubspec.yaml`, then the xcconfig, then the Xcode project, then 1.0.0 (1).
 
@@ -655,6 +655,7 @@ Because a debug app is pure JIT, no `gen_snapshot` is needed. Profile and releas
 - **Runner** - the `Runner` executable (Flutter's `AppDelegate`/`main` shim) is compiled with `clang` and linked with `ld64.lld`, LLVM's Mach-O linker, against `Flutter.xcframework` from the SDK above.
 - **Native assets** - Dart package build hooks run through Flutter's native-assets target with cross-platform Apple tool shims. Their output is thinned to arm64, embedded as frameworks, and recorded in `NativeAssetsManifest.json`.
 - **Plugins** - SwiftPM iOS plugins are built with `swift build` against the same SDK into a single `libFlutterPluginsGenerated.dylib`, with a generated registrant mirroring Flutter's `GeneratedPluginRegistrant`. A Mach-O rewriter fixes install names and rpaths so the dylibs resolve inside the `.app` bundle.
+- <!-- studio: 004 --> **Asset catalogs** - `Assets.xcassets` is compiled to `Assets.car` in pure Dart (a port of [AssetKit](https://github.com/xtool-org/AssetKit)): image sets, colour sets and the app icon, plus the loose icon PNGs SpringBoard falls back to. `LaunchScreen.storyboard` cannot be compiled without Xcode, so it becomes a `UILaunchScreen` (its background colour and centred image); anything else in it is reported as `build.launch_screen_approximated`. iOS caches launch screens: delete the app and reboot to see a changed one.
 
 ### 4. Signing and device install, natively
 
