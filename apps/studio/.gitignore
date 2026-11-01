@@ -49,3 +49,6 @@ app.*.map.json
 
 # studio: an app commits its lockfile (the repo root ignores pubspec.lock)
 !pubspec.lock
+
+# studio: 013 - the repo root ignores build/; the Build & Run feature folder is source
+!/lib/features/build/
