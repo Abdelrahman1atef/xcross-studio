@@ -61,7 +61,9 @@ abstract final class XcrossCodes {
   static const buildPodspecOnlyPlugin = DiagnosticCode(
     'build.podspec_only_plugin',
     'Use a plugin version that ships Package.swift (Swift Package Manager), '
-        'or an override (feature 006).',
+        // studio: 006
+        'or add your own: xcross_overrides/<plugin>/Package.swift in the '
+        'project (see "Plugin overrides" in the README).',
   );
   static const buildPluginManifestMissing = DiagnosticCode(
     'build.plugin_manifest_missing',
@@ -84,6 +86,17 @@ abstract final class XcrossCodes {
     'Fix the .entitlements file (it must be an XML property list '
         'dictionary); until then push and associated domains are not applied.',
   );
+  // studio: 006
+  static const buildPluginOverrideApplied = DiagnosticCode(
+    'build.plugin_override_applied',
+    'Review the override when you upgrade the plugin; delete the folder to '
+        "build the plugin's own package.",
+  );
+  static const buildPluginOverrideInvalid = DiagnosticCode(
+    'build.plugin_override_invalid',
+    'An override folder needs a Package.swift; an override.yaml may only set '
+        'versions: to a pub-style constraint such as ">=1.2.0 <2.0.0".',
+  );
   static const buildResourceMissing = DiagnosticCode(
     'build.resource_missing',
     'Remove the stale reference from the Xcode project or restore the file.',
@@ -104,6 +117,8 @@ abstract final class XcrossCodes {
     buildStoryboardSkipped,
     buildResourceMissing,
     buildEntitlementsUnreadable,
+    buildPluginOverrideApplied, // studio: 006
+    buildPluginOverrideInvalid,
   ];
 }
 

@@ -6,14 +6,22 @@ import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
 import 'package:xcross/src/shared/flutter/build/ios_deployment_target.dart';
 import 'package:xcross/src/shared/flutter/build/ios_plugins.dart';
+import 'package:xcross/src/shared/flutter/build/plugin_overrides.dart'; // studio: 006
 import 'package:xcross/src/shared/flutter/swiftpm/manifest_lexer.dart';
 
 @internal
 final class IosDeploymentTargetResolver {
-  IosDeploymentTargetResolver(this.fileSystem, this.paths);
+  IosDeploymentTargetResolver(
+    this.fileSystem,
+    this.paths, {
+    this.environment = const {}, // studio: 006
+  });
 
   final HostFileSystemInterface fileSystem;
   final p.Context paths;
+
+  /// For `~/.xcross/overrides` (studio: 006).
+  final Map<String, String> environment;
 
   static final _deploymentTargetPattern = RegExp(
     r'''^\s*IPHONEOS_DEPLOYMENT_TARGET\s*=\s*(["']?)(.*?)\1;\s*$''',
@@ -41,10 +49,24 @@ final class IosDeploymentTargetResolver {
   }
 
   Iterable<String> _pluginPackageFloors(String projectRoot) sync* {
+    // studio: 006 — an override's Package.swift replaces the plugin's own.
+    final overrides = PluginOverrideLocator(
+      fileSystem: fileSystem,
+      paths: paths,
+      projectRoot: projectRoot,
+      environment: environment,
+    );
     for (final plugin in PluginDiscovery(
       fileSystem,
     ).discoverSync(projectRoot)) {
-      final manifest = fileSystem.file(plugin.swiftPackageManifest);
+      final override = overrides
+          .find(plugin.name, PluginOverrides.versionOf(plugin, paths))
+          .override;
+      final manifest = fileSystem.file(
+        override == null
+            ? plugin.swiftPackageManifest
+            : paths.join(override.directory, 'Package.swift'),
+      );
       if (!manifest.existsSync()) continue;
       for (final version in SwiftPmManifestLexer.iosPlatformVersions(
         manifest.readAsStringSync(),

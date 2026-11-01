@@ -172,7 +172,11 @@ final class FlutterBuildRuntime<T extends PlatformHostInterface> {
     host.paths.context,
   );
   late final IosDeploymentTargetResolver deployments =
-      IosDeploymentTargetResolver(host.fileSystem, host.paths.context);
+      IosDeploymentTargetResolver(
+        host.fileSystem,
+        host.paths.context,
+        environment: host.environment.values, // studio: 006
+      );
   late final AppleDebugSymbols<T> debugSymbols = AppleDebugSymbols(
     runner: runner,
     toolchain: toolchain,

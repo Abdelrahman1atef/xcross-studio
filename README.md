@@ -502,6 +502,48 @@ Swift Package Manager iOS plugins work on both Windows and Linux. Their native c
 
 Plugins that only ship a CocoaPods podspec are currently **skipped with a warning** - prefer plugin releases that include `ios/<package_name>/Package.swift`.
 
+<!-- studio: 006 -->
+### Plugin overrides
+
+Give xcross your own `Package.swift` for a plugin: for one that only ships a podspec, or one whose manifest does not
+build. Put it in the project (or in `~/.xcross/overrides/` for all projects):
+
+```text
+my_app/xcross_overrides/
+  some_plugin/
+    Package.swift          # any version of some_plugin
+    override.yaml          # optional: versions: ">=1.2.0 <2.0.0"
+    1.4.0/Package.swift    # only for some_plugin 1.4.0 (wins over the folder above)
+```
+
+xcross searches `xcross_overrides/<plugin>/<version>/`, then `xcross_overrides/<plugin>/`, then the same two under
+`~/.xcross/overrides/`. The override's files are laid over a staged copy of the plugin's `ios/` (or `darwin/`) folder,
+which becomes the Swift package root, so targets can point at the plugin's own sources. The pub cache is never touched.
+
+```swift
+// swift-tools-version: 5.9
+import PackageDescription
+
+let package = Package(
+    name: "some_plugin",
+    platforms: [.iOS("13.0")],
+    products: [.library(name: "some-plugin", targets: ["some_plugin"])],
+    dependencies: [.package(name: "FlutterFramework", path: "../FlutterFramework")],
+    targets: [
+        .target(
+            name: "some_plugin",
+            dependencies: [.product(name: "FlutterFramework", package: "FlutterFramework")],
+            path: "Classes",
+            publicHeadersPath: "include"
+        )
+    ]
+)
+```
+
+The build reports `build.plugin_override_applied` for each override it uses, and `build.plugin_override_invalid` for a
+folder it skips (no `Package.swift`, bad `override.yaml`, other plugin versions). See
+[specs/006-plugin-overrides](specs/006-plugin-overrides/spec.md).
+
 ## App extensions
 
 Share and action extensions are built, embedded under `PlugIns/`, signed with their own provisioning profiles and installed alongside the app, so plugins like [receive_sharing_intent](https://github.com/KasemJaffer/receive_sharing_intent) put your app in the iOS share sheet. No configuration needed.
