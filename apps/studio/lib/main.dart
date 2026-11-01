@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import 'src/cli/process_launcher.dart';
+import 'src/cli/xcross_commands.dart';
 import 'src/host/host_platform.dart';
 import 'src/state/job.dart';
 import 'src/state/log_session.dart';
@@ -16,6 +17,16 @@ Future<void> main() async {
   final settings = await Settings.load(
     host.configDirectory(Platform.environment),
   );
+  // A release bundle ships xcross next to the GUI; use it unless the user
+  // chose another one.
+  final bundled = XcrossInvocation.bundledNextTo(
+    Platform.resolvedExecutable,
+    windows: Platform.isWindows,
+    exists: (path) => File(path).existsSync(),
+  );
+  if (bundled != null && settings.invocation.isDefault) {
+    settings.invocation = XcrossInvocation.binary(bundled);
+  }
   final launcher = IoProcessLauncher(host);
   final jobs = JobCenter(
     launcher: launcher,

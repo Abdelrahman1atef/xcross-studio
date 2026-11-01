@@ -20,6 +20,26 @@ class XcrossInvocation {
         ),
       ]);
 
+  /// The xcross shipped next to the GUI in a release bundle
+  /// (`<app folder>/xcross/bin/xcross[.exe]`), when present.
+  static String? bundledNextTo(
+    String guiExecutable, {
+    required bool windows,
+    bool Function(String path)? exists,
+  }) {
+    final context = windows ? p.windows : p.posix;
+    final candidate = context.join(
+      context.dirname(guiExecutable),
+      'xcross',
+      'bin',
+      windows ? 'xcross.exe' : 'xcross',
+    );
+    return (exists ?? (_) => false)(candidate) ? candidate : null;
+  }
+
+  /// True for the default `xcross`-on-PATH choice.
+  bool get isDefault => executable == 'xcross' && prefixArguments.isEmpty;
+
   final String executable;
   final List<String> prefixArguments;
 

@@ -98,6 +98,32 @@ void main() {
       expect(shown, 'xcross auth --apple-id=me@example.com --password ••••');
     });
 
+    test('FR-001 a bundled xcross next to the GUI is found', () {
+      expect(
+        XcrossInvocation.bundledNextTo(
+          r'C:\Apps\XCross Studio\xcross_studio.exe',
+          windows: true,
+          exists: (path) =>
+              path == r'C:\Apps\XCross Studio\xcross\bin\xcross.exe',
+        ),
+        r'C:\Apps\XCross Studio\xcross\bin\xcross.exe',
+      );
+      expect(
+        XcrossInvocation.bundledNextTo(
+          '/opt/xcross-studio/xcross_studio',
+          windows: false,
+          exists: (path) => path == '/opt/xcross-studio/xcross/bin/xcross',
+        ),
+        '/opt/xcross-studio/xcross/bin/xcross',
+      );
+      expect(
+        XcrossInvocation.bundledNextTo('/opt/x/gui', windows: false),
+        isNull,
+      );
+      expect(const XcrossInvocation.binary().isDefault, isTrue);
+      expect(const XcrossInvocation.binary('/x/xcross').isDefault, isFalse);
+    });
+
     test('invocations: binary and from source', () {
       const binary = XcrossInvocation.binary();
       expect(binary.argumentsFor(['doctor']), ['doctor']);

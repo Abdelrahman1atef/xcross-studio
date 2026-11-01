@@ -227,3 +227,6 @@ examples/
 
 # Python bytecode
 __pycache__/
+
+# studio: 008 - packaged XCross Studio builds (apps/studio/tool/package.dart)
+/dist/
