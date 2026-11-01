@@ -1,0 +1,169 @@
+{
+  "schemaVersion": 1,
+  "normalized": false,
+  "input": {
+    "kind": "ipa",
+    "name": "unsigned_v209.ipa",
+    "sizeBytes": 4465,
+    "sha256": "0344b7ff5ea24f4187b9d241044b34d4026b97b73ef53e7900ef037733018cf8"
+  },
+  "bundle": {
+    "path": "Payload/Runner.app",
+    "bundleId": "com.example.fixture",
+    "name": "Fixture",
+    "displayName": "Fixture App",
+    "shortVersion": "1.0.0",
+    "buildNumber": "1",
+    "executable": "Runner",
+    "minimumOSVersion": "13.0",
+    "deviceFamily": [
+      1
+    ],
+    "infoPlistFormat": "xml",
+    "infoPlistKeys": [
+      "CFBundleDisplayName",
+      "CFBundleExecutable",
+      "CFBundleIdentifier",
+      "CFBundleInfoDictionaryVersion",
+      "CFBundleName",
+      "CFBundlePackageType",
+      "CFBundleShortVersionString",
+      "CFBundleVersion",
+      "LSRequiresIPhoneOS",
+      "MinimumOSVersion",
+      "UIDeviceFamily",
+      "UILaunchScreen",
+      "UIRequiredDeviceCapabilities"
+    ],
+    "plist": {
+      "UILaunchScreen": {}
+    },
+    "xcrossPrivateKeys": {
+      "XCrossEntitlements": false,
+      "XCrossCapabilities": false,
+      "XCrossAppGroups": false
+    }
+  },
+  "signature": {
+    "present": false,
+    "kind": "none",
+    "teamId": null
+  },
+  "executables": [
+    {
+      "path": "Frameworks/App.framework/App",
+      "role": "framework",
+      "architectures": [
+        "arm64"
+      ],
+      "signature": {
+        "kind": "adhoc",
+        "linkerSigned": true,
+        "identifier": "io.flutter.flutter.app",
+        "teamId": null
+      },
+      "entitlements": null,
+      "derEntitlementsPresent": false
+    },
+    {
+      "path": "Frameworks/Flutter.framework/Flutter",
+      "role": "framework",
+      "architectures": [
+        "arm64"
+      ],
+      "signature": {
+        "kind": "certificate",
+        "linkerSigned": false,
+        "identifier": "io.flutter.flutter",
+        "teamId": "FLTTEAM001"
+      },
+      "entitlements": null,
+      "derEntitlementsPresent": false
+    },
+    {
+      "path": "Frameworks/libpath_provider_foundation.dylib",
+      "role": "dylib",
+      "architectures": [
+        "arm64"
+      ],
+      "signature": {
+        "kind": "none",
+        "linkerSigned": false,
+        "identifier": null,
+        "teamId": null
+      },
+      "entitlements": null,
+      "derEntitlementsPresent": false
+    },
+    {
+      "path": "Runner",
+      "role": "main",
+      "architectures": [
+        "arm64"
+      ],
+      "signature": {
+        "kind": "none",
+        "linkerSigned": false,
+        "identifier": null,
+        "teamId": null
+      },
+      "entitlements": null,
+      "derEntitlementsPresent": false
+    }
+  ],
+  "profile": null,
+  "resources": {
+    "icons": {
+      "iconName": null,
+      "declared": []
+    },
+    "assetsCar": {
+      "present": false,
+      "sizeBytes": null
+    },
+    "launchScreen": {
+      "kind": "UILaunchScreen",
+      "keys": [],
+      "image": null,
+      "storyboard": null
+    },
+    "storyboards": []
+  },
+  "frameworks": [
+    {
+      "name": "App.framework",
+      "path": "Frameworks/App.framework",
+      "kind": "framework",
+      "bundleId": "io.flutter.flutter.app"
+    },
+    {
+      "name": "Flutter.framework",
+      "path": "Frameworks/Flutter.framework",
+      "kind": "framework",
+      "bundleId": "io.flutter.flutter"
+    },
+    {
+      "name": "libpath_provider_foundation.dylib",
+      "path": "Frameworks/libpath_provider_foundation.dylib",
+      "kind": "dylib",
+      "bundleId": null
+    }
+  ],
+  "extensions": [],
+  "issues": [
+    {
+      "code": "inspect.launch_screen_empty",
+      "severity": "warning",
+      "path": null,
+      "message": "UILaunchScreen is an empty dictionary.",
+      "hint": "Provide UIImageName/UIColorName from an asset catalog (feature 004)."
+    },
+    {
+      "code": "inspect.no_icon",
+      "severity": "warning",
+      "path": null,
+      "message": "The app declares no icon files and has no Assets.car.",
+      "hint": "Add an asset catalog icon (feature 004) or loose PNGs plus CFBundleIcons."
+    }
+  ]
+}

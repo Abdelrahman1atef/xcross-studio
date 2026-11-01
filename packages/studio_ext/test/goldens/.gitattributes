@@ -1,0 +1,2 @@
+# studio: golden reports are compared byte for byte on every OS.
+*.json -text

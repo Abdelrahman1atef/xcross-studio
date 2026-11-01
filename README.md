@@ -394,6 +394,7 @@ Edit it with `xcross config`, inspect it with `xcross config show`, prove it wit
 | `xcross ide idea` | Write a JetBrains DAP run configuration (needs LSP4IJ) |
 | `xcross update` | Update xcross to the latest release, verified against its checksums |
 | `xcross completion` | Print a shell-completion script |
+| `xcross inspect <ipa\|app> [--json] [--normalize]` | <!-- studio: --> Read-only report of what is inside an `.ipa` or `.app`: Info.plist, entitlements per Mach-O, provisioning profile summary, icons, launch screen, frameworks and extensions. XCross Studio fork addition |
 
 <details>
 <summary><b><code>xcross flutter run</code> options</b></summary>
@@ -415,6 +416,25 @@ Edit it with `xcross config`, inspect it with `xcross config show`, prove it wit
 -a, --dart-entrypoint-args   repeatable
 -v, --verbose
 ```
+</details>
+
+<!-- studio: XCross Studio feature 001 (specs/001-inspect) -->
+<details>
+<summary><b><code>xcross inspect</code> options</b></summary>
+
+```text
+<path>           an .ipa file or a .app directory
+    --json       print one JSON document (schema: specs/001-inspect/contracts/inspect.schema.json)
+    --normalize  with --json: replace hashes, sizes, profile UUIDs and dates with
+                 stable placeholders so two builds of the same source compare equal
+```
+
+Exit codes: `0` report printed (problems are listed as issues), `1` the input cannot be inspected (stable
+`inspect.*` error code; with `--json` an error document is printed), `64` usage error. The command never modifies the
+input and never contacts the network or a device.
+
+**Reporting a bug:** attach the output of `xcross inspect <ipa> --json --normalize`. By design it contains no device
+UDIDs, certificate data, API keys or Info.plist values outside a short allow-list, and no absolute paths.
 </details>
 
 ## Compose Multiplatform

@@ -46,6 +46,7 @@ dependencies:
   pub_semver: ^2.2.1
   pure: ^1.0.0
   standard_message_codec: ^0.0.1+5
+  studio_ext: ^0.1.0 # studio: fork features (xcross inspect)
   vm_service: ^15.4.0
   web_socket_channel: ^3.0.3
   xml: ^7.1.0

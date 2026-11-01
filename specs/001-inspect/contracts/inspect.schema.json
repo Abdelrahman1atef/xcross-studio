@@ -1,0 +1,293 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:xcross-studio:inspect:schema:1",
+  "title": "xcross inspect output (schemaVersion 1)",
+  "description": "Output of `xcross inspect <ipa|app> --json`: either a report or, on fatal failure, an error document. Additive optional fields keep schemaVersion 1 (update this file in the same PR); renaming or removing a field bumps schemaVersion. See ../data-model.md.",
+  "oneOf": [
+    { "$ref": "#/$defs/report" },
+    { "$ref": "#/$defs/errorDocument" }
+  ],
+  "$defs": {
+    "relPath": {
+      "type": "string",
+      "description": "POSIX path relative to the bundle root; never absolute.",
+      "pattern": "^(?![A-Za-z]:)(?!/)(?!.*\\\\).+$"
+    },
+    "nullableString": { "type": ["string", "null"] },
+    "sortedStrings": { "type": "array", "items": { "type": "string" } },
+    "plistObject": {
+      "type": "object",
+      "description": "Plist dict mapped per research R3: keys sorted; dates as ISO-8601 UTC strings; data as {\"$data\": base64}."
+    },
+    "signatureKind": { "enum": ["none", "adhoc", "certificate"] },
+    "report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion", "normalized", "input", "bundle", "signature", "executables",
+        "profile", "resources", "frameworks", "extensions", "issues"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "normalized": { "type": "boolean" },
+        "input": { "$ref": "#/$defs/input" },
+        "bundle": { "$ref": "#/$defs/bundle" },
+        "signature": { "$ref": "#/$defs/bundleSignature" },
+        "executables": { "type": "array", "items": { "$ref": "#/$defs/executable" } },
+        "profile": { "oneOf": [{ "$ref": "#/$defs/profile" }, { "type": "null" }] },
+        "resources": { "$ref": "#/$defs/resources" },
+        "frameworks": { "type": "array", "items": { "$ref": "#/$defs/framework" } },
+        "extensions": { "type": "array", "items": { "$ref": "#/$defs/extension" } },
+        "issues": { "type": "array", "items": { "$ref": "#/$defs/issue" } }
+      }
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "name", "sizeBytes", "sha256"],
+      "properties": {
+        "kind": { "enum": ["ipa", "app"] },
+        "name": { "type": "string", "pattern": "^[^/\\\\]+$", "description": "Basename only." },
+        "sizeBytes": { "type": ["integer", "null"], "minimum": 0, "description": "null for app input and when normalized." },
+        "sha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$", "description": "null for app input and when normalized." }
+      }
+    },
+    "bundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path", "bundleId", "name", "displayName", "shortVersion", "buildNumber", "executable",
+        "minimumOSVersion", "deviceFamily", "infoPlistFormat", "infoPlistKeys", "plist", "xcrossPrivateKeys"
+      ],
+      "properties": {
+        "path": { "type": "string", "description": "Payload/<Name>.app for ipa input, '.' for app input." },
+        "bundleId": { "$ref": "#/$defs/nullableString" },
+        "name": { "$ref": "#/$defs/nullableString" },
+        "displayName": { "$ref": "#/$defs/nullableString" },
+        "shortVersion": { "$ref": "#/$defs/nullableString" },
+        "buildNumber": { "$ref": "#/$defs/nullableString" },
+        "executable": { "$ref": "#/$defs/nullableString" },
+        "minimumOSVersion": { "$ref": "#/$defs/nullableString" },
+        "deviceFamily": { "type": "array", "items": { "type": "integer" } },
+        "infoPlistFormat": { "enum": ["xml", "binary", null] },
+        "infoPlistKeys": { "$ref": "#/$defs/sortedStrings" },
+        "plist": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Allow-listed Info.plist values only (research R8).",
+          "properties": {
+            "CFBundleIcons": { "$ref": "#/$defs/plistObject" },
+            "CFBundleIcons~ipad": { "$ref": "#/$defs/plistObject" },
+            "CFBundleIconName": { "type": "string" },
+            "CFBundleIconFile": { "type": "string" },
+            "UILaunchScreen": { "$ref": "#/$defs/plistObject" },
+            "UILaunchStoryboardName": { "type": "string" },
+            "UIBackgroundModes": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "xcrossPrivateKeys": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["XCrossEntitlements", "XCrossCapabilities", "XCrossAppGroups"],
+          "properties": {
+            "XCrossEntitlements": { "type": "boolean" },
+            "XCrossCapabilities": { "type": "boolean" },
+            "XCrossAppGroups": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "bundleSignature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["present", "kind", "teamId"],
+      "properties": {
+        "present": { "type": "boolean", "description": "true exactly when _CodeSignature/CodeResources exists at the bundle root." },
+        "kind": { "$ref": "#/$defs/signatureKind" },
+        "teamId": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "executable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "role", "architectures", "signature", "entitlements", "derEntitlementsPresent"],
+      "properties": {
+        "path": { "$ref": "#/$defs/relPath" },
+        "role": { "enum": ["main", "framework", "dylib", "extension"] },
+        "architectures": { "type": "array", "items": { "type": "string", "pattern": "^(arm64|arm64e|armv7|armv7s|x86_64|i386|cpu:-?[0-9]+/-?[0-9]+)$" } },
+        "signature": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "linkerSigned", "identifier", "teamId"],
+          "properties": {
+            "kind": { "$ref": "#/$defs/signatureKind" },
+            "linkerSigned": { "type": "boolean" },
+            "identifier": { "$ref": "#/$defs/nullableString" },
+            "teamId": { "$ref": "#/$defs/nullableString" }
+          }
+        },
+        "entitlements": { "oneOf": [{ "$ref": "#/$defs/plistObject" }, { "type": "null" }] },
+        "derEntitlementsPresent": { "type": "boolean" }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Redacted provisioning profile summary: never device UDIDs, certificate data, team name or App ID name.",
+      "required": [
+        "kind", "name", "teamId", "uuid", "creationDate", "expirationDate", "platforms",
+        "entitlements", "provisionsAllDevices", "deviceCount", "certificateCount"
+      ],
+      "properties": {
+        "kind": { "enum": ["development", "ad-hoc", "app-store", "enterprise"] },
+        "name": { "$ref": "#/$defs/nullableString" },
+        "teamId": { "$ref": "#/$defs/nullableString" },
+        "uuid": { "type": ["string", "null"], "description": "\"<uuid>\" when normalized." },
+        "creationDate": { "type": ["string", "null"], "description": "ISO-8601 UTC, or \"<date>\" when normalized." },
+        "expirationDate": { "type": ["string", "null"], "description": "ISO-8601 UTC, or \"<date>\" when normalized." },
+        "platforms": { "$ref": "#/$defs/sortedStrings" },
+        "entitlements": { "$ref": "#/$defs/plistObject" },
+        "provisionsAllDevices": { "type": "boolean" },
+        "deviceCount": { "type": ["integer", "null"], "minimum": 0 },
+        "certificateCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["icons", "assetsCar", "launchScreen", "storyboards"],
+      "properties": {
+        "icons": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["iconName", "declared"],
+          "properties": {
+            "iconName": { "$ref": "#/$defs/nullableString" },
+            "declared": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["set", "name", "files", "resolved"],
+                "properties": {
+                  "set": { "enum": ["CFBundleIcons", "CFBundleIcons~ipad", "CFBundleIconFile"] },
+                  "name": { "type": "string" },
+                  "files": { "type": "array", "items": { "$ref": "#/$defs/relPath" } },
+                  "resolved": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        },
+        "assetsCar": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["present", "sizeBytes"],
+          "properties": {
+            "present": { "type": "boolean" },
+            "sizeBytes": { "type": ["integer", "null"], "minimum": 0 }
+          }
+        },
+        "launchScreen": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "keys", "image", "storyboard"],
+          "properties": {
+            "kind": { "enum": ["UILaunchScreen", "storyboard", "none"] },
+            "keys": { "$ref": "#/$defs/sortedStrings" },
+            "image": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["name", "source"],
+                  "properties": {
+                    "name": { "type": "string" },
+                    "source": { "enum": ["loose-file", "asset-catalog", "missing"] }
+                  }
+                },
+                { "type": "null" }
+              ]
+            },
+            "storyboard": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["name", "compiledPresent"],
+                  "properties": {
+                    "name": { "type": "string" },
+                    "compiledPresent": { "type": "boolean" }
+                  }
+                },
+                { "type": "null" }
+              ]
+            }
+          }
+        },
+        "storyboards": { "type": "array", "items": { "$ref": "#/$defs/relPath" } }
+      }
+    },
+    "framework": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "path", "kind", "bundleId"],
+      "properties": {
+        "name": { "type": "string" },
+        "path": { "$ref": "#/$defs/relPath" },
+        "kind": { "enum": ["framework", "dylib"] },
+        "bundleId": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "extension": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "bundleId", "extensionPoint", "executable", "profile"],
+      "properties": {
+        "path": { "$ref": "#/$defs/relPath" },
+        "bundleId": { "$ref": "#/$defs/nullableString" },
+        "extensionPoint": { "$ref": "#/$defs/nullableString" },
+        "executable": { "oneOf": [{ "$ref": "#/$defs/relPath" }, { "type": "null" }] },
+        "profile": { "oneOf": [{ "$ref": "#/$defs/profile" }, { "type": "null" }] }
+      }
+    },
+    "issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "severity", "path", "message", "hint"],
+      "properties": {
+        "code": { "type": "string", "pattern": "^inspect\\.[a-z0-9_]+$" },
+        "severity": { "enum": ["warning", "error"] },
+        "path": { "oneOf": [{ "$ref": "#/$defs/relPath" }, { "type": "null" }] },
+        "message": { "type": "string" },
+        "hint": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "errorDocument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "error"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message", "hint"],
+          "properties": {
+            "code": {
+              "enum": [
+                "inspect.input_not_found",
+                "inspect.unsupported_input",
+                "inspect.corrupt_archive",
+                "inspect.no_app",
+                "inspect.multiple_apps"
+              ]
+            },
+            "message": { "type": "string" },
+            "hint": { "$ref": "#/$defs/nullableString" }
+          }
+        }
+      }
+    }
+  }
+}

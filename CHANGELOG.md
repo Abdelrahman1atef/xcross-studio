@@ -1,3 +1,7 @@
+## Unreleased (XCross Studio)
+
+- Add `xcross inspect <ipa|app> [--json] [--normalize]`, a read-only report of what is inside an iOS app: Info.plist, entitlements per Mach-O, provisioning profile summary (no device UDIDs), icons, `Assets.car`, launch screen, frameworks and app extensions, as a ✔/✖ summary or deterministic JSON (schema v1). Lives in the new `studio_ext` package. ([specs/001-inspect](specs/001-inspect/spec.md))
+
 ## 2.0.9
 
 - Strip native asset frameworks with `llvm-strip` in release and profile builds. Flutter's `install_code_assets` runs the `strip` found on PATH, which on Linux is GNU strip and fails on Mach-O (`file format not recognized`) for code assets such as `super_native_extensions`. ([#141](https://github.com/arxdeus/xcross/issues/141), [#142](https://github.com/arxdeus/xcross/pull/142))

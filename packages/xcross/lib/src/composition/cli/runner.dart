@@ -10,6 +10,7 @@ import 'package:dart_mobile_device/target/iphone/device/device_prepare.dart';
 import 'package:dart_mobile_device/target/iphone/diagnostics/pymd_device_diagnostics.dart';
 import 'package:darwin_sdk_kit/shared/errors/errors.dart';
 import 'package:meta/meta.dart';
+import 'package:studio_ext/shared/inspect/inspect_command.dart'; // studio:
 import 'package:xcross/src/composition/cli/cache_command.dart';
 import 'package:xcross/src/composition/cli/compose_command.dart';
 import 'package:xcross/src/composition/cli/doctor_sections.dart';
@@ -132,6 +133,11 @@ abstract final class XcrossCli {
       IdeCommand(ideLauncher),
       UpdateCommand(runtime),
       CompletionCommand(write: runtime.log.output.write),
+      // studio: XCross Studio feature 001 (specs/001-inspect).
+      InspectCommand(
+        fileSystem: runtime.host.fileSystem,
+        write: runtime.log.output.write,
+      ),
     ];
     for (final command in commands) {
       if (!excluded.contains(command.name.toLowerCase())) {
@@ -218,7 +224,9 @@ abstract final class XcrossCli {
     try {
       final command = runner.argParser.parse(args).command;
       return command?.name == 'completion' ||
-          command?.name == 'flutter' && command?.command?.name == 'dap';
+          command?.name == 'flutter' && command?.command?.name == 'dap' ||
+          // studio: `inspect --json` prints one machine-readable document.
+          command?.name == 'inspect' && command?.flag('json') == true;
     } on FormatException {
       return false;
     }

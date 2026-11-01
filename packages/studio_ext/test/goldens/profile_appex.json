@@ -1,0 +1,268 @@
+{
+  "schemaVersion": 1,
+  "normalized": false,
+  "input": {
+    "kind": "ipa",
+    "name": "profile_appex.ipa",
+    "sizeBytes": 43965,
+    "sha256": "54fe06811b706924f5c79b8bd39e0811859397bee517c1605f04aaced87dd23b"
+  },
+  "bundle": {
+    "path": "Payload/Runner.app",
+    "bundleId": "com.example.profile",
+    "name": "Fixture",
+    "displayName": "Fixture App",
+    "shortVersion": "1.0.0",
+    "buildNumber": "1",
+    "executable": "Runner",
+    "minimumOSVersion": "13.0",
+    "deviceFamily": [
+      1,
+      2
+    ],
+    "infoPlistFormat": "xml",
+    "infoPlistKeys": [
+      "CFBundleDisplayName",
+      "CFBundleExecutable",
+      "CFBundleIcons",
+      "CFBundleIdentifier",
+      "CFBundleInfoDictionaryVersion",
+      "CFBundleName",
+      "CFBundlePackageType",
+      "CFBundleShortVersionString",
+      "CFBundleVersion",
+      "GMSApiKey",
+      "LSRequiresIPhoneOS",
+      "MinimumOSVersion",
+      "UIDeviceFamily",
+      "UILaunchScreen",
+      "UILaunchStoryboardName",
+      "UIRequiredDeviceCapabilities",
+      "XCrossEntitlements"
+    ],
+    "plist": {
+      "CFBundleIcons": {
+        "CFBundlePrimaryIcon": {
+          "CFBundleIconFiles": [
+            "AppIcon60x60",
+            "AppIconMissing"
+          ],
+          "CFBundleIconName": "AppIcon"
+        }
+      },
+      "UILaunchScreen": {
+        "UIImageName": "LaunchLogo"
+      },
+      "UILaunchStoryboardName": "LaunchScreen"
+    },
+    "xcrossPrivateKeys": {
+      "XCrossEntitlements": true,
+      "XCrossCapabilities": false,
+      "XCrossAppGroups": false
+    }
+  },
+  "signature": {
+    "present": true,
+    "kind": "certificate",
+    "teamId": "TEAMID1234"
+  },
+  "executables": [
+    {
+      "path": "Frameworks/App.framework/App",
+      "role": "framework",
+      "architectures": [
+        "arm64"
+      ],
+      "signature": {
+        "kind": "certificate",
+        "linkerSigned": false,
+        "identifier": "io.flutter.flutter.app",
+        "teamId": "TEAMID1234"
+      },
+      "entitlements": {},
+      "derEntitlementsPresent": false
+    },
+    {
+      "path": "Frameworks/Flutter.framework/Flutter",
+      "role": "framework",
+      "architectures": [
+        "arm64"
+      ],
+      "signature": {
+        "kind": "certificate",
+        "linkerSigned": false,
+        "identifier": "io.flutter.flutter",
+        "teamId": "FLTTEAM001"
+      },
+      "entitlements": null,
+      "derEntitlementsPresent": false
+    },
+    {
+      "path": "PlugIns/Share.appex/Share",
+      "role": "extension",
+      "architectures": [
+        "arm64"
+      ],
+      "signature": {
+        "kind": "certificate",
+        "linkerSigned": false,
+        "identifier": "com.example.profile.Share",
+        "teamId": "TEAMID1234"
+      },
+      "entitlements": {
+        "com.apple.security.application-groups": [
+          "group.com.example.profile"
+        ]
+      },
+      "derEntitlementsPresent": false
+    },
+    {
+      "path": "Runner",
+      "role": "main",
+      "architectures": [
+        "arm64",
+        "armv7"
+      ],
+      "signature": {
+        "kind": "certificate",
+        "linkerSigned": false,
+        "identifier": "com.example.profile",
+        "teamId": "TEAMID1234"
+      },
+      "entitlements": {
+        "application-identifier": "TEAMID1234.com.example.profile",
+        "aps-environment": "development",
+        "com.apple.developer.associated-domains": [
+          "applinks:example.com"
+        ],
+        "get-task-allow": true
+      },
+      "derEntitlementsPresent": false
+    }
+  ],
+  "profile": {
+    "kind": "development",
+    "name": "Fixture Profile com.example.profile",
+    "teamId": "TEAMID1234",
+    "uuid": "11111111-2222-3333-4444-555555555555",
+    "creationDate": "2026-01-01T00:00:00Z",
+    "expirationDate": "2027-01-01T00:00:00Z",
+    "platforms": [
+      "iOS"
+    ],
+    "entitlements": {
+      "application-identifier": "TEAMID1234.com.example.profile",
+      "aps-environment": "development",
+      "com.apple.developer.team-identifier": "TEAMID1234",
+      "get-task-allow": true
+    },
+    "provisionsAllDevices": false,
+    "deviceCount": 3,
+    "certificateCount": 1
+  },
+  "resources": {
+    "icons": {
+      "iconName": "AppIcon",
+      "declared": [
+        {
+          "set": "CFBundleIcons",
+          "name": "AppIcon60x60",
+          "files": [
+            "AppIcon60x60@2x.png",
+            "AppIcon60x60~ipad.png"
+          ],
+          "resolved": true
+        },
+        {
+          "set": "CFBundleIcons",
+          "name": "AppIconMissing",
+          "files": [],
+          "resolved": false
+        }
+      ]
+    },
+    "assetsCar": {
+      "present": true,
+      "sizeBytes": 64
+    },
+    "launchScreen": {
+      "kind": "UILaunchScreen",
+      "keys": [
+        "UIImageName"
+      ],
+      "image": {
+        "name": "LaunchLogo",
+        "source": "asset-catalog"
+      },
+      "storyboard": {
+        "name": "LaunchScreen",
+        "compiledPresent": false
+      }
+    },
+    "storyboards": []
+  },
+  "frameworks": [
+    {
+      "name": "App.framework",
+      "path": "Frameworks/App.framework",
+      "kind": "framework",
+      "bundleId": "io.flutter.flutter.app"
+    },
+    {
+      "name": "Flutter.framework",
+      "path": "Frameworks/Flutter.framework",
+      "kind": "framework",
+      "bundleId": "io.flutter.flutter"
+    }
+  ],
+  "extensions": [
+    {
+      "path": "PlugIns/Share.appex",
+      "bundleId": "com.example.profile.Share",
+      "extensionPoint": "com.apple.share-services",
+      "executable": "PlugIns/Share.appex/Share",
+      "profile": {
+        "kind": "ad-hoc",
+        "name": "Fixture Profile com.example.profile.Share",
+        "teamId": "TEAMID1234",
+        "uuid": "66666666-7777-8888-9999-000000000000",
+        "creationDate": "2026-01-01T00:00:00Z",
+        "expirationDate": "2027-01-01T00:00:00Z",
+        "platforms": [
+          "iOS"
+        ],
+        "entitlements": {
+          "application-identifier": "TEAMID1234.com.example.profile.Share",
+          "com.apple.developer.team-identifier": "TEAMID1234",
+          "get-task-allow": false
+        },
+        "provisionsAllDevices": false,
+        "deviceCount": 3,
+        "certificateCount": 1
+      }
+    }
+  ],
+  "issues": [
+    {
+      "code": "inspect.icon_file_missing",
+      "severity": "warning",
+      "path": null,
+      "message": "Icon \"AppIconMissing\" (CFBundleIcons) matches no file in the bundle root.",
+      "hint": "Ship <name>@2x.png and <name>@3x.png in the bundle root."
+    },
+    {
+      "code": "inspect.launch_storyboard_missing",
+      "severity": "warning",
+      "path": null,
+      "message": "UILaunchStoryboardName \"LaunchScreen\" has no compiled LaunchScreen.storyboardc.",
+      "hint": "Storyboards are not compiled off-Mac; use UILaunchScreen instead."
+    },
+    {
+      "code": "inspect.xcross_private_keys_in_signed_bundle",
+      "severity": "warning",
+      "path": "Info.plist",
+      "message": "The signed bundle still contains XCrossEntitlements or XCrossCapabilities.",
+      "hint": "Re-sign with xcross; these build-time keys should be stripped."
+    }
+  ]
+}

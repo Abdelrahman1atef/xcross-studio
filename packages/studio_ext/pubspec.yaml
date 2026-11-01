@@ -1,0 +1,24 @@
+name: studio_ext
+description: >-
+  XCross Studio fork features for the xcross CLI, starting with
+  `xcross inspect`, a read-only IPA/app report.
+version: 0.1.0
+publish_to: none
+repository: https://github.com/Abdelrahman1atef/xcross-studio
+
+environment:
+  sdk: ^3.10.0
+
+resolution: workspace
+
+dependencies:
+  archive: ^4.5.2
+  args: ^2.7.0
+  cli_kit: ^1.0.0
+  crypto: ^3.0.8
+  meta: ^1.19.0
+  path: ^1.9.1
+  propertylistserialization: ^1.5.0
+
+dev_dependencies:
+  test: ^1.33.0

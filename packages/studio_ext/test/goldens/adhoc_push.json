@@ -1,0 +1,181 @@
+{
+  "schemaVersion": 1,
+  "normalized": false,
+  "input": {
+    "kind": "app",
+    "name": "adhoc_push.app",
+    "sizeBytes": null,
+    "sha256": null
+  },
+  "bundle": {
+    "path": ".",
+    "bundleId": "com.example.push",
+    "name": "Fixture",
+    "displayName": "Fixture App",
+    "shortVersion": "1.0.0",
+    "buildNumber": "1",
+    "executable": "Runner",
+    "minimumOSVersion": "13.0",
+    "deviceFamily": [
+      1
+    ],
+    "infoPlistFormat": "binary",
+    "infoPlistKeys": [
+      "CFBundleDisplayName",
+      "CFBundleExecutable",
+      "CFBundleIcons",
+      "CFBundleIdentifier",
+      "CFBundleInfoDictionaryVersion",
+      "CFBundleName",
+      "CFBundlePackageType",
+      "CFBundleShortVersionString",
+      "CFBundleVersion",
+      "LSRequiresIPhoneOS",
+      "MinimumOSVersion",
+      "UIBackgroundModes",
+      "UIDeviceFamily",
+      "UILaunchScreen",
+      "UIRequiredDeviceCapabilities"
+    ],
+    "plist": {
+      "CFBundleIcons": {
+        "CFBundlePrimaryIcon": {
+          "CFBundleIconFiles": [
+            "AppIcon60x60"
+          ],
+          "CFBundleIconName": "AppIcon"
+        }
+      },
+      "UIBackgroundModes": [
+        "remote-notification"
+      ],
+      "UILaunchScreen": {
+        "UIColorName": "LaunchBackground",
+        "UIImageName": "LaunchImage"
+      }
+    },
+    "xcrossPrivateKeys": {
+      "XCrossEntitlements": false,
+      "XCrossCapabilities": false,
+      "XCrossAppGroups": false
+    }
+  },
+  "signature": {
+    "present": true,
+    "kind": "adhoc",
+    "teamId": null
+  },
+  "executables": [
+    {
+      "path": "Frameworks/App.framework/App",
+      "role": "framework",
+      "architectures": [
+        "arm64"
+      ],
+      "signature": {
+        "kind": "adhoc",
+        "linkerSigned": false,
+        "identifier": "io.flutter.flutter.app",
+        "teamId": null
+      },
+      "entitlements": null,
+      "derEntitlementsPresent": false
+    },
+    {
+      "path": "Frameworks/Flutter.framework/Flutter",
+      "role": "framework",
+      "architectures": [
+        "arm64"
+      ],
+      "signature": {
+        "kind": "adhoc",
+        "linkerSigned": false,
+        "identifier": "io.flutter.flutter",
+        "teamId": null
+      },
+      "entitlements": null,
+      "derEntitlementsPresent": false
+    },
+    {
+      "path": "Runner",
+      "role": "main",
+      "architectures": [
+        "arm64"
+      ],
+      "signature": {
+        "kind": "adhoc",
+        "linkerSigned": false,
+        "identifier": "com.example.push",
+        "teamId": null
+      },
+      "entitlements": {
+        "application-identifier": "TEAMID1234.com.example.push",
+        "aps-environment": "development",
+        "com.apple.developer.associated-domains": [
+          "applinks:example.com",
+          "webcredentials:example.com"
+        ],
+        "get-task-allow": true
+      },
+      "derEntitlementsPresent": true
+    }
+  ],
+  "profile": null,
+  "resources": {
+    "icons": {
+      "iconName": "AppIcon",
+      "declared": [
+        {
+          "set": "CFBundleIcons",
+          "name": "AppIcon60x60",
+          "files": [
+            "AppIcon60x60@2x.png",
+            "AppIcon60x60@3x.png"
+          ],
+          "resolved": true
+        }
+      ]
+    },
+    "assetsCar": {
+      "present": false,
+      "sizeBytes": null
+    },
+    "launchScreen": {
+      "kind": "UILaunchScreen",
+      "keys": [
+        "UIColorName",
+        "UIImageName"
+      ],
+      "image": {
+        "name": "LaunchImage",
+        "source": "loose-file"
+      },
+      "storyboard": null
+    },
+    "storyboards": []
+  },
+  "frameworks": [
+    {
+      "name": "App.framework",
+      "path": "Frameworks/App.framework",
+      "kind": "framework",
+      "bundleId": "io.flutter.flutter.app"
+    },
+    {
+      "name": "Flutter.framework",
+      "path": "Frameworks/Flutter.framework",
+      "kind": "framework",
+      "bundleId": "io.flutter.flutter"
+    }
+  ],
+  "extensions": [],
+  "issues": [
+    {
+      "code": "inspect.launch_image_not_in_catalog",
+      "severity": "warning",
+      "path": "LaunchImage.png",
+      "message": "Launch image \"LaunchImage\" is a loose PNG, which iOS does not show as a launch image.",
+      "hint": "iOS does not show loose PNGs as a launch image; put it in Assets.car."
+    }
+  ]
+}

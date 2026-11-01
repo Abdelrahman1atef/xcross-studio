@@ -65,11 +65,14 @@ jobs:
         run: |
           set -euo pipefail
           for package in xcross cli_kit apple_developer_kit darwin_sdk_kit \
-            dart_mobile_device frontend_server_kit; do
+            dart_mobile_device frontend_server_kit studio_ext; do # studio: + studio_ext
             (cd "packages/$package" && dart test)
           done
 
       - name: Validate pub.dev package
+        # studio: the fork does not publish xcross to pub.dev, and xcross now
+        # depends on the unpublished workspace package studio_ext.
+        if: false
         working-directory: packages/xcross
         run: dart pub publish --dry-run
 
@@ -221,7 +224,7 @@ jobs:
           dart pub get
           dart analyze
           for package in xcross cli_kit apple_developer_kit darwin_sdk_kit \
-            dart_mobile_device frontend_server_kit; do
+            dart_mobile_device frontend_server_kit studio_ext; do # studio: + studio_ext
             (cd "packages/$package" && dart test)
           done
 
