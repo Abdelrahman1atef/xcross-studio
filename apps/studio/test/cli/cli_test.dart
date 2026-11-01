@@ -51,6 +51,10 @@ void main() {
       );
     });
 
+    test('doctor is the flutter doctor (no top-level doctor exists)', () {
+      expect(XcrossCommands.doctor(), ['flutter', 'doctor']);
+    });
+
     test('device commands always ask for JSON', () {
       expect(XcrossCommands.devices(), ['devices', '--json']);
       expect(XcrossCommands.appList(udid: 'U1'), [

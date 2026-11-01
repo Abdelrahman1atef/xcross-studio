@@ -149,6 +149,7 @@ class _SetupPageState extends State<SetupPage> {
                         () => _doctor = services.jobs.run(
                           'Doctor',
                           XcrossCommands.doctor(),
+                          workingDirectory: settings.projectPath,
                         ),
                       ),
                 icon: const Icon(Icons.health_and_safety),
@@ -156,8 +157,11 @@ class _SetupPageState extends State<SetupPage> {
               ),
               child: _doctor == null
                   ? const Text(
-                      'Checks the iOS SDK, toolchain, Apple Mobile Device '
-                      'Service / usbmuxd, pymobiledevice3 and your sign-in.',
+                      'Runs "xcross flutter doctor": Swift, LLVM, the Darwin '
+                      'SDK, Apple Mobile Device Service / usbmuxd, '
+                      'pymobiledevice3 and your sign-in. First time? Install '
+                      'the toolchain with "xcross setup", then '
+                      '"xcross sdk install <Xcode.xip>".',
                     )
                   : JobOutputView(job: _doctor!, showInput: false),
             ),

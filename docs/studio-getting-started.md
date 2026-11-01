@@ -21,8 +21,8 @@ Follow the README's [Requirements](../README.md#requirements) and [Installation]
 Flutter, a Swift toolchain, LLVM, Python with `pymobiledevice3`, then `xcross setup` and
 `xcross sdk install <Xcode.xip>`. Then, in the app:
 
-1. **Setup** → tick *I understand* → **Run doctor**. Every line should be ✔ (device service, SDK, toolchain,
-   pymobiledevice3).
+1. **Setup** → tick *I understand* → **Run doctor** (`xcross flutter doctor`). Every iOS toolchain line should be ✔
+   (Swift, clang/LLVM, Darwin SDK, device service, pymobiledevice3, sign-in).
 2. **Setup** → **Apple sign-in**: your Apple ID and password, or an App Store Connect API key. When Apple asks for
    the two-factor code, type it in the box under the output. A free Apple ID works for development installs. Push
    notifications need a paid team.

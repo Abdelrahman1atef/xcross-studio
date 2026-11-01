@@ -1,10 +1,10 @@
 # Device test runbook: iPhone X (iOS 16.7.16), Windows host
 
-One pass over every open device row (features 003, 004, 005, 006, 008, 010). Record each result in the
+One pass over every open device row (features 003, 004, 005, 006, 007, 008, 010, 011). Record each result in the
 feature's own `device-check.md` (✅ / ❌ plus a short note). Never paste UDIDs, device names or client bundle ids into
 committed files.
 
-## 0. Prepare (5 min)
+## 0. Prepare
 
 1. Use **this fork's** CLI. The `xcross` on PATH is upstream 2.0.9 and lacks the new commands.
 
@@ -18,8 +18,21 @@ committed files.
    No rebuild? Use `dart run D:\Programing\xcross-studio\packages\xcross\bin\xcross.dart` in place of `& $X`.
 2. Connect the iPhone by USB, unlock it, tap **Trust**. Check with `& $X devices`, which should show
    `iPhone … iOS 16.7.16 …`.
-3. Run `& $X doctor`. If sign-in is missing, run `& $X auth` (Apple ID; type the 2FA code).
-4. Pick a Flutter test project (`$P`) and, if available, an `.ipa` from another source (`$IPA`).
+3. Run `& $X flutter doctor` (there is no top-level `xcross doctor`). On 2026-11-01 this PC reported:
+   device service ✓ and Python tools ✓, but **no Swift toolchain, no clang/LLVM, no Darwin SDK and no sign-in**.
+   Nothing can be built until step 4 is done. Rows that need no build can run first: 010, plus `install` / `sign` /
+   `app info` / `logs` on an existing `.ipa`.
+4. **One-time toolchain setup** (needed for every build row; allow 30–60 min, mostly the SDK extraction):
+
+   ```powershell
+   & $X setup                         # installs Swift, LLVM, Python via winget (asks before each installer)
+   # open a NEW terminal so PATH picks up Swift and LLVM, set $X again, then:
+   & $X sdk install "$env:USERPROFILE\Downloads\Xcode_27.1.xip"   # once; builds the Darwin SDK
+   & $X auth                          # Apple ID + password; type the 2FA code
+   & $X flutter doctor                # every iOS toolchain line should now be ✓
+   ```
+
+5. Pick a Flutter test project (`$P`) and, if available, an `.ipa` from another source (`$IPA`).
 
 ## 1. Feature 010: device logs (rows 6–9)
 
@@ -64,6 +77,13 @@ capability error, which is itself a valid result to record.
 | 4 | a project with `flutter_native_splash` | its colour and centred logo |
 
 Details: `specs/004-icon-launch-screen/device-check.md`.
+
+## 4b. Feature 007: the project's own AppDelegate (opt-in)
+
+Use a project whose `ios/Runner/AppDelegate.swift` does something visible, such as registering a method channel.
+Run `$env:XCROSS_RUNNER = "project"; & $X flutter run --release`, then `Remove-Item Env:XCROSS_RUNNER`.
+Expect no `build.runner_project_failed`; the app starts and the channel answers. Without the variable, the default
+runner is unchanged. Rows: `specs/007-native-runner-code/device-check.md`.
 
 ## 5. Feature 008: the desktop app
 
