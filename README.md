@@ -468,6 +468,12 @@ In Setup choose **Run from source** and pick this repository to use the XCross S
 packages/xcross/bin/xcross.dart`), or point it at a compiled `xcross` executable. See
 [specs/008-json-events-gui](specs/008-json-events-gui/spec.md).
 
+**Packages** (built by `apps/studio/tool/package.dart` and by the *Studio GUI* CI workflow, which uploads them as
+artifacts): Windows `xcross-studio-windows-x64-setup.exe` (per-user, no admin) or the portable `.zip`; Linux
+`xcross-studio_<version>_amd64.deb` (depends on `usbmuxd`; launcher `xcross-studio`, CLI at
+`/opt/xcross-studio/xcross/bin/xcross`), `xcross-studio-x86_64.AppImage`, or the portable `.tar.gz`. Every package
+bundles the `xcross` CLI next to the app. Install `pymobiledevice3` separately (`pipx install pymobiledevice3`).
+
 ## Compose Multiplatform
 
 `xcross compose` builds Kotlin Multiplatform iOS targets on Windows x64 and Linux x64 using the same private Darwin SDK, Swift, LLVM, and `xcross auth` signing flow as Flutter. Linux arm64 can run the CLI, but Compose iOS builds are limited by missing upstream Kotlin/Native host artifacts.

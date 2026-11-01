@@ -71,9 +71,28 @@ jobs:
           flutter analyze
           flutter test
 
-      - name: Package (CLI bundle + GUI)
+      - name: appimagetool (pinned)
+        if: matrix.os == 'linux'
+        run: |
+          curl -sSL -o "$RUNNER_TEMP/appimagetool" \
+            https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
+          echo "ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0  $RUNNER_TEMP/appimagetool" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/appimagetool"
+          echo "APPIMAGETOOL=$RUNNER_TEMP/appimagetool" >> "$GITHUB_ENV"
+
+      - name: Package (CLI bundle + GUI; .deb + AppImage on Linux)
         working-directory: apps/studio
         run: dart run tool/package.dart
+
+      - name: Check the Linux packages
+        if: matrix.os == 'linux'
+        run: |
+          dpkg-deb --info dist/xcross-studio_*_amd64.deb
+          dpkg-deb --contents dist/xcross-studio_*_amd64.deb | grep -E "opt/xcross-studio/(xcross_studio|xcross/bin/xcross)$|usr/bin/xcross-studio|\.desktop$"
+          ./dist/xcross-studio-x86_64.AppImage --appimage-extract >/dev/null
+          test -x squashfs-root/xcross_studio
+          squashfs-root/xcross/bin/xcross --help | grep -q devices
+          rm -rf squashfs-root
 
       - name: Smoke-test the packaged CLI
         run: |
@@ -97,5 +116,7 @@ jobs:
             dist/*.zip
             dist/*.tar.gz
             dist/*-setup.exe
+            dist/*.deb
+            dist/*.AppImage
           if-no-files-found: error
           retention-days: 14

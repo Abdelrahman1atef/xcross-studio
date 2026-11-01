@@ -1,5 +1,7 @@
 ## Unreleased (XCross Studio)
 
+- Release packages for the desktop app: Windows per-user installer (Inno Setup) and portable zip; Linux `.deb` (depends on usbmuxd), AppImage and tar.gz. Each bundles the `xcross` CLI next to the app, `LICENSE` and a not-affiliated-with-Apple `NOTICE.txt`. Built and checked by the *Studio GUI* CI workflow on every push. ([specs/009-hardening-1.0](specs/009-hardening-1.0/spec.md))
+
 - Plugin overrides: put your own `Package.swift` in `xcross_overrides/<plugin>/[<version>/]` (or `~/.xcross/overrides/`) and xcross builds a podspec-only plugin, or replaces a broken manifest, from a staged copy of the plugin's `ios/` folder, without touching the pub cache. `override.yaml` can limit an override to plugin versions (`versions: ">=1.2.0 <2.0.0"`); the override's iOS floor counts for the deployment target. New codes `build.plugin_override_applied` and `build.plugin_override_invalid`. ([specs/006-plugin-overrides](specs/006-plugin-overrides/spec.md), upstream #145)
 
 - Add the XCross Studio desktop app (`apps/studio`, Flutter, Windows and Linux): Setup (notice, xcross location, doctor, Apple ID / API-key sign-in with 2FA input), Project & Build, Device & Install, Device logs (live table, presets, filters, pause, save, app info ✔/✖, push checklist, crash reports) and Console. It drives the CLI as a subprocess. New `xcross devices [--json]` and `xcross app list [--json]` for its pickers, and `XCROSS_OUTPUT_ENCODING=utf-8` makes xcross write UTF-8 to pipes on Windows. ([specs/008-json-events-gui](specs/008-json-events-gui/spec.md))

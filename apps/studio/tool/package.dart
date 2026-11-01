@@ -81,14 +81,122 @@ Future<void> main(List<String> args) async {
   );
   stdout.writeln('Packaged: $out');
   stdout.writeln('Archive:  $archivePath');
+
+  if (!windows) {
+    final version = Platform.environment['XCROSS_STUDIO_VERSION'] ?? '0.1.0';
+    await _debian(studio, dist, out, version);
+    final appimagetool = Platform.environment['APPIMAGETOOL'];
+    if (appimagetool == null || appimagetool.isEmpty) {
+      stdout.writeln('AppImage: skipped (set APPIMAGETOOL to appimagetool).');
+    } else {
+      await _appImage(studio, dist, out, appimagetool);
+    }
+  }
 }
 
-Future<void> _run(String executable, List<String> args, String cwd) async {
+const _appId = 'dev.xcrossstudio.xcross_studio';
+
+/// `dist/xcross-studio_<version>_amd64.deb`: the folder under
+/// /opt/xcross-studio, a launcher in /usr/bin, the desktop entry and icon.
+Future<void> _debian(
+  String studio,
+  String dist,
+  String folder,
+  String version,
+) async {
+  final root = p.join(dist, 'deb-root');
+  if (Directory(root).existsSync()) Directory(root).deleteSync(recursive: true);
+  _copy(folder, p.join(root, 'opt', 'xcross-studio'));
+  final bin = Directory(p.join(root, 'usr', 'bin'))
+    ..createSync(recursive: true);
+  Link(p.join(bin.path, 'xcross-studio'))
+      .createSync('/opt/xcross-studio/xcross_studio');
+  final packaging = p.join(studio, 'linux', 'packaging');
+  final applications = Directory(p.join(root, 'usr', 'share', 'applications'))
+    ..createSync(recursive: true);
+  File(p.join(packaging, '$_appId.desktop'))
+      .copySync(p.join(applications.path, '$_appId.desktop'));
+  final icons = Directory(
+    p.join(root, 'usr', 'share', 'icons', 'hicolor', '256x256', 'apps'),
+  )..createSync(recursive: true);
+  File(p.join(packaging, 'xcross-studio.png'))
+      .copySync(p.join(icons.path, '$_appId.png'));
+  final control = Directory(p.join(root, 'DEBIAN'))..createSync();
+  File(p.join(control.path, 'control')).writeAsStringSync(
+    'Package: xcross-studio\n'
+    'Version: $version\n'
+    'Section: devel\n'
+    'Priority: optional\n'
+    'Architecture: amd64\n'
+    'Maintainer: XCross Studio contributors '
+    '<xcross-studio@users.noreply.github.com>\n'
+    'Depends: libgtk-3-0 | libgtk-3-0t64, usbmuxd\n'
+    'Recommends: pipx\n'
+    'Homepage: https://github.com/Abdelrahman1atef/xcross-studio\n'
+    'Description: Build, sign, install and debug Flutter iOS apps without a '
+    'Mac\n'
+    ' Desktop app plus the xcross command-line tool '
+    '(/opt/xcross-studio/xcross/bin/xcross).\n'
+    ' Not affiliated with Apple. Install pymobiledevice3 separately '
+    '(pipx install pymobiledevice3).\n',
+  );
+  final deb = 'xcross-studio_${version}_amd64.deb';
+  await _run('dpkg-deb', [
+    '--build',
+    '--root-owner-group',
+    'deb-root',
+    deb,
+  ], dist);
+  Directory(root).deleteSync(recursive: true);
+  stdout.writeln('Debian:   ${p.join(dist, deb)}');
+}
+
+/// `dist/xcross-studio-x86_64.AppImage` built with [appimagetool].
+Future<void> _appImage(
+  String studio,
+  String dist,
+  String folder,
+  String appimagetool,
+) async {
+  final appDir = p.join(dist, 'XCrossStudio.AppDir');
+  if (Directory(appDir).existsSync()) {
+    Directory(appDir).deleteSync(recursive: true);
+  }
+  _copy(folder, appDir);
+  final packaging = p.join(studio, 'linux', 'packaging');
+  File(p.join(packaging, '$_appId.desktop'))
+      .copySync(p.join(appDir, '$_appId.desktop'));
+  File(p.join(packaging, 'xcross-studio.png'))
+      .copySync(p.join(appDir, '$_appId.png'));
+  final appRun = File(p.join(appDir, 'AppRun'))
+    ..writeAsStringSync(
+      '#!/bin/sh\n'
+      'HERE="\$(dirname "\$(readlink -f "\$0")")"\n'
+      'exec "\$HERE/xcross_studio" "\$@"\n',
+    );
+  await _run('chmod', ['+x', appRun.path], dist);
+  await _run(
+    appimagetool,
+    ['--no-appstream', appDir, 'xcross-studio-x86_64.AppImage'],
+    dist,
+    environment: const {'ARCH': 'x86_64', 'APPIMAGE_EXTRACT_AND_RUN': '1'},
+  );
+  Directory(appDir).deleteSync(recursive: true);
+  stdout.writeln('AppImage: ${p.join(dist, 'xcross-studio-x86_64.AppImage')}');
+}
+
+Future<void> _run(
+  String executable,
+  List<String> args,
+  String cwd, {
+  Map<String, String>? environment,
+}) async {
   stdout.writeln('\$ $executable ${args.join(' ')}   (in $cwd)');
   final process = await Process.start(
     executable,
     args,
     workingDirectory: cwd,
+    environment: environment,
     runInShell: Platform.isWindows,
     mode: ProcessStartMode.inheritStdio,
   );

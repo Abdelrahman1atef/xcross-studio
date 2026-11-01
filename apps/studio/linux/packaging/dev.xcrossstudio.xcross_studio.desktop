@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=XCross Studio
+Comment=Build, sign, install and debug Flutter iOS apps without a Mac
+Exec=xcross-studio
+Icon=dev.xcrossstudio.xcross_studio
+Terminal=false
+Categories=Development;IDE;
+StartupWMClass=xcross_studio
