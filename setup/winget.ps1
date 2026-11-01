@@ -141,6 +141,33 @@ function Find-LlvmBin {
   return $null
 }
 
+# studio: 009 — the Swift toolchain ships an ld64.lld without Mach-O iOS
+# support, so finding *an* ld64.lld is not enough. Like xcross's own probe
+# (darwin_toolchain_resolver.dart), link a 56-byte empty arm64 iOS object
+# into a dylib: an unsupported linker rejects the platform once it reads it.
+function Test-IosLinker {
+  $words = @(0xfeedfacfL, 0x0100000c, 0, 1, 1, 24, 0, 0, 0x32, 24, 2, 0x000d0000, 0x000d0000, 0)
+  $bytes = [byte[]]@($words | ForEach-Object { [BitConverter]::GetBytes([uint32]$_) } | ForEach-Object { $_ })
+  $dir = Join-Path ([IO.Path]::GetTempPath()) ("xcross-ld64-probe-" + [guid]::NewGuid())
+  New-Item -ItemType Directory -Path $dir -Force | Out-Null
+  $object = Join-Path $dir 'probe.o'
+  [IO.File]::WriteAllBytes($object, $bytes)
+  $candidates = @()
+  $llvm = Find-LlvmBin
+  if ($llvm) { $candidates += (Join-Path $llvm 'ld64.lld.exe') }
+  $candidates += @(Get-Command ld64.lld -All -ErrorAction SilentlyContinue | ForEach-Object { $_.Source })
+  try {
+    foreach ($lld in $candidates) {
+      if (-not (Test-Path $lld)) { continue }
+      $probe = Invoke-Probe $lld @('-arch', 'arm64', '-platform_version', 'ios', '13.0', '13.0', '-dylib', '-o', "$object.dylib", $object)
+      if ($probe.Output -notmatch 'does not support linking for platform|unknown platform|missing or unsupported -arch') { return $true }
+    }
+    return $false
+  } finally {
+    Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+  }
+}
+
 # The Microsoft Store "python.exe" alias is a stub that only opens the Store.
 function Find-Python {
   foreach ($candidate in @(
@@ -230,7 +257,7 @@ if (-not $swiftVersion -or $swiftVersion -lt $MinSwift) {
 $llvmBin = Find-LlvmBin
 if ($llvmBin) { Add-UserPath $llvmBin }
 $clangMajor = Get-ToolMajor 'clang' 'clang version (\d+)'
-if (-not $clangMajor -or $clangMajor -lt $MinClang -or -not (Get-Command ld64.lld -ErrorAction SilentlyContinue)) {
+if (-not $clangMajor -or $clangMajor -lt $MinClang -or -not (Test-IosLinker)) {
   if (Install-Winget -Id 'LLVM.LLVM' -Name 'LLVM' `
       -What "clang/clang++ $MinClang+, llvm-ar and ld64.lld for compiling and linking iOS binaries" `
       -Upgrade:([bool]$clangMajor)) {

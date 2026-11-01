@@ -36,6 +36,12 @@ is found automatically.
    (without the module) hide the working `py` and turned doctor's "Device tools" from ✓ to ✗. Found on the dev PC on
    2026-11-01.
 
+8. **AC-009-8**: `setup/winget.ps1` installs stock LLVM unless some `ld64.lld` can really link for iOS. It
+   links the same 56-byte empty arm64 iOS object that xcross's doctor uses. Before this, the Swift 6.4.2 toolchain's
+   own `ld64.lld` on PATH ("does not support linking for platform iOS") made the script skip LLVM, and doctor then
+   failed on "iOS linker". Checked on the dev PC on 2026-11-01. `xcross setup` downloads upstream's script, so this
+   needs an upstream PR (the same check exists in `choco.ps1` and `direct.ps1`).
+
 ## Upstream issue triage
 
 | Issue | State upstream | Fork status |
