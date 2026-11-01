@@ -259,7 +259,8 @@ final class SigningSessionResolver implements SigningSessionProvider {
             (recordedDirectory == null || recordedDirectory.isEmpty));
     if (omnisette) {
       final override = anisetteUrlOverride?.trim();
-      final url = (override == null || override.isEmpty)
+      final url =
+          (override == null || override.isEmpty)
           ? session.anisetteUrl ?? kDefaultOmnisetteUrl
           : override;
       return createOmnisetteProvider(url);
