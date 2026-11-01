@@ -1,6 +1,6 @@
 # Device test runbook: iPhone X (iOS 16.7.16), Windows host
 
-One pass over every open device row (features 003, 004, 005, 008, 010; 006 if merged). Record each result in the
+One pass over every open device row (features 003, 004, 005, 006, 008, 010). Record each result in the
 feature's own `device-check.md` (✅ / ❌ plus a short note). Never paste UDIDs, device names or client bundle ids into
 committed files.
 
@@ -70,9 +70,12 @@ Run `D:\Programing\xcross-studio\dist\xcross-studio-windows-x64\xcross_studio.ex
 automatically. Click through rows 1–13 of `specs/008-json-events-gui/device-check.md`: doctor, device list, build, run,
 install, live logs with filters, app info badges, push checklist, crashes, Stop, sign-in.
 
-## 6. Feature 006: plugin overrides (if merged)
+## 6. Feature 006: plugin overrides
 
-See `specs/006-plugin-overrides/device-check.md`.
+A project with a podspec-only plugin (today: `warning: [build.podspec_only_plugin]`). Put a `Package.swift` for it in
+`$P/xcross_overrides/<plugin>/` (the README's "Plugin overrides" section has a starting point), then
+`& $X flutter run --release`. Expect `[build.plugin_override_applied]`, a successful build, and the plugin working on
+the phone. Rows: `specs/006-plugin-overrides/device-check.md`.
 
 ## If something fails
 
