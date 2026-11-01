@@ -46,6 +46,9 @@ Each distinct warning (same code and same subject) is printed once per build.
 | `build.launch_screen_unreadable` (004) | build: launch storyboard → UILaunchScreen | storyboard name | storyboard path and the parse error | `Fix the storyboard XML, or add a UILaunchScreen dictionary to Info.plist yourself; the app starts with a blank launch screen.` |
 | `build.storyboard_skipped` | build: resource staging and Info.plist | storyboard name | storyboard path or Info.plist key; not compiled, left out | `Storyboards cannot be compiled without Xcode; use a UILaunchScreen dictionary in Info.plist instead.` |
 | `build.resource_missing` | build: resource staging | resource path | Xcode project lists a resource that does not exist | `Remove the stale reference from the Xcode project or restore the file.` |
+| `build.runner_project_failed` (007) | build: link, `XCROSS_RUNNER=project` | `Runner` | why the project's Runner sources were not used (no sources, or the compiler's first errors); the generic runner is used | `Fix the error in ios/Runner, or unset XCROSS_RUNNER to build with the generic runner on purpose; until then AppDelegate code does not run.` |
+| `build.runner_legacy_registration` (007) | build: link, `XCROSS_RUNNER=project` | `Runner` | AppDelegate registers plugins with `self` at launch; xcross registers them on the scene's engine | `Register plugins in didInitializeImplicitFlutterEngine (Flutter UIScene migration, as in the current app template).` |
+| `build.runner_scene_delegate_replaced` (007) | build: link, `XCROSS_RUNNER=project` | `Runner` | the project's SceneDelegate has code that does not run | `Move that code to AppDelegate (or a plugin); without Xcode the window cannot come from Main.storyboard, so xcross supplies the scene delegate.` |
 
 ## Version line (FR-009)
 

@@ -544,6 +544,22 @@ The build reports `build.plugin_override_applied` for each override it uses, and
 folder it skips (no `Package.swift`, bad `override.yaml`, other plugin versions). See
 [specs/006-plugin-overrides](specs/006-plugin-overrides/spec.md).
 
+<!-- studio: 007 -->
+## Your own AppDelegate code (opt-in)
+
+By default xcross links a generic runner as the app's `Runner` executable, so code in `ios/Runner/AppDelegate.swift`
+does not run. Set `XCROSS_RUNNER=project` to compile the app target's own Swift/Objective-C sources instead (Swift
+toolchain required):
+
+```sh
+XCROSS_RUNNER=project xcross flutter run --release      # PowerShell: $env:XCROSS_RUNNER = 'project'
+```
+
+xcross supplies `GeneratedPluginRegistrant` (plugins are one Swift package) and a scene delegate that creates the
+Flutter window (`Main.storyboard` cannot be compiled), so put custom code in `AppDelegate`, not `SceneDelegate`. If the
+sources do not compile, the build continues with the generic runner and prints `build.runner_project_failed` with the
+compiler errors. See [specs/007-native-runner-code](specs/007-native-runner-code/spec.md).
+
 ## App extensions
 
 Share and action extensions are built, embedded under `PlugIns/`, signed with their own provisioning profiles and installed alongside the app, so plugins like [receive_sharing_intent](https://github.com/KasemJaffer/receive_sharing_intent) put your app in the iOS share sheet. No configuration needed.
