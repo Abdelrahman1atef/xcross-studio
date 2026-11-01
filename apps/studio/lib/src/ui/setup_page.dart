@@ -150,6 +150,7 @@ class _SetupPageState extends State<SetupPage> {
                           'Doctor',
                           XcrossCommands.doctor(),
                           workingDirectory: settings.projectPath,
+                          structured: true,
                         ),
                       ),
                 icon: const Icon(Icons.health_and_safety),
@@ -163,7 +164,7 @@ class _SetupPageState extends State<SetupPage> {
                       'the toolchain with "xcross setup", then '
                       '"xcross sdk install <Xcode.xip>".',
                     )
-                  : JobOutputView(job: _doctor!, showInput: false),
+                  : DoctorReport(job: _doctor!),
             ),
             Section(
               title: 'Apple sign-in',

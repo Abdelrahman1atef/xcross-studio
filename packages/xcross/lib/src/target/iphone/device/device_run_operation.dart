@@ -165,6 +165,11 @@ final class DeviceRunOperation {
       }
       legacy = major != null && major < 17;
       osVersion = device.osVersion ?? (major == null ? null : '$major');
+      // studio: 012 — the precheck reports its device; this path reports here.
+      DevicePrecheck.reportDevice(
+        log,
+        PrecheckedDevice(device: device, osMajor: major, osVersion: osVersion),
+      );
     }
     // Launch the exact id install() produced: the device may carry stale
     // team-qualified builds of this app under other identities, and the

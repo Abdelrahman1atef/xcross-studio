@@ -11,6 +11,31 @@ abstract interface class LogOutput {
   void write(String message);
 }
 
+// studio: 012 — structured events for machine consumers such as the XCross
+// Studio GUI (specs/012-build-events). When [Log.events] is set, everything
+// [Log] reports goes there instead of to [Log.output].
+enum LogEventLevel { trace, info, warn, error }
+
+abstract interface class LogEvents {
+  /// A status, warning, error or (verbose) trace message.
+  void message(LogEventLevel level, String message);
+
+  void stepStarted(String label);
+
+  /// One line of output while the step [label] runs.
+  void stepOutput(String label, String line);
+
+  void stepFinished(
+    String label, {
+    required bool ok,
+    required String message,
+    required Duration elapsed,
+  });
+
+  /// A domain event (artifact, device, progress, done, ...).
+  void event(String type, Map<String, Object?> fields);
+}
+
 final class StreamLogOutput implements LogOutput {
   StreamLogOutput({
     required IOSink stdout,
@@ -37,11 +62,14 @@ final class StreamLogOutput implements LogOutput {
 }
 
 final class Log {
-  Log({required this.output, bool verbose = false})
+  Log({required this.output, bool verbose = false, this.events})
     : _verbose = verbose,
       ansi = Ansi(output.supportsAnsi);
 
   final LogOutput output;
+
+  /// studio: 012 — receives what this log reports instead of [output].
+  final LogEvents? events;
   bool _verbose;
   final Ansi ansi;
   late final Glyph glyph = Glyph(ansi);
@@ -58,7 +86,7 @@ final class Log {
     _verbose = true;
   }
 
-  bool get _fancy => ansi.useAnsi && !_verbose;
+  bool get _fancy => ansi.useAnsi && !_verbose && events == null;
 
   static const _detailColumn = 38;
 
@@ -80,21 +108,37 @@ final class Log {
 
   void logStatus(String message) {
     stopStep();
+    if (events case final sink?) {
+      sink.message(LogEventLevel.info, message);
+      return;
+    }
     output.stdout(message);
   }
 
   void logTrace(String message) {
     if (!_verbose) return;
+    if (events case final sink?) {
+      sink.message(LogEventLevel.trace, message);
+      return;
+    }
     output.stdout(dim(message));
   }
 
   void logWarn(String message) {
     stopStep();
+    if (events case final sink?) {
+      sink.message(LogEventLevel.warn, message);
+      return;
+    }
     output.stderr('${glyph.warn} $message');
   }
 
   void logError(String message) {
     stopStep();
+    if (events case final sink?) {
+      sink.message(LogEventLevel.error, message);
+      return;
+    }
     output.stderr('${glyph.bad} $message');
   }
 
@@ -149,6 +193,10 @@ final class Glyph {
 
 final class Step {
   Step._(this._log, this.label) : _watch = Stopwatch()..start() {
+    if (_log.events case final sink?) {
+      sink.stepStarted(label);
+      return;
+    }
     if (_log._fancy) {
       _draw();
       return;
@@ -178,7 +226,9 @@ final class Step {
     final parts = _partial.split('\n');
     _partial = parts.removeLast();
     for (final line in parts) {
-      if (_log._fancy) {
+      if (_log.events case final sink?) {
+        sink.stepOutput(label, line);
+      } else if (_log._fancy) {
         _tail.add(line);
         if (_tail.length > _tailLines) _tail.removeAt(0);
       } else {
@@ -189,7 +239,7 @@ final class Step {
   }
 
   void done([String? message]) =>
-      _close(_log.glyph.ok, message ?? label, timed: true);
+      _close(_log.glyph.ok, message ?? label, timed: true, ok: true);
 
   void fail([String? message]) => _close(_log.glyph.bad, message ?? label);
 
@@ -262,12 +312,26 @@ final class Step {
     _drawn = 0;
   }
 
-  void _close(String mark, String message, {bool timed = false}) {
+  void _close(
+    String mark,
+    String message, {
+    bool timed = false,
+    bool ok = false,
+  }) {
     if (_closed) return;
     _closed = true;
     if (_log._active == this) _log._active = null;
     _erase();
     _watch.stop();
+    if (_log.events case final sink?) {
+      sink.stepFinished(
+        label,
+        ok: ok,
+        message: message,
+        elapsed: _watch.elapsed,
+      );
+      return;
+    }
     final body = timed
         ? _log._withDetail(message, _fmtElapsed(_watch.elapsed))
         : message;

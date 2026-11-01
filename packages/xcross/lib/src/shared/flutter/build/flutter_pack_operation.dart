@@ -58,6 +58,11 @@ abstract final class FlutterPackOperation {
         runtime.runner.log.logWarn(summary);
       }
     }
+    // studio: 012 — the built .app for event consumers (the GUI).
+    runtime.runner.log.events?.event('artifact', {
+      'kind': 'app',
+      'path': built.appPath,
+    });
     return PackResult(
       outputPath: built.appPath,
       bundleId: bundleId,

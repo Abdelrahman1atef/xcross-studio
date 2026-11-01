@@ -41,6 +41,16 @@ final class DoctorCommand extends Command<void> {
     for (final (index, section) in sections.indexed) {
       final checks = await _examine(section);
       all.addAll(checks);
+      // studio: 012 — one `check` event per check for event consumers.
+      for (final check in checks) {
+        log.events?.event('check', {
+          'section': section.title,
+          'name': check.name,
+          'status': check.status.name,
+          'message': check.message,
+          'path': check.path,
+        });
+      }
       if (index > 0) _writeLine('');
       _writeLine(formatSection(section.title, checks, log: log));
     }

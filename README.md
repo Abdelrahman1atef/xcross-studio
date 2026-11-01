@@ -478,6 +478,13 @@ artifacts): Windows `xcross-studio-windows-x64-setup.exe` (per-user, no admin) o
 `/opt/xcross-studio/xcross/bin/xcross`), `xcross-studio-x86_64.AppImage`, or the portable `.tar.gz`. Every package
 bundles the `xcross` CLI next to the app. Install `pymobiledevice3` separately (`pipx install pymobiledevice3`).
 
+<!-- studio: 012 -->
+**Machine-readable output:** with `XCROSS_EVENTS=ndjson` set, `xcross flutter build`, `flutter run`, `install` and
+`flutter doctor` print one JSON event per line on stdout: `step`, `progress`, `log`, `warning`/`error` (with `code` and
+`hint`), `artifact` (the `.app`/`.ipa` path), `device`, `check` and `done` (exit code). The desktop app uses it for its
+step list, progress bar, issue list and Install button. Schema:
+[specs/012-build-events/contracts/events.schema.json](specs/012-build-events/contracts/events.schema.json).
+
 ## Compose Multiplatform
 
 `xcross compose` builds Kotlin Multiplatform iOS targets on Windows x64 and Linux x64 using the same private Darwin SDK, Swift, LLVM, and `xcross auth` signing flow as Flutter. Linux arm64 can run the CLI, but Compose iOS builds are limited by missing upstream Kotlin/Native host artifacts.

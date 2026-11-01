@@ -38,6 +38,20 @@ final class JsonSchemaLite {
     );
   }
 
+  /// Loads the build-events NDJSON schema from the repository (feature 012).
+  factory JsonSchemaLite.buildEventsContract() {
+    final packageLib = Isolate.resolvePackageUriSync(
+      Uri.parse('package:studio_ext/'),
+    )!;
+    final repoRoot = Directory.fromUri(packageLib).parent.parent.parent;
+    final file = File(
+      '${repoRoot.path}/specs/012-build-events/contracts/events.schema.json',
+    );
+    return JsonSchemaLite(
+      jsonDecode(file.readAsStringSync()) as Map<String, Object?>,
+    );
+  }
+
   final Map<String, Object?> schema;
 
   List<String> validate(Object? value) {
@@ -107,6 +121,10 @@ final class JsonSchemaLite {
       final minimum = node['minimum'];
       if (minimum is num && value < minimum) {
         errors.add('$path: $value < $minimum');
+      }
+      final maximum = node['maximum'];
+      if (maximum is num && value > maximum) {
+        errors.add('$path: $value > $maximum');
       }
     }
     if (value is Map) {

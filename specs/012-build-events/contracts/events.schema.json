@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:xcross-studio:build-events:schema:1",
+  "title": "XCROSS_EVENTS=ndjson events of xcross flutter build / flutter run / install / doctor (v 1)",
+  "description": "One JSON object per line (NDJSON) on stdout. Every object has v=1 and a type. ASCII-only (non-ASCII escaped). Lines that are not JSON objects (tool output written straight to stdout) may be interleaved and should be shown as text. Additive optional fields keep v=1.",
+  "oneOf": [
+    { "$ref": "#/$defs/step" },
+    { "$ref": "#/$defs/progress" },
+    { "$ref": "#/$defs/log" },
+    { "$ref": "#/$defs/warning" },
+    { "$ref": "#/$defs/error" },
+    { "$ref": "#/$defs/artifact" },
+    { "$ref": "#/$defs/device" },
+    { "$ref": "#/$defs/check" },
+    { "$ref": "#/$defs/done" }
+  ],
+  "$defs": {
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "name", "status"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "step" },
+        "name": { "type": "string", "description": "Step label, e.g. 'Compiling Runner'." },
+        "status": { "enum": ["start", "done", "failed"] },
+        "message": { "type": ["string", "null"], "description": "Closing message when it differs from the name." },
+        "elapsedMs": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "progress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "label", "fraction", "current", "total", "unit"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "progress" },
+        "label": { "type": "string" },
+        "fraction": { "type": ["number", "null"], "minimum": 0, "maximum": 1, "description": "Null when the total is unknown." },
+        "current": { "type": "integer", "minimum": 0 },
+        "total": { "type": ["integer", "null"] },
+        "unit": { "enum": ["bytes", "items"] }
+      }
+    },
+    "log": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "level", "message"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "log" },
+        "level": { "enum": ["trace", "info", "warn", "error"] },
+        "message": { "type": "string", "description": "May contain newlines; ANSI escapes removed." },
+        "stream": { "enum": ["stdout", "stderr"], "description": "Set for text written straight to the output." },
+        "step": { "type": "string", "description": "Set for output lines of a running step." }
+      }
+    },
+    "warning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "code", "message", "hint"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "warning" },
+        "code": { "type": ["string", "null"], "pattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)+$", "description": "Stable code such as build.asset_catalog_skipped; null for uncoded warnings." },
+        "message": { "type": "string" },
+        "hint": { "type": ["string", "null"] }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "code", "message", "hint"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "error" },
+        "code": { "type": ["string", "null"], "pattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)+$" },
+        "message": { "type": "string" },
+        "hint": { "type": ["string", "null"] }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "kind", "path"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "artifact" },
+        "kind": { "enum": ["app", "ipa"] },
+        "path": { "type": "string", "description": "Absolute path of the built bundle or archive." }
+      }
+    },
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "name", "osVersion", "legacy", "connection"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "device" },
+        "name": { "type": "string" },
+        "osVersion": { "type": ["string", "null"] },
+        "legacy": { "type": "boolean", "description": "iOS 15/16: installed over usbmux, opened through the user's disk image or from the icon." },
+        "connection": { "enum": ["usb", "wifi"] }
+      }
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "section", "name", "status", "message", "path"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "check" },
+        "section": { "type": "string" },
+        "name": { "type": "string" },
+        "status": { "enum": ["success", "warning", "failure"] },
+        "message": { "type": "string" },
+        "path": { "type": ["string", "null"] }
+      }
+    },
+    "done": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "exitCode"],
+      "properties": {
+        "v": { "const": 1 },
+        "type": { "const": "done" },
+        "exitCode": { "type": "integer", "description": "0 success, 1 failure, 64 usage error." }
+      }
+    }
+  }
+}

@@ -312,14 +312,17 @@ abstract final class XcrossCli {
     final checkUpdates = updateCheck.isEnabled(ownsStdout: ownsStdout);
     if (checkUpdates) updateCheck.printHintFromCache();
 
+    var status = 1; // studio: 012 — reported as the `done` event
     try {
       await runner.run(args);
+      status = 0;
       return 0;
     } on UsageException catch (e) {
-      runtime.log.output.stderr('$e');
+      reportFailure(runtime.log, '$e');
+      status = 64;
       return 64;
     } on Object catch (error, stackTrace) {
-      runtime.log.output.stderr(formatFailure(error, stackTrace));
+      reportFailure(runtime.log, formatFailure(error, stackTrace));
       return 1;
     } finally {
       // After the command, never before: neither of these is worth a millisecond
@@ -342,6 +345,19 @@ abstract final class XcrossCli {
         // Best effort cleanup. Update completion should not be blocked by stale backup cleanup.
       }
       if (checkUpdates) await updateCheck.refreshIfStale();
+      runtime.log.events?.event('done', {'exitCode': status}); // studio: 012
+    }
+  }
+
+  // studio: 012 — in NDJSON mode a failure is an `error` event (code, message,
+  // hint) instead of stderr text.
+  /// Prints [text] to stderr, or reports it as an `error` event.
+  static void reportFailure(Log log, String text) {
+    final events = log.events;
+    if (events == null) {
+      log.output.stderr(text);
+    } else {
+      events.message(LogEventLevel.error, text);
     }
   }
 

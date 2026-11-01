@@ -11,7 +11,8 @@ final class ProgressBar {
     String? glyph,
   }) : _glyph = glyph ?? log.glyph.download,
        _stopwatch = Stopwatch()..start(),
-       _isTty = log.ansi.useAnsi && !log.isVerbose {
+       // studio: 012 — no bar drawing when events are reported.
+       _isTty = log.ansi.useAnsi && !log.isVerbose && log.events == null {
     log.stopStep();
   }
 
@@ -55,8 +56,11 @@ final class ProgressBar {
     _report();
   }
 
-  void finish([String? detail]) =>
-      _close(() => log.logDone(label, detail ?? _format(_current)));
+  void finish([String? detail]) {
+    // studio: 012 — the bar ends at 100% for event consumers.
+    if (!_done && log.events != null) _emitProgress(log.events!, done: true);
+    _close(() => log.logDone(label, detail ?? _format(_current)));
+  }
 
   void fail([String? message]) =>
       _close(() => log.logStatus('${log.glyph.bad}${message ?? label}'));
@@ -71,6 +75,10 @@ final class ProgressBar {
 
   void _report() {
     if (_done) return;
+    if (log.events case final sink?) {
+      _emitProgress(sink);
+      return;
+    }
     if (!_isTty) {
       _logNextDecile();
       return;
@@ -79,6 +87,30 @@ final class ProgressBar {
     if (elapsedMs - _lastRenderMs < _renderIntervalMs) return;
     _lastRenderMs = elapsedMs;
     _render(elapsedMs);
+  }
+
+  // studio: 012 — `progress` events, at most one per whole percent (or per
+  // 250 ms when the total is unknown).
+  int _lastEventPercent = -1;
+  int _lastEventMs = -250;
+
+  void _emitProgress(LogEvents sink, {bool done = false}) {
+    final known = total > 0;
+    final percent = known ? (_current * 100 ~/ total).clamp(0, 100) : -1;
+    final elapsedMs = _stopwatch.elapsedMilliseconds;
+    if (!done) {
+      if (known && percent == _lastEventPercent) return;
+      if (!known && elapsedMs - _lastEventMs < 250) return;
+    }
+    _lastEventPercent = percent;
+    _lastEventMs = elapsedMs;
+    sink.event('progress', {
+      'label': label,
+      'fraction': done ? 1.0 : (known ? percent / 100 : null),
+      'current': _current,
+      'total': known ? total : null,
+      'unit': unit.name,
+    });
   }
 
   void _logNextDecile() {

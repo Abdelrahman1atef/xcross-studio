@@ -21,6 +21,7 @@ class Job extends ChangeNotifier {
     this.workingDirectory,
     this.onEvent,
     this.maxLines = 5000,
+    this.structured = false,
     DateTime Function() clock = DateTime.now,
   }) : _clock = clock,
        started = clock();
@@ -37,6 +38,45 @@ class Job extends ChangeNotifier {
 
   /// Older lines are dropped beyond this many.
   final int maxLines;
+
+  /// Run with `XCROSS_EVENTS=ndjson` (build, run, install, doctor): steps,
+  /// progress, issues and artifacts arrive as events (feature 012). An older
+  /// CLI ignores the variable and its text output is shown as before.
+  final bool structured;
+
+  /// Steps reported by the CLI, in order; a finished step replaces its start.
+  final List<BuildStep> steps = [];
+
+  /// The latest download/extraction progress.
+  BuildProgress? progress;
+
+  /// Built bundles and archives, in order.
+  final List<BuildArtifact> artifacts = [];
+
+  /// Doctor checks, in order.
+  final List<DoctorCheckResult> checks = [];
+
+  /// The device the CLI chose.
+  ConnectedDevice? device;
+
+  /// The exit code from the `done` event.
+  int? reportedExitCode;
+
+  /// The step running now.
+  BuildStep? get currentStep {
+    for (final step in steps.reversed) {
+      if (step.status == 'start') return step;
+    }
+    return null;
+  }
+
+  /// The path of the last artifact of [kind] (`app` or `ipa`).
+  String? artifact(String kind) {
+    for (final artifact in artifacts.reversed) {
+      if (artifact.kind == kind) return artifact.path;
+    }
+    return null;
+  }
 
   final DateTime Function() _clock;
   final DateTime started;
@@ -73,10 +113,11 @@ class Job extends ChangeNotifier {
         invocation.executable,
         invocation.argumentsFor(command),
         workingDirectory: workingDirectory,
-        environment: const {
+        environment: {
           'XCROSS_OUTPUT_ENCODING': 'utf-8',
           'PYTHONIOENCODING': 'utf-8',
           'NO_COLOR': '1',
+          if (structured) 'XCROSS_EVENTS': 'ndjson',
         },
       );
       _process = process;
@@ -142,15 +183,84 @@ class Job extends ChangeNotifier {
       .transform(const LineSplitter());
 
   void _stdoutLine(String line) {
-    final event = XcrossEvent.tryParse(line);
-    if (event != null) {
-      onEvent?.call(event);
+    final (:text, :event) = XcrossEvent.split(line);
+    if (event == null) {
+      if (text.trim().isEmpty && lines.isNotEmpty && lines.last.text.isEmpty) {
+        return;
+      }
+      _add(OutputLine.classify(text));
       return;
     }
-    if (line.trim().isEmpty && lines.isNotEmpty && lines.last.text.isEmpty) {
-      return;
+    if (text.trim().isNotEmpty) _add(OutputLine.classify(text));
+    _handle(event);
+    onEvent?.call(event);
+  }
+
+  /// Folds a build event into the job's state and its output lines.
+  void _handle(XcrossEvent event) {
+    switch (event) {
+      case BuildLog(:final level, :final message, :final stream):
+        for (final part in message.split('\n')) {
+          _add(
+            level == 'trace' || stream == 'stderr'
+                ? OutputLine(part, LineKind.stderr)
+                : OutputLine.classify(part),
+          );
+        }
+      case BuildIssue(:final isError, :final code, :final message, :final hint):
+        _add(
+          OutputLine(
+            '${isError ? 'error' : 'warning'}: '
+            '${code == null ? '' : '[$code] '}$message',
+            isError ? LineKind.error : LineKind.warning,
+            code: code,
+          ),
+        );
+        if (hint != null && hint.isNotEmpty) {
+          _add(OutputLine('hint: $hint', LineKind.hint));
+        }
+      case BuildStep(:final name, :final status):
+        final start = steps.lastIndexWhere(
+          (step) => step.name == name && step.status == 'start',
+        );
+        if (status != 'start' && start >= 0) {
+          steps[start] = event;
+        } else {
+          steps.add(event);
+        }
+        _add(_stepLine(event));
+      case BuildProgress():
+        progress = event;
+        notifyListeners();
+      case BuildArtifact():
+        artifacts.add(event);
+        notifyListeners();
+      case DoctorCheckResult():
+        checks.add(event);
+        notifyListeners();
+      case ConnectedDevice():
+        device = event;
+        notifyListeners();
+      case BuildDone(:final exitCode):
+        reportedExitCode = exitCode;
+        notifyListeners();
+      default:
+        return;
     }
-    _add(OutputLine.classify(line));
+  }
+
+  static OutputLine _stepLine(BuildStep step) {
+    final elapsed = step.elapsedMs == null
+        ? ''
+        : '  ${(step.elapsedMs! / 1000).toStringAsFixed(1)}s';
+    return switch (step.status) {
+      'done' => OutputLine('✔ ${step.name}$elapsed', LineKind.success),
+      'failed' => OutputLine(
+        '✖ ${step.message ?? step.name}',
+        LineKind.failure,
+      ),
+      _ => OutputLine('${step.name}…', LineKind.plain),
+    };
   }
 
   void _add(OutputLine line) {
@@ -185,6 +295,7 @@ class JobCenter extends ChangeNotifier {
     List<String> command, {
     String? workingDirectory,
     void Function(XcrossEvent event)? onEvent,
+    bool structured = false,
   }) {
     final job = Job(
       title: title,
@@ -193,6 +304,7 @@ class JobCenter extends ChangeNotifier {
       launcher: launcher,
       workingDirectory: workingDirectory,
       onEvent: onEvent,
+      structured: structured,
     );
     jobs.add(job);
     job.addListener(notifyListeners);

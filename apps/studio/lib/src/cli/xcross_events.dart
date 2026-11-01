@@ -1,18 +1,37 @@
 import 'dart:convert';
 
-/// One NDJSON event from `xcross … --json` (schema:
-/// `specs/010-device-logs/contracts/devicelog.schema.json`, v 1).
+/// One NDJSON event from `xcross … --json` (schemas:
+/// `specs/010-device-logs/contracts/devicelog.schema.json` and, with
+/// `XCROSS_EVENTS=ndjson`, `specs/012-build-events/contracts/events.schema.json`;
+/// v 1).
 sealed class XcrossEvent {
   const XcrossEvent();
 
   /// The event on [line], or `null` for a line that is not a known v1 event
   /// (plain text, other JSON, newer event types).
-  static XcrossEvent? tryParse(String line) {
+  static XcrossEvent? tryParse(String line) => split(line).event;
+
+  /// Splits [line] into leading text and an event. Tools that write straight
+  /// to stdout can leave a partial line, so an event may follow text on the
+  /// same line.
+  static ({String text, XcrossEvent? event}) split(String line) {
     final trimmed = line.trim();
-    if (!trimmed.startsWith('{')) return null;
+    if (trimmed.startsWith('{')) {
+      final event = _decode(trimmed);
+      if (event != null) return (text: '', event: event);
+    }
+    final start = line.indexOf('{"v":1,"type":');
+    if (start > 0) {
+      final event = _decode(line.substring(start).trim());
+      if (event != null) return (text: line.substring(0, start), event: event);
+    }
+    return (text: line, event: null);
+  }
+
+  static XcrossEvent? _decode(String text) {
     final Object? json;
     try {
-      json = jsonDecode(trimmed);
+      json = jsonDecode(text);
     } on FormatException {
       return null;
     }
@@ -25,6 +44,15 @@ sealed class XcrossEvent {
       'device' => ConnectedDevice.fromJson(json),
       'crash' => CrashReport.fromJson(json),
       'notice' => Notice('${json['message'] ?? ''}'),
+      'step' => BuildStep.fromJson(json),
+      'progress' => BuildProgress.fromJson(json),
+      'log' => BuildLog.fromJson(json),
+      'warning' || 'error' => BuildIssue.fromJson(json),
+      'artifact' => BuildArtifact.fromJson(json),
+      'check' => DoctorCheckResult.fromJson(json),
+      'done' => BuildDone(
+        json['exitCode'] is int ? json['exitCode']! as int : 1,
+      ),
       _ => null,
     };
   }
@@ -247,4 +275,137 @@ class CrashReport extends XcrossEvent {
 class Notice extends XcrossEvent {
   const Notice(this.message);
   final String message;
+}
+
+// Build events (XCROSS_EVENTS=ndjson, feature 012).
+
+/// `step`: a build step started, finished or failed.
+class BuildStep extends XcrossEvent {
+  const BuildStep({
+    required this.name,
+    required this.status,
+    this.message,
+    this.elapsedMs,
+  });
+
+  factory BuildStep.fromJson(Map<String, Object?> json) => BuildStep(
+    name: _string(json['name']) ?? '',
+    status: _string(json['status']) ?? 'start',
+    message: _string(json['message']),
+    elapsedMs: json['elapsedMs'] is int ? json['elapsedMs']! as int : null,
+  );
+
+  final String name;
+
+  /// `start`, `done` or `failed`.
+  final String status;
+  final String? message;
+  final int? elapsedMs;
+}
+
+/// `progress`: a download or extraction; [fraction] is null when unknown.
+class BuildProgress extends XcrossEvent {
+  const BuildProgress({required this.label, this.fraction});
+
+  factory BuildProgress.fromJson(Map<String, Object?> json) => BuildProgress(
+    label: _string(json['label']) ?? '',
+    fraction: json['fraction'] is num
+        ? (json['fraction']! as num).toDouble()
+        : null,
+  );
+
+  final String label;
+  final double? fraction;
+}
+
+/// `log`: a line the CLI printed (status, trace, step output, raw output).
+class BuildLog extends XcrossEvent {
+  const BuildLog({
+    required this.level,
+    required this.message,
+    this.stream,
+    this.step,
+  });
+
+  factory BuildLog.fromJson(Map<String, Object?> json) => BuildLog(
+    level: _string(json['level']) ?? 'info',
+    message: _string(json['message']) ?? '',
+    stream: _string(json['stream']),
+    step: _string(json['step']),
+  );
+
+  final String level;
+  final String message;
+  final String? stream;
+  final String? step;
+}
+
+/// `warning` / `error`: a problem with its stable code and fix hint.
+class BuildIssue extends XcrossEvent {
+  const BuildIssue({
+    required this.isError,
+    required this.message,
+    this.code,
+    this.hint,
+  });
+
+  factory BuildIssue.fromJson(Map<String, Object?> json) => BuildIssue(
+    isError: json['type'] == 'error',
+    code: _string(json['code']),
+    message: _string(json['message']) ?? '',
+    hint: _string(json['hint']),
+  );
+
+  final bool isError;
+  final String? code;
+  final String message;
+  final String? hint;
+}
+
+/// `artifact`: a built `.app` or `.ipa`.
+class BuildArtifact extends XcrossEvent {
+  const BuildArtifact({required this.kind, required this.path});
+
+  factory BuildArtifact.fromJson(Map<String, Object?> json) => BuildArtifact(
+    kind: _string(json['kind']) ?? 'app',
+    path: _string(json['path']) ?? '',
+  );
+
+  /// `app` or `ipa`.
+  final String kind;
+  final String path;
+}
+
+/// `check`: one doctor check.
+class DoctorCheckResult extends XcrossEvent {
+  const DoctorCheckResult({
+    required this.section,
+    required this.name,
+    required this.status,
+    required this.message,
+    this.path,
+  });
+
+  factory DoctorCheckResult.fromJson(Map<String, Object?> json) =>
+      DoctorCheckResult(
+        section: _string(json['section']) ?? '',
+        name: _string(json['name']) ?? '',
+        status: _string(json['status']) ?? 'success',
+        message: _string(json['message']) ?? '',
+        path: _string(json['path']),
+      );
+
+  final String section;
+  final String name;
+
+  /// `success`, `warning` or `failure`.
+  final String status;
+  final String message;
+  final String? path;
+}
+
+/// `done`: the command finished with [exitCode].
+class BuildDone extends XcrossEvent {
+  const BuildDone(this.exitCode);
+  final int exitCode;
 }

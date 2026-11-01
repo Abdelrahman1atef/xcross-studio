@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../cli/output_line.dart';
+import '../cli/xcross_events.dart';
 import '../state/job.dart';
 
 /// Monospace style for output and logs.
@@ -291,6 +292,15 @@ class _JobOutputViewState extends State<JobOutputView> {
       mainAxisSize: widget.height == null ? MainAxisSize.max : MainAxisSize.min,
       children: [
         _StatusBar(job: job),
+        // studio: 012 — steps, progress and issues from build events.
+        if (job.steps.isNotEmpty || job.progress != null) ...[
+          const SizedBox(height: 6),
+          StepsPanel(job: job),
+        ],
+        if (job.issues.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          IssueList(job: job),
+        ],
         const SizedBox(height: 6),
         if (widget.height == null)
           Expanded(child: output)
@@ -390,6 +400,200 @@ class _StatusBar extends StatelessWidget {
       ],
     );
   }
+}
+
+// studio: 012 — views over the build events of a structured job.
+
+/// The running step (or download progress) and the finished steps.
+class StepsPanel extends StatelessWidget {
+  const StepsPanel({super.key, required this.job});
+
+  final Job job;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final progress = job.progress;
+    final fraction = progress?.fraction;
+    final downloading = job.isRunning && fraction != null && fraction < 1;
+    final current = job.currentStep;
+    final finished = job.steps.where((s) => s.status != 'start').length;
+    final String headline;
+    if (downloading) {
+      headline = '${progress!.label}  ${(fraction * 100).round()}%';
+    } else if (current != null && job.isRunning) {
+      headline = '${current.name}…';
+    } else if (job.isRunning) {
+      headline = 'Working…';
+    } else {
+      headline = '$finished step${finished == 1 ? '' : 's'} finished';
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (job.isRunning)
+          LinearProgressIndicator(value: downloading ? fraction : null),
+        const SizedBox(height: 4),
+        Text(headline, style: Theme.of(context).textTheme.bodyMedium),
+        if (job.steps.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              for (final step in job.steps)
+                Chip(
+                  visualDensity: VisualDensity.compact,
+                  avatar: switch (step.status) {
+                    'done' => Icon(
+                      Icons.check_circle,
+                      size: 16,
+                      color: Colors.green.shade700,
+                    ),
+                    'failed' => Icon(
+                      Icons.cancel,
+                      size: 16,
+                      color: scheme.error,
+                    ),
+                    _ => const SizedBox.square(
+                      dimension: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  },
+                  label: Text(
+                    step.elapsedMs == null
+                        ? step.name
+                        : '${step.name}  '
+                              '${(step.elapsedMs! / 1000).toStringAsFixed(1)}s',
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Errors and warnings with their codes and fix hints.
+class IssueList extends StatelessWidget {
+  const IssueList({super.key, required this.job, this.limit = 6});
+
+  final Job job;
+  final int limit;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final issues = <(OutputLine, String?)>[];
+    for (var i = 0; i < job.lines.length; i++) {
+      final line = job.lines[i];
+      if (!line.isIssue) continue;
+      final next = i + 1 < job.lines.length ? job.lines[i + 1] : null;
+      issues.add((line, next?.kind == LineKind.hint ? next!.text : null));
+    }
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: scheme.errorContainer.withValues(alpha: 0.25),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final (issue, hint) in issues.take(limit))
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SelectableText(
+                    issue.text,
+                    style: mono.copyWith(color: lineColor(issue.kind, scheme)),
+                  ),
+                  if (hint != null)
+                    SelectableText(
+                      '  $hint',
+                      style: mono.copyWith(
+                        color: lineColor(LineKind.hint, scheme),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          if (issues.length > limit)
+            Text('… ${issues.length - limit} more in the output below'),
+        ],
+      ),
+    );
+  }
+}
+
+/// The doctor's checks as a checklist (from `check` events), above the
+/// command output.
+class DoctorReport extends StatelessWidget {
+  const DoctorReport({super.key, required this.job});
+
+  final Job job;
+
+  @override
+  Widget build(BuildContext context) => Watch(
+    listenable: job,
+    builder: (context) {
+      final scheme = Theme.of(context).colorScheme;
+      final sections = <String, List<DoctorCheckResult>>{};
+      for (final check in job.checks) {
+        sections.putIfAbsent(check.section, () => []).add(check);
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final MapEntry(key: section, value: checks)
+              in sections.entries) ...[
+            Padding(
+              padding: const EdgeInsets.only(top: 8, bottom: 2),
+              child: Text(
+                section,
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+            ),
+            for (final check in checks)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  switch (check.status) {
+                    'success' => Icon(
+                      Icons.check_circle,
+                      size: 18,
+                      color: Colors.green.shade700,
+                    ),
+                    'failure' => Icon(
+                      Icons.cancel,
+                      size: 18,
+                      color: scheme.error,
+                    ),
+                    _ => Icon(
+                      Icons.warning_amber,
+                      size: 18,
+                      color: Colors.orange.shade700,
+                    ),
+                  },
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${check.name}  ${check.message}'
+                      '${check.path == null ? '' : '  (${check.path})'}',
+                    ),
+                  ),
+                ],
+              ),
+          ],
+          const SizedBox(height: 8),
+          JobOutputView(job: job, showInput: false, height: 220),
+        ],
+      );
+    },
+  );
 }
 
 /// Rebuilds [builder] whenever [listenable] changes.
