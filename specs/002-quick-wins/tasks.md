@@ -264,8 +264,11 @@ where they encoded the old order, and say so in the commit).
   test failure).
 - [X] T043 Real-device run (quickstart §2) on the connected iPhone X from Windows (needs `pymobiledevice3` on PATH),
   recording the results in `device-check.md`. If `pymobiledevice3` is missing, record that and leave the row open.
-  _Recorded in `device-check.md`: the real Windows service probe passes (rows 1–2). The device rows are open
-  because `pymobiledevice3` is not installed natively._
+  _Done on the real iPhone X (iOS 16.7.16) from Windows; see `device-check.md`:
+  - rows 1–6 pass (`device.ios_unsupported` with a 1.4 s net precheck; `device.not_found`;
+    `device.host_service_unavailable`; doctor "Device service")
+  - row 7 needs an iOS 17+ device
+  - Linux is deferred_
 - [X] T044 Update `specs/ROADMAP.md` (002 status) and `specs/HANDOFF.md`.
 
 ## Dependencies & Execution Order

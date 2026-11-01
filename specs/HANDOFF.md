@@ -18,7 +18,7 @@ Linux that builds, signs, installs and debugs complete Flutter iOS apps without 
 | Spec Kit | initialised (`specify init --here --integration claude --script py`); skills in `.claude/skills/speckit-*` |
 | Specs | `001-inspect`: **implemented** (spec, plan, research, data-model, contracts, quickstart, tasks all `[X]`); `010-device-logs/spec.md` Draft; others only in ROADMAP |
 | Feature 001 code | new package `packages/studio_ext` (`xcross inspect <ipa\|app> [--json] [--normalize]`); seams marked `studio:` in root `pubspec.yaml`, `packages/xcross/pubspec.yaml`, `runner.dart`, `no_deep_imports_test.dart`, `unit-tests.yml`, `release.yml` (pub dry-run disabled), README, CHANGELOG |
-| Git | branch `001-inspect` (setup + feature 001) pushed to `origin`; branch `002-quick-wins` (from `001-inspect`) holds feature 002, **not yet committed**; `main` untouched (= upstream) |
+| Git | branch `001-inspect` (setup + feature 001) pushed to `origin`; branch `002-quick-wins` (from `001-inspect`) holds feature 002, pushed to `origin`; `main` untouched (= upstream) |
 | Baseline | `dart pub get` OK (Dart 3.13.7); `dart analyze --fatal-warnings` clean (repo_analyzer included); `studio_ext` tests 78 pass / 2 skipped; `xcross` tests 1214 pass / 37 skipped / 1 fail on this PC (`windows_swift_response_test`: needs `clang` on PATH, unrelated) |
 
 ## Suggested next steps
@@ -27,8 +27,8 @@ Linux that builds, signs, installs and debugs complete Flutter iOS apps without 
    (check `.claude/` contents first), push when the user agrees.
 2. ~~Spec Kit cycle for `001-inspect`~~ done (2026-11-01). Open: **T045 Linux verification (deferred by the user)**
    and quickstart §4 (real IPA / signed `.app`, `--normalize` parity `diff` between Windows and Linux).
-3. ~~`002-quick-wins`~~ implemented (2026-11-01; device rows in `specs/002-quick-wins/device-check.md` need `pymobiledevice3`
-   installed natively on Windows). Next: `010-device-logs` (MVP, high value, small: it generalises existing `DeviceLog`).
+3. ~~`002-quick-wins`~~ implemented and device-checked on the iPhone X from Windows (2026-11-01; `pymobiledevice3`
+   11.49.1 installed natively via `py -m pip`; see `specs/002-quick-wins/device-check.md`). Next: `010-device-logs` (MVP, high value, small: it generalises existing `DeviceLog`).
 4. ~~Add `windows-latest` to CI~~: already there upstream (windows-2022, windows-11-arm); `studio_ext` was added to the test loops.
 
 ## Decisions already made by the user
