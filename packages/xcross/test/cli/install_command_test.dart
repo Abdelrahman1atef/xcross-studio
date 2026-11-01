@@ -35,6 +35,7 @@ void main() {
                 required udid,
                 required ddiDirectory,
                 required launch,
+                required resign,
               }) async {
                 installs.add({
                   'app': p.basename(appPath),
@@ -42,7 +43,15 @@ void main() {
                   'udid': udid,
                   'ddi': ddiDirectory,
                   'launch': launch,
+                  'resign': resign,
                   'executable': File(p.join(appPath, 'Runner')).existsSync(),
+                  'binaryPlist':
+                      String.fromCharCodes(
+                        File(
+                          p.join(appPath, 'Info.plist'),
+                        ).readAsBytesSync().take(8),
+                      ) ==
+                      'bplist00',
                 });
               },
         ),
@@ -93,7 +102,9 @@ void main() {
         'udid': 'U1',
         'ddi': '/ddi',
         'launch': false,
+        'resign': true,
         'executable': true,
+        'binaryPlist': false,
       });
       expect(File(p.join(temp.path, 'evil')).existsSync(), isFalse);
       expect(
@@ -103,6 +114,20 @@ void main() {
         isEmpty,
         reason: 'work folder removed',
       );
+    },
+  );
+
+  test(
+    'AC-011-6 --no-resign installs the bundle byte-identical (binary plist kept)',
+    () async {
+      final ipa = writeIpa({
+        'Payload/Runner.app/Info.plist': binaryInfo('com.example.signed'),
+        'Payload/Runner.app/Runner': [0xcf, 0xfa, 0xed, 0xfe],
+      });
+      await runner().run(['install', ipa, '--no-resign']);
+      expect(installs.single['resign'], isFalse);
+      expect(installs.single['binaryPlist'], isTrue);
+      expect(installs.single['bundleId'], 'com.example.signed');
     },
   );
 

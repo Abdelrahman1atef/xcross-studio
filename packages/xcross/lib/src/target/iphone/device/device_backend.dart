@@ -136,8 +136,39 @@ final class NativeBackend implements DeviceBackend {
     required Device device,
     required String bundleId,
     String? projectRoot,
+  }) => _signBundle(
+    // studio: 011
+    appOrIpaPath,
+    bundleId: bundleId,
+    deviceUdids: [device.udid],
+    projectRoot: projectRoot,
+    installTo: device,
+  );
+
+  // studio: 011 — `xcross sign`: the provisioning and signing of [install]
+  // without the install.
+  /// Signs the `.app` at [appPath] in place and returns the bundle id it
+  /// was signed as. [deviceUdids] are registered on the team first; the
+  /// development profile also lists every device already on the team.
+  Future<String> sign(
+    String appPath, {
+    required String bundleId,
+    List<String> deviceUdids = const [],
+    String? projectRoot,
+  }) => _signBundle(
+    appPath,
+    bundleId: bundleId,
+    deviceUdids: deviceUdids,
+    projectRoot: projectRoot,
+  );
+
+  Future<String> _signBundle(
+    String appOrIpaPath, {
+    required String bundleId,
+    required List<String> deviceUdids,
+    String? projectRoot,
+    Device? installTo,
   }) async {
-    final udid = device.udid;
     final isAppDirectory =
         appOrIpaPath.endsWith('.app') &&
         pymd.runner.host.fileSystem.directory(appOrIpaPath).existsSync();
@@ -155,7 +186,8 @@ final class NativeBackend implements DeviceBackend {
     } on SigningServiceUnavailable catch (unavailable) {
       final installed = await _installOffline(
         appOrIpaPath,
-        device: device,
+        deviceUdids: deviceUdids, // studio: 011
+        installTo: installTo,
         bundleId: bundleId,
         projectRoot: projectRoot,
         unavailable: unavailable,
@@ -176,7 +208,8 @@ final class NativeBackend implements DeviceBackend {
         if (!SigningServiceUnavailable.isConnectivityFailure(error)) rethrow;
         return await _installOffline(
           appOrIpaPath,
-          device: device,
+          deviceUdids: deviceUdids, // studio: 011
+          installTo: installTo,
           bundleId: bundleId,
           projectRoot: projectRoot,
           unavailable: SigningServiceUnavailable.unreachable(
@@ -208,20 +241,20 @@ final class NativeBackend implements DeviceBackend {
         appOrIpaPath,
         signing: signing,
         bundleId: bundleIdentity.exact,
-        udid: udid,
+        deviceUdids: deviceUdids, // studio: 011
         outputDir: outputDir,
         appGroups: appGroups,
       );
       final extensionAssets = await _provisionExtensions(
         extensions,
         signing: signing,
-        udid: udid,
+        deviceUdids: deviceUdids, // studio: 011
         profilesDir: profilesDir,
         appGroups: appGroups,
       );
       return await _signAndInstall(
         appOrIpaPath,
-        device: device,
+        installTo: installTo, // studio: 011
         bundleIdentity: bundleIdentity,
         asset: asset,
         extensions: extensions,
@@ -239,7 +272,7 @@ final class NativeBackend implements DeviceBackend {
 
   Future<String> _signAndInstall(
     String appOrIpaPath, {
-    required Device device,
+    required Device? installTo, // studio: 011 — null: sign only
     required SignedBundleIdentity bundleIdentity,
     required SigningAsset asset,
     required List<EmbeddedExtension> extensions,
@@ -262,11 +295,13 @@ final class NativeBackend implements DeviceBackend {
       ).signApp(appOrIpaPath),
     );
     await _verifySignedBundleId(appOrIpaPath, bundleIdentity);
-    await PymdDevices(pymd).install(
-      appOrIpaPath,
-      udid: device.udid,
-      overTunnel: device.source == DeviceSource.tunneld,
-    );
+    if (installTo case final device?) {
+      await PymdDevices(pymd).install(
+        appOrIpaPath,
+        udid: device.udid,
+        overTunnel: device.source == DeviceSource.tunneld,
+      );
+    }
     return bundleIdentity.exact;
   }
 
@@ -281,7 +316,8 @@ final class NativeBackend implements DeviceBackend {
   /// a pointer to reconnect.
   Future<String> _installOffline(
     String appOrIpaPath, {
-    required Device device,
+    required List<String> deviceUdids, // studio: 011
+    required Device? installTo,
     required String bundleId,
     required String? projectRoot,
     required SigningServiceUnavailable unavailable,
@@ -313,7 +349,7 @@ final class NativeBackend implements DeviceBackend {
       identity,
       bundleId: bundleIdentity.exact,
       bundlePath: appOrIpaPath,
-      udid: device.udid,
+      deviceUdids: deviceUdids, // studio: 011
       unavailable: unavailable,
     );
     final extensionAssets = <String, SigningAsset>{
@@ -322,13 +358,13 @@ final class NativeBackend implements DeviceBackend {
           identity,
           bundleId: extension.bundleId,
           bundlePath: extension.path,
-          udid: device.udid,
+          deviceUdids: deviceUdids, // studio: 011
           unavailable: unavailable,
         ),
     };
     final installed = await _signAndInstall(
       appOrIpaPath,
-      device: device,
+      installTo: installTo, // studio: 011
       bundleIdentity: bundleIdentity,
       asset: asset,
       extensions: extensions,
@@ -393,7 +429,7 @@ final class NativeBackend implements DeviceBackend {
     SigningIdentity identity, {
     required String bundleId,
     required String? bundlePath,
-    required String udid,
+    required List<String> deviceUdids, // studio: 011
     required SigningServiceUnavailable unavailable,
   }) async {
     final paths = pymd.runner.host.paths.context;
@@ -429,7 +465,8 @@ final class NativeBackend implements DeviceBackend {
         'Reconnect and run again so xcross can renew it.',
       );
     }
-    if (!profileCoversDevice(asset.profile, udid)) {
+    for (final udid in deviceUdids) {
+      if (profileCoversDevice(asset.profile, udid)) continue;
       throw XcrossError(
         '${unavailable.message}\n'
         'The cached profile for "$bundleId" does not include device $udid. '
@@ -556,7 +593,7 @@ final class NativeBackend implements DeviceBackend {
     String appOrIpaPath, {
     required SigningSession signing,
     required String bundleId,
-    required String udid,
+    required List<String> deviceUdids, // studio: 011
     required String outputDir,
     required List<String> appGroups,
   }) async {
@@ -566,7 +603,7 @@ final class NativeBackend implements DeviceBackend {
           client: signing.client,
         ).provisionDevelopmentIdentity(
           bundleId: bundleId,
-          deviceUdids: [udid],
+          deviceUdids: deviceUdids, // studio: 011
           outputDir: outputDir,
           identityDir: signing.identityDir,
           appGroups: appGroups,
@@ -658,7 +695,7 @@ final class NativeBackend implements DeviceBackend {
   Future<Map<String, SigningAsset>> _provisionExtensions(
     List<EmbeddedExtension> extensions, {
     required SigningSession signing,
-    required String udid,
+    required List<String> deviceUdids, // studio: 011
     required String profilesDir,
     required List<String> appGroups,
   }) async {
@@ -675,7 +712,7 @@ final class NativeBackend implements DeviceBackend {
               client: signing.client,
             ).provisionDevelopmentIdentity(
               bundleId: extensionBundleId,
-              deviceUdids: [udid],
+              deviceUdids: deviceUdids, // studio: 011
               outputDir: pymd.runner.host.paths.context.join(
                 profilesDir,
                 extensionBundleId,

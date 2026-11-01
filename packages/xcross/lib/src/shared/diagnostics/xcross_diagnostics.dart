@@ -36,6 +36,25 @@ abstract final class XcrossCodes {
     'install.no_app',
     'The IPA must contain exactly one app under Payload/.',
   );
+  // studio: 011 — xcross sign
+  static const signOutputInvalid = DiagnosticCode(
+    'sign.output_invalid',
+    'Pass -o <file>.ipa, a path that is not the input file.',
+  );
+  static const signNoDevice = DiagnosticCode(
+    'sign.no_device',
+    'Connect the iPhone by USB (or pass --udid <id>) once, so it is '
+        'registered on your team; the profile then covers it.',
+  );
+  static const signVerifyFailed = DiagnosticCode(
+    'sign.verify_failed',
+    'Run xcross inspect on the input and report the problem with its output.',
+  );
+  static const signEncryptedApp = DiagnosticCode(
+    'sign.encrypted_app',
+    'App Store downloads are encrypted for one Apple ID; re-signed they '
+        'install but do not start. Use a decrypted or self-built IPA.',
+  );
   static const deviceNotFound = DiagnosticCode(
     'device.not_found',
     'Connect the iPhone with a cable, unlock it and tap Trust, then retry '
@@ -133,6 +152,10 @@ abstract final class XcrossCodes {
     deviceLegacyDebugUnsupported,
     installUnsupportedInput,
     installNoApp,
+    signOutputInvalid, // studio: 011
+    signNoDevice,
+    signVerifyFailed,
+    signEncryptedApp,
     toolchainPathLinkerUnusable,
     buildPodspecOnlyPlugin,
     buildPluginManifestMissing,
