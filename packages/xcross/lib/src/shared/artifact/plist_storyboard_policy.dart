@@ -9,21 +9,34 @@ final class PlistStoryboardPolicy {
   final HostFileSystemInterface fileSystem;
   final p.Context paths;
 
-  String stripUnsatisfiableStoryboards(String xml, String bundleDir) {
+  /// [onRemoved] (studio: 002) is told about every storyboard reference
+  /// that is removed, as `(Info.plist key, storyboard name)`.
+  String stripUnsatisfiableStoryboards(
+    String xml,
+    String bundleDir, {
+    void Function(String key, String name)? onRemoved,
+  }) {
     bool hasCompiled(String name) => fileSystem
         .directory(paths.join(bundleDir, '$name.storyboardc'))
         .existsSync();
 
     // Named local reused by Main and Scene patterns (identical predicate).
-    String keepIfCompiled(Match m) =>
-        hasCompiled(m.group(1)!) ? m.group(0)! : '';
+    String Function(Match) keepIfCompiled(String key) => (m) {
+      if (hasCompiled(m.group(1)!)) return m.group(0)!;
+      onRemoved?.call(key, m.group(1)!);
+      return '';
+    };
 
-    var result = xml.replaceAllMapped(_uiMainStoryboardPattern, keepIfCompiled);
+    var result = xml.replaceAllMapped(
+      _uiMainStoryboardPattern,
+      keepIfCompiled('UIMainStoryboardFile'),
+    );
 
     result = result.replaceAllMapped(_uiLaunchStoryboardPattern, (m) {
       if (hasCompiled(m.group(1)!)) {
         return m.group(0)!;
       }
+      onRemoved?.call('UILaunchStoryboardName', m.group(1)!);
       // Replace with UILaunchScreen programmatic launch screen if absent.
       // Reads the pre-launch-strip snapshot of `result` on purpose: hoisting
       // this check or chaining the replaceAllMapped calls changes which
@@ -34,7 +47,10 @@ final class PlistStoryboardPolicy {
       return '';
     });
 
-    result = result.replaceAllMapped(_uiSceneStoryboardPattern, keepIfCompiled);
+    result = result.replaceAllMapped(
+      _uiSceneStoryboardPattern,
+      keepIfCompiled('UISceneStoryboardFile'),
+    );
 
     return result;
   }

@@ -68,20 +68,23 @@ class PymdDeviceResolver {
         if (list.isEmpty && mode == DeviceSearchMode.wifi) {
           throw TunnelError(await _noWirelessDeviceMessage(_daemonFailure));
         }
-        throw TunnelError('No connected device matching "$selector".');
+        // studio: 002 — typed so the run precheck can report device.not_found.
+        throw DeviceNotFoundError('No connected device matching "$selector".');
       }
       return match.first;
     }
     if (list.isEmpty) {
-      throw TunnelError(switch (mode) {
-        DeviceSearchMode.wifi => await _noWirelessDeviceMessage(_daemonFailure),
-        DeviceSearchMode.usb =>
-          'No devices connected. Connect an iPhone (and tap Trust), '
-              'then retry.',
-        DeviceSearchMode.all =>
-          'No devices connected. Connect an iPhone over USB (and tap '
-              'Trust), or use --wifi for a wireless device, then retry.',
-      });
+      if (mode == DeviceSearchMode.wifi) {
+        throw TunnelError(await _noWirelessDeviceMessage(_daemonFailure));
+      }
+      // studio: 002 — typed so the run precheck can report device.not_found.
+      throw DeviceNotFoundError(
+        mode == DeviceSearchMode.usb
+            ? 'No devices connected. Connect an iPhone (and tap Trust), '
+                  'then retry.'
+            : 'No devices connected. Connect an iPhone over USB (and tap '
+                  'Trust), or use --wifi for a wireless device, then retry.',
+      );
     }
     // Default `all` discovery is a fallback policy, not an invitation to pick
     // Wi-Fi while the same workstation has a local cable available. Keep an

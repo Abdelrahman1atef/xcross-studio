@@ -1,5 +1,6 @@
 import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:meta/meta.dart';
+import 'package:xcross/src/shared/diagnostics/xcross_diagnostics.dart'; // studio: 002
 import 'package:xcross/src/shared/flutter/build/dart_plugin_registrant.dart';
 import 'package:xcross/src/shared/flutter/build/flutter_aot_snapshotter.dart';
 import 'package:xcross/src/shared/flutter/build/flutter_debug_bundler.dart';
@@ -186,11 +187,15 @@ final class FlutterArtifactCompiler<T extends PlatformHostInterface>
       if (plugin.usesSwiftPackageManager) {
         spmPlugins.add(plugin);
       } else if (plugin.usesCocoaPods) {
-        runtime.runner.log.logWarn(
-          'Plugin "${plugin.name}" only ships a CocoaPods podspec '
-          '(no $dir/${plugin.name}/Package.swift); its native iOS code will '
-          'not be included. xcross only supports Swift Package Manager '
-          'plugins.',
+        // studio: 002 — coded, deduplicated warning with a fix hint.
+        runtime.warnings.warn(
+          XcrossCodes.buildPodspecOnlyPlugin,
+          subject: plugin.name,
+          message:
+              'Plugin "${plugin.name}" only ships a CocoaPods podspec '
+              '(no $dir/${plugin.name}/Package.swift); its native iOS code '
+              'will not be included. xcross only supports Swift Package '
+              'Manager plugins.',
         );
       } else if (plugin.declaresNativeIosCode) {
         // The plugin's pubspec claims a native iOS pluginClass, but neither a
@@ -198,11 +203,15 @@ final class FlutterArtifactCompiler<T extends PlatformHostInterface>
         // Staying silent here is what made a dropped plugin present as a black
         // screen: the app launches, then the first method channel call to the
         // missing implementation never returns.
-        runtime.runner.log.logWarn(
-          'Plugin "${plugin.name}" declares native iOS code but no '
-          '$dir/${plugin.name}/Package.swift or $dir/${plugin.name}.podspec '
-          'was found under ${plugin.packageRoot}; its plugin channels will '
-          'not respond at runtime.',
+        runtime.warnings.warn(
+          XcrossCodes.buildPluginManifestMissing, // studio: 002
+          subject: plugin.name,
+          message:
+              'Plugin "${plugin.name}" declares native iOS code but no '
+              '$dir/${plugin.name}/Package.swift or '
+              '$dir/${plugin.name}.podspec was found under '
+              '${plugin.packageRoot}; its plugin channels will not respond '
+              'at runtime.',
         );
       }
     }

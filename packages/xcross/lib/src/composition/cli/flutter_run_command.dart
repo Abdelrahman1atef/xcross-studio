@@ -18,6 +18,7 @@ import 'package:xcross/src/shared/flutter/models/flutter/flutter_build_options.d
 import 'package:xcross/src/shared/models/pack_result.dart';
 import 'package:xcross/src/shared/runtime/xcross_runtime.dart';
 import 'package:xcross/src/target/iphone/device/core_device_launch_profile.dart';
+import 'package:xcross/src/target/iphone/device/device_precheck.dart'; // studio: 002
 import 'package:xcross/src/target/iphone/device/device_run_operation.dart';
 import 'package:xcross/src/target/shared/runtime/build_features.dart';
 
@@ -34,6 +35,14 @@ typedef FlutterRunDevice =
       required String? selector,
       required DeviceSearchMode mode,
       required CoreDeviceLaunchProfile launchProfile,
+    });
+
+// studio: 002 — device precheck before the build (#147).
+@internal
+typedef FlutterRunPrecheck =
+    Future<PrecheckedDevice?> Function({
+      required DeviceSearchMode mode,
+      String? selector,
     });
 
 /// Options for `xcross flutter run`.
@@ -94,7 +103,8 @@ final class FlutterRunCommand<T extends PlatformHostInterface>
   FlutterRunCommand(this.runtime, this.pymd, {required this.sockets})
     : features = composePhysicalFeatures(runtime),
       _packOverride = null,
-      _runDeviceOverride = null;
+      _runDeviceOverride = null,
+      _precheckOverride = null;
 
   /// Replaces the build and the device run, so tests can observe what the
   /// command hands to each without a Flutter SDK or a device.
@@ -105,9 +115,17 @@ final class FlutterRunCommand<T extends PlatformHostInterface>
     required this.sockets,
     required FlutterRunPack pack,
     required FlutterRunDevice runDevice,
+    // studio: 002 — without it, a seamed command skips the device precheck.
+    FlutterRunPrecheck? precheck,
   }) : features = composePhysicalFeatures(runtime),
        _packOverride = pack,
-       _runDeviceOverride = runDevice;
+       _runDeviceOverride = runDevice,
+       _precheckOverride = precheck ?? _noPrecheck;
+
+  static Future<PrecheckedDevice?> _noPrecheck({
+    required DeviceSearchMode mode,
+    String? selector,
+  }) async => null;
   @override
   ArgParser populateOptions(ArgParser parser) =>
       _$populateFlutterRunArgsParser(parser);
@@ -122,6 +140,11 @@ final class FlutterRunCommand<T extends PlatformHostInterface>
   final DeviceSockets sockets;
   final FlutterRunPack? _packOverride;
   final FlutterRunDevice? _runDeviceOverride;
+  final FlutterRunPrecheck? _precheckOverride;
+
+  // studio: 002 — one operation and one device, from before the build.
+  DeviceRunOperation? _operation;
+  PrecheckedDevice? _prechecked;
   static bool shouldUseCoreDevice(int? osMajor) =>
       osMajor == null || osMajor >= 17;
 
@@ -167,27 +190,38 @@ final class FlutterRunCommand<T extends PlatformHostInterface>
     launchProfile: launchProfile,
   );
 
+  Future<DeviceRunOperation> _deviceOperation() async =>
+      _operation ??= await DeviceRunOperation.resolve(
+        pymd,
+        sockets: sockets,
+        httpClients: runtime.signingHttpClients,
+        connector: runtime.vmConnector,
+        vmOutput: runtime.vmOutput,
+        hostServices: runtime.appleHostServices,
+        createNativeLibraryLoader: runtime.createNativeLibraryLoader,
+        prompt: runtime.commandPrompt,
+      );
+
+  Future<PrecheckedDevice?> _precheckOnDevice({
+    required DeviceSearchMode mode,
+    String? selector,
+  }) => _deviceOperation().then(
+    (operation) => operation.precheck(selector: selector, mode: mode),
+  );
+
   Future<void> _runOnDevice({
     required PackResult pack,
     required String? selector,
     required DeviceSearchMode mode,
     required CoreDeviceLaunchProfile launchProfile,
   }) async {
-    final operation = await DeviceRunOperation.resolve(
-      pymd,
-      sockets: sockets,
-      httpClients: runtime.signingHttpClients,
-      connector: runtime.vmConnector,
-      vmOutput: runtime.vmOutput,
-      hostServices: runtime.appleHostServices,
-      createNativeLibraryLoader: runtime.createNativeLibraryLoader,
-      prompt: runtime.commandPrompt,
-    );
+    final operation = await _deviceOperation();
     await operation.run(
       pack: pack,
       selector: selector,
       mode: mode,
       launchProfile: launchProfile,
+      prechecked: _prechecked, // studio: 002
     );
   }
 
@@ -209,6 +243,11 @@ final class FlutterRunCommand<T extends PlatformHostInterface>
       pub: options.pub,
       flavor: options.flavor,
       buildMode: buildMode,
+    );
+    // studio: 002 — fail before the build when the device cannot be used.
+    _prechecked = await (_precheckOverride ?? _precheckOnDevice)(
+      selector: _deviceSelector,
+      mode: _searchMode,
     );
     final pack = await _pack(buildOptions);
 

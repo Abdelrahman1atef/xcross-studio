@@ -1,4 +1,5 @@
 import 'package:cli_kit/shared/process/process.dart';
+import 'package:dart_mobile_device/host/shared/usbmux_service_probe.dart';
 import 'package:dart_mobile_device/shared/host/device_host_policy.dart';
 import 'package:dart_mobile_device/src/shared/preparation/tunnel_failure_guidance.dart';
 
@@ -42,5 +43,18 @@ final class WindowsDeviceHost implements DeviceHostPolicy {
     } on Object {
       return false;
     }
+  }
+
+  // studio: 002 — Apple Mobile Device Service listens on 127.0.0.1:27015.
+  static const defaultUsbmuxAddress = '127.0.0.1:27015';
+
+  @override
+  Future<String?> deviceServiceProblem(String? usbmuxAddress) async {
+    final address = usbmuxAddress ?? defaultUsbmuxAddress;
+    if (await usbmuxServiceReachable(address)) return null;
+    return 'Apple Mobile Device Service is not reachable at $address. '
+        'Install Apple Devices (Microsoft Store) or iTunes and make sure '
+        '"Apple Mobile Device Service" is running (Administrator PowerShell: '
+        'Start-Service "Apple Mobile Device Service").';
   }
 }

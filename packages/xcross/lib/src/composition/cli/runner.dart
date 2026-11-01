@@ -70,6 +70,10 @@ abstract final class XcrossCli {
       minimumSwift: runtime.operations.minimumSwift,
       swiftInstallGuidance: runtime.operations.swiftInstallGuidance,
       swiftEnvironmentChecks: runtime.operations.swiftEnvironment.doctorChecks,
+      // studio: 002
+      deviceServiceProblem: () =>
+          pymd.hostPolicy.deviceServiceProblem(pymd.resolvedUsbmuxAddress()),
+      configuredPath: runtime.config.configuredPath,
     );
     final doctor = DoctorSections(runtime, environment: environmentChecks);
     final ideLauncher = XcrossIdeLauncher(

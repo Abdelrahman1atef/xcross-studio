@@ -28,6 +28,30 @@ void main() {
 
   tearDown(() => tmp.delete(recursive: true));
 
+  // studio: 002
+  test(
+    'AC-002-13 AC-002-14 skipped resources are reported, not silent',
+    () async {
+      _file(runner, 'Assets.xcassets/Contents.json', '{}');
+      _file(runner, 'Base.lproj/Main.storyboard', '<document/>');
+      _writeProject(project, appRefs: ['ASSETS', 'STORYBOARD', 'INCLUDED']);
+
+      final skipped = await testIPhoneRuntime().resources.stage(
+        projectRoot: project.path,
+        bundleDir: bundle.path,
+      );
+
+      expect(
+        {for (final s in skipped) p.basename(s.path): s.reason},
+        {
+          'Assets.xcassets': SkippedResourceReason.assetCatalog,
+          'Main.storyboard': SkippedResourceReason.uncompiledStoryboard,
+          'Included.plist': SkippedResourceReason.missing,
+        },
+      );
+    },
+  );
+
   test('finds a uniquely relocated target resource', () async {
     _file(runner, 'ServiceConfig.plist', 'config');
     _writeProject(project, appRefs: ['SERVICE_CONFIG']);

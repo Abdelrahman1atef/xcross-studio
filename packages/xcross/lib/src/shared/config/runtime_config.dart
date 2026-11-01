@@ -28,6 +28,17 @@ final class XcrossRuntimeConfig {
   Map<String, Object> get environment =>
       config?.environment ?? processEnvironment;
 
+  // studio: 002 — the PATH entries the configuration prepends (PATH guard).
+  /// Directories listed under `environment.PATH` in the configuration.
+  List<String> get configuredPath => switch (config?.environment['PATH']) {
+    final List<Object?> paths => [
+      for (final path in paths)
+        if (path is String && path.isNotEmpty) path,
+    ],
+    final String path when path.isNotEmpty => [path],
+    _ => const [],
+  };
+
   ProcessConfiguration? get processConfiguration {
     final value = config;
     if (value == null) return null;

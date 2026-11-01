@@ -1,5 +1,10 @@
 ## Unreleased (XCross Studio)
 
+- `xcross flutter run` and `xcross compose run` check the host device service (Apple Mobile Device Service / usbmuxd), find the device and check its iOS version **before** building, so an unusable device fails in seconds with a stable code (`device.ios_unsupported`, `device.not_found`, `device.host_service_unavailable`, `device.query_timeout`) and a fix hint, and the chosen device is reused after the build. ([specs/002-quick-wins](specs/002-quick-wins/spec.md), upstream #147)
+- Bundle versions follow `--build-name`/`--build-number`, then `pubspec.yaml` `version`, then the xcconfig, then `project.pbxproj`, then 1.0.0 (1); a stale `Generated.xcconfig` no longer wins over pubspec, and the build log names the source of each value.
+- xcrun lookups skip `clang`/`ld` from directories whose `ld64.lld` cannot link iOS (for example a Swift toolchain added to `environment.PATH`), and doctor plus the build warn with `toolchain.path_linker_unusable`. (upstream #148)
+- Podspec-only plugins, skipped asset catalogs, uncompiled storyboards and missing project resources produce one coded warning each (`build.*`) with a hint, plus an end-of-build summary, instead of being skipped silently. (upstream #145, warning part)
+
 - Add `xcross inspect <ipa|app> [--json] [--normalize]`, a read-only report of what is inside an iOS app: Info.plist, entitlements per Mach-O, provisioning profile summary (no device UDIDs), icons, `Assets.car`, launch screen, frameworks and app extensions, as a ✔/✖ summary or deterministic JSON (schema v1). Lives in the new `studio_ext` package. ([specs/001-inspect](specs/001-inspect/spec.md))
 
 ## 2.0.9

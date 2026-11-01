@@ -13,7 +13,9 @@ import 'package:darwin_sdk_kit/target/shared/ios_build_platform.dart';
 import 'package:http/http.dart' as http;
 import 'package:meta/meta.dart';
 import 'package:xcross/src/shared/cli/basic/doctor_models.dart';
+import 'package:xcross/src/shared/diagnostics/xcross_diagnostics.dart'; // studio: 002
 import 'package:xcross/src/shared/sdk/xcode_swift_requirement.dart';
+import 'package:xcross/src/shared/toolchain/path_linker_guard.dart'; // studio: 002
 
 @internal
 final class DoctorEnvironmentChecks<T extends PlatformHostInterface> {
@@ -31,6 +33,10 @@ final class DoctorEnvironmentChecks<T extends PlatformHostInterface> {
     this.minimumSwift,
     this.swiftInstallGuidance,
     this.swiftEnvironmentChecks,
+    // studio: 002 — host device service reachability (Device service check).
+    this.deviceServiceProblem,
+    // studio: 002 — configured environment.PATH entries (PATH guard).
+    this.configuredPath = const [],
   });
   final http.Client Function() createAppleHttpClient;
   final T hostPlatform;
@@ -45,6 +51,8 @@ final class DoctorEnvironmentChecks<T extends PlatformHostInterface> {
   final Future<List<DoctorCheck>> Function()? swiftEnvironmentChecks;
   final (int, int)? minimumSwift;
   final String? swiftInstallGuidance;
+  final Future<String?> Function()? deviceServiceProblem;
+  final List<String> configuredPath;
 
   static const _requiredTools = ['swift', 'clang++', 'llvm-ar'];
 
@@ -65,6 +73,7 @@ final class DoctorEnvironmentChecks<T extends PlatformHostInterface> {
     checks.addAll(await _swiftEnvironment());
     checks.add(await _iosClang());
     checks.add(await iosLinker());
+    checks.addAll(await configuredPathLinkers()); // studio: 002
     checks.add(await darwinSdk());
     return checks;
   }
@@ -103,6 +112,22 @@ final class DoctorEnvironmentChecks<T extends PlatformHostInterface> {
       return DoctorCheck.failure('iOS clang', error.toString());
     }
   }
+
+  // studio: 002 — a configured PATH entry whose ld64.lld cannot link iOS
+  // (typically a Swift toolchain `bin`) broke native-asset linking (#148).
+  Future<List<DoctorCheck>> configuredPathLinkers() async => [
+    for (final (entry, problem) in await PathLinkerGuard(
+      toolchain,
+    ).configuredProblems(configuredPath))
+      DoctorCheck.warning(
+        'Configured PATH',
+        codedWarning(
+          XcrossCodes.toolchainPathLinkerUnusable,
+          '$entry: ld64.lld $problem',
+        ),
+        path: entry,
+      ),
+  ];
 
   Future<DoctorCheck> iosLinker() async {
     final String path;
@@ -240,13 +265,31 @@ final class DoctorEnvironmentChecks<T extends PlatformHostInterface> {
     final deviceTools = await _deviceTools();
     if (deviceTools.status == DoctorStatus.failure) return [deviceTools];
 
-    final checks = <DoctorCheck>[deviceTools, await _authentication()];
+    final checks = <DoctorCheck>[
+      deviceTools,
+      ?await _deviceService(), // studio: 002
+      await _authentication(),
+    ];
     try {
       checks.addAll(await devices(await deviceDiagnostics.devices()));
     } on Object catch (error) {
       checks.add(DoctorCheck.warning('Device', 'Discovery failed: $error'));
     }
     return checks;
+  }
+
+  // studio: 002 — usbmuxd / Apple Mobile Device Service must accept
+  // connections for any USB device work.
+  Future<DoctorCheck?> _deviceService() async {
+    final probe = deviceServiceProblem;
+    if (probe == null) return null;
+    final problem = await probe();
+    return problem == null
+        ? const DoctorCheck.success('Device service', 'Reachable')
+        : DoctorCheck.failure(
+            'Device service',
+            '[device.host_service_unavailable] $problem',
+          );
   }
 
   Future<DoctorCheck> _deviceTools() async {

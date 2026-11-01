@@ -168,6 +168,66 @@ void main() {
     },
   );
 
+  // studio: 002
+  test('AC-002-3 doctor reports the device service', () async {
+    for (final (problem, status) in [
+      (null, DoctorStatus.success),
+      ('usbmuxd is not reachable at /var/run/usbmuxd. Start it.', null),
+    ]) {
+      final fixture = DoctorServiceFixture(
+        baseHost: LinuxHost(
+          currentDirectory: '/fixture',
+          environment: const {'HOME': '/fixture'},
+        ),
+        deviceServiceProblem: () async => problem,
+      );
+      addTearDown(fixture.dispose);
+      final checks = await fixture.checks.deployment();
+      final service = checks.singleWhere((c) => c.name == 'Device service');
+      expect(checks.map((c) => c.name).take(2), [
+        'Device tools',
+        'Device service',
+      ]);
+      if (status != null) {
+        expect(service.status, status);
+      } else {
+        expect(service.status, DoctorStatus.failure);
+        expect(
+          service.message,
+          startsWith('[device.host_service_unavailable]'),
+        );
+      }
+    }
+  });
+
+  // studio: 002
+  test('AC-002-9 doctor warns for a configured PATH entry', () async {
+    final fixture = DoctorServiceFixture(
+      baseHost: LinuxHost(
+        currentDirectory: '/fixture',
+        environment: const {'HOME': '/fixture'},
+      ),
+      configuredPath: const ['/fixture/swift/bin', '/fixture/clean'],
+    );
+    addTearDown(fixture.dispose);
+    fixture.fileSystem.file('/fixture/swift/bin/ld64.lld')
+      ..parent.createSync(recursive: true)
+      ..writeAsStringSync('');
+    fixture.processes.iosIncapable.add('swift');
+    final checks = await fixture.checks.configuredPathLinkers();
+    expect(checks, hasLength(1));
+    expect(checks.single.name, 'Configured PATH');
+    expect(checks.single.status, DoctorStatus.warning);
+    expect(
+      checks.single.message,
+      allOf(
+        startsWith('[toolchain.path_linker_unusable] /fixture/swift/bin: '),
+        contains('unknown platform'),
+        contains('hint: '),
+      ),
+    );
+  });
+
   test(
     'doctor catches discovery version errors after authentication',
     () async {
@@ -240,6 +300,8 @@ final class DoctorServiceFixture {
     bool sdkInstalled = true,
     Future<List<DoctorCheck>> Function()? swiftEnvironmentChecks,
     (int, int)? minimumSwift,
+    Future<String?> Function()? deviceServiceProblem, // studio: 002
+    List<String> configuredPath = const [], // studio: 002
   }) {
     root = Directory.systemTemp.createTempSync('xcross-doctor-services-');
     final logicalRoot = baseHost.paths.context.current;
@@ -309,6 +371,8 @@ final class DoctorServiceFixture {
       swiftEnvironmentChecks: swiftEnvironmentChecks,
       minimumSwift: minimumSwift,
       swiftInstallGuidance: 'Install Swift from the fixture installer.',
+      deviceServiceProblem: deviceServiceProblem, // studio: 002
+      configuredPath: configuredPath, // studio: 002
     );
     if (sdkInstalled) installSdk();
   }
@@ -625,6 +689,9 @@ final class DoctorServiceProcesses implements HostProcessInterface {
 
   String linkerVersion = 'LLD 19.1';
   String? clangFailure;
+
+  /// studio: 002 — linkers (by path fragment) that reject iOS links.
+  final Set<String> iosIncapable = {};
   final List<(String, List<String>)> calls = [];
   @override
   Future<Process> start(
@@ -637,6 +704,10 @@ final class DoctorServiceProcesses implements HostProcessInterface {
     ProcessStartMode mode = ProcessStartMode.normal,
   }) async {
     calls.add((executable, List.of(arguments)));
+    if (arguments.contains('-platform_version') &&
+        iosIncapable.any(executable.contains)) {
+      return DoctorServiceProcess('', 'ld64.lld: error: unknown platform: ios');
+    }
     if (arguments.contains('-###')) {
       if (clangFailure case final error?) throw StateError(error);
     }

@@ -9,6 +9,7 @@ import 'package:xcross/src/host/shared/flutter/apple_tool_shim_renderer.dart';
 import 'package:xcross/src/host/shared/flutter/flutter_sdk_host_policy.dart';
 import 'package:xcross/src/host/shared/flutter/native_host_tools.dart';
 import 'package:xcross/src/shared/artifact/plist_storyboard_policy.dart';
+import 'package:xcross/src/shared/diagnostics/build_warnings.dart'; // studio: 002
 import 'package:xcross/src/shared/flutter/build/adhoc_signature_refresher.dart';
 import 'package:xcross/src/shared/flutter/build/apple_debug_symbols.dart';
 import 'package:xcross/src/shared/flutter/build/flutter_aot_snapshotter.dart';
@@ -46,6 +47,7 @@ final class FlutterResolutionConfiguration {
     this.launcher,
     this.xcrun,
     this.openAppleMacrosServer,
+    this.configuredPath = const [], // studio: 002
   });
   final bool declarative;
   final String? root;
@@ -55,6 +57,9 @@ final class FlutterResolutionConfiguration {
   final String? launcher;
   final String? xcrun;
   final String? openAppleMacrosServer;
+
+  /// Configured `environment.PATH` entries (studio: 002 PATH guard).
+  final List<String> configuredPath;
 }
 
 @internal
@@ -83,6 +88,10 @@ final class FlutterBuildRuntime<T extends PlatformHostInterface> {
       );
     }
   }
+  // studio: 002 — configured PATH entries and the per-build warning collector.
+  List<String> get configuredPath => resolution.configuredPath;
+  late final BuildWarnings warnings = BuildWarnings(runner.log);
+
   late final PackageConfigResolver packageConfigs = PackageConfigResolver(
     paths: host.paths.context,
     fileSystem: host.fileSystem,

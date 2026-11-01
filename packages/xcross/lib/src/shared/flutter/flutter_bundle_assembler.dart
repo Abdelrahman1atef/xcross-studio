@@ -1,8 +1,10 @@
 import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:meta/meta.dart';
 import 'package:xcross/src/shared/artifact/plist_mutations.dart';
+import 'package:xcross/src/shared/diagnostics/xcross_diagnostics.dart'; // studio: 002
 import 'package:xcross/src/shared/flutter/build/app_extension_builder.dart';
 import 'package:xcross/src/shared/flutter/build/info_plist.dart';
+import 'package:xcross/src/shared/flutter/build/ios_bundle_resources.dart'; // studio: 002
 import 'package:xcross/src/shared/flutter/build/ios_bundle_versions.dart';
 import 'package:xcross/src/shared/flutter/build/ios_deployment_target.dart';
 import 'package:xcross/src/shared/flutter/constants.dart';
@@ -177,9 +179,11 @@ final class FlutterBundleAssembler<T extends PlatformHostInterface>
     );
 
     await _embedAppExtensions(bundleDir, extensions);
-    await runtime.resources.stage(
-      projectRoot: projectRoot,
-      bundleDir: bundleDir,
+    _reportSkippedResources(
+      await runtime.resources.stage(
+        projectRoot: projectRoot,
+        bundleDir: bundleDir,
+      ),
     );
     await _writeInfoPlist(
       bundleDir,
@@ -188,6 +192,42 @@ final class FlutterBundleAssembler<T extends PlatformHostInterface>
     );
     for (final binary in await runtime.signatures.refresh(bundleDir)) {
       runtime.runner.log.logTrace('refreshed ad-hoc signature of $binary');
+    }
+  }
+
+  // studio: 002 — every skipped project resource gets a coded warning.
+  void _reportSkippedResources(List<SkippedResource> skipped) {
+    final context = runtime.host.paths.context;
+    for (final resource in skipped) {
+      final shown = context.isWithin(projectRoot, resource.path)
+          ? context.relative(resource.path, from: projectRoot)
+          : resource.path;
+      switch (resource.reason) {
+        case SkippedResourceReason.assetCatalog:
+          runtime.warnings.warn(
+            XcrossCodes.buildAssetCatalogSkipped,
+            subject: shown,
+            message:
+                '$shown was not compiled; the icons and images in it are not '
+                'in the app.',
+          );
+        case SkippedResourceReason.uncompiledStoryboard:
+          final name = context.basenameWithoutExtension(resource.path);
+          runtime.warnings.warn(
+            XcrossCodes.buildStoryboardSkipped,
+            subject: name,
+            message:
+                'Storyboard "$name" ($shown) is not compiled and was left '
+                'out; Info.plist references to it are removed.',
+          );
+        case SkippedResourceReason.missing:
+          runtime.warnings.warn(
+            XcrossCodes.buildResourceMissing,
+            subject: shown,
+            message:
+                '$shown is listed in the Xcode project but does not exist.',
+          );
+      }
     }
   }
 
@@ -257,6 +297,14 @@ final class FlutterBundleAssembler<T extends PlatformHostInterface>
     plistXml = runtime.storyboards.stripUnsatisfiableStoryboards(
       plistXml,
       bundleDir,
+      // studio: 002 — a removed storyboard reference is reported, not silent.
+      onRemoved: (key, name) => runtime.warnings.warn(
+        XcrossCodes.buildStoryboardSkipped,
+        subject: name,
+        message:
+            'Info.plist $key "$name" has no compiled storyboard and was '
+            'removed.',
+      ),
     );
     plistXml = InfoPlist.applySceneLifecycle(plistXml);
     plistXml = InfoPlist.normalizeObjCClassNames(plistXml);
@@ -300,7 +348,9 @@ final class FlutterBundleAssembler<T extends PlatformHostInterface>
   ///   1. Hard-coded defaults (`1.0.0` / `1`).
   ///   2. `Debug.xcconfig` and its includes in textual order, falling back
   ///      to `Generated.xcconfig` only when no Debug file exists.
-  ///   3. Explicit `--build-name` / `--build-number` CLI flags.
+  ///   3. The decided bundle versions (studio: 002 — flag > pubspec >
+  ///      xcconfig > project file > default), pinned for the four version
+  ///      variables so every template spelling expands to the same pair.
   @visibleForTesting
   Future<Map<String, String>> buildSubstitutionMap({String? sdkName}) async {
     final selectedSdk = sdkName ?? runtime.target.buildPlatform.sdkName;
@@ -355,15 +405,12 @@ final class FlutterBundleAssembler<T extends PlatformHostInterface>
     return subs;
   }
 
-  /// Settings pinned by explicit `--build-name` / `--build-number` flags.
+  // studio: 002 — pin the decided versions (not only explicit flags).
+  /// The bundle version variables, pinned to the decided [_versions].
   Map<String, String> _buildVersionOverrides() => {
-    if (options.buildName case final String name) ...{
-      'FLUTTER_BUILD_NAME': name,
-      'MARKETING_VERSION': name,
-    },
-    if (options.buildNumber case final String number) ...{
-      'FLUTTER_BUILD_NUMBER': number,
-      'CURRENT_PROJECT_VERSION': number,
-    },
+    'FLUTTER_BUILD_NAME': _versions.shortVersion,
+    'MARKETING_VERSION': _versions.shortVersion,
+    'FLUTTER_BUILD_NUMBER': _versions.bundleVersion,
+    'CURRENT_PROJECT_VERSION': _versions.bundleVersion,
   };
 }

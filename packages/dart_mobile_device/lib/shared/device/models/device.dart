@@ -34,6 +34,7 @@ final class Device {
     required this.udid,
     required this.type,
     this.source = DeviceSource.usbmux,
+    this.osVersion,
   });
 
   /// Human-readable device name.
@@ -47,6 +48,11 @@ final class Device {
 
   /// Discovery mechanism that produced this entry.
   final DeviceSource source;
+
+  // studio: 002 — lets the run precheck gate the iOS version without a second
+  // pymobiledevice3 call.
+  /// `ProductVersion` reported by the listing (e.g. `16.7.10`), when known.
+  final String? osVersion;
 
   @override
   String toString() => '$name [${type.name}]: $udid';

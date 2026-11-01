@@ -26,3 +26,16 @@ final class TunnelPrivilegeError extends TunnelError {
 final class TunnelCreationError extends TunnelError {
   TunnelCreationError(super.message);
 }
+
+// studio: 002 — typed errors so callers can pick a stable diagnostic code
+// without matching message text.
+
+/// No connected device (or none matching the selector) was found.
+final class DeviceNotFoundError extends TunnelError {
+  DeviceNotFoundError(super.message);
+}
+
+/// A bounded pymobiledevice3 invocation did not finish in time.
+final class PymdTimeoutError extends TunnelError {
+  PymdTimeoutError(super.message);
+}

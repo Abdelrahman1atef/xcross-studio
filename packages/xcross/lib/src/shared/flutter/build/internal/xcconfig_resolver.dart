@@ -30,6 +30,30 @@ final class XcconfigResolver {
     overrides: overrides,
   );
 
+  // studio: 002 — synchronous twin of [readDebugConfiguration], used to
+  // decide bundle versions before the (synchronous) build request exists.
+  /// Same file choice and include order as [readDebugConfiguration].
+  Map<String, String> readDebugConfigurationSync({
+    required String debugPath,
+    required String generatedPath,
+    String configuration = 'Debug',
+    String sdk = 'iphoneos',
+    String arch = 'arm64',
+  }) {
+    final evaluation = XcconfigEvaluation(
+      configuration: configuration,
+      sdk: sdk,
+      arch: arch,
+      defaults: const {},
+      overrides: const {},
+    );
+    XcconfigFileReader(evaluation, fileSystem, paths).readSync(
+      fileSystem.file(debugPath).existsSync() ? debugPath : generatedPath,
+      optional: true,
+    );
+    return evaluation.resolved();
+  }
+
   static Map<String, String> parseText(
     String text, {
     String configuration = 'Debug',
@@ -122,6 +146,36 @@ final class XcconfigFileReader {
 
   final XcconfigEvaluation _evaluation;
   final _activeFiles = <String>{};
+
+  // studio: 002 — synchronous twin of [read].
+  void readSync(String path, {required bool optional}) {
+    final file = fileSystem.file(path);
+    if (!file.existsSync()) {
+      if (optional) return;
+      throw FormatException('Required xcconfig include not found: $path');
+    }
+    final resolved = paths.normalize(file.absolute.path);
+    if (!_activeFiles.add(resolved)) {
+      throw FormatException('xcconfig include cycle at $resolved');
+    }
+    try {
+      final lines = file.readAsLinesSync();
+      for (final line in XcconfigResolver._logicalLines(lines)) {
+        final include = _include.firstMatch(line);
+        if (include == null) {
+          _evaluation.apply(line);
+          continue;
+        }
+        final includedPath = include[2] ?? include[3];
+        readSync(
+          paths.normalize(paths.join(paths.dirname(resolved), includedPath)),
+          optional: include[1] == '?',
+        );
+      }
+    } finally {
+      _activeFiles.remove(resolved);
+    }
+  }
 
   Future<void> read(String path, {required bool optional}) async {
     final file = fileSystem.file(path);

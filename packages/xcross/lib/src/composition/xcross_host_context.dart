@@ -175,6 +175,7 @@ abstract class XcrossHostContext<T extends PlatformHostInterface>
     environmentRoot: config.config?.environment['FLUTTER_ROOT'] as String?,
     tool: config.tool('flutter'),
     declarative: config.isConfigured,
+    configuredPath: config.configuredPath, // studio: 002
   );
 
   @override

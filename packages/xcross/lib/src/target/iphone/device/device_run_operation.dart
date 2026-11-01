@@ -15,6 +15,7 @@ import 'package:xcross/src/shared/models/pack_result.dart';
 import 'package:xcross/src/target/iphone/device/core_device_launch_profile.dart';
 import 'package:xcross/src/target/iphone/device/core_device_launcher.dart';
 import 'package:xcross/src/target/iphone/device/device_backend.dart';
+import 'package:xcross/src/target/iphone/device/device_precheck.dart'; // studio: 002
 
 @internal
 typedef OsMajorVersion = Future<int?> Function(Device device);
@@ -38,9 +39,14 @@ final class DeviceRunOperation {
     required OsMajorVersion osMajorVersion,
     required TerminateInstalledApp terminate,
     required LaunchInstalledApp launch,
+    // studio: 002 — host device service check for the pre-build precheck.
+    Future<String?> Function()? serviceProblem,
   }) : _osMajorVersion = osMajorVersion,
        _terminate = terminate,
-       _launch = launch;
+       _launch = launch,
+       _serviceProblem = serviceProblem ?? _noServiceProblem;
+
+  static Future<String?> _noServiceProblem() async => null;
 
   static Future<DeviceRunOperation> resolve(
     Pymd pymd, {
@@ -73,6 +79,9 @@ final class DeviceRunOperation {
       ),
       terminate: launcher.terminateIfRunning,
       launch: launcher.launch,
+      // studio: 002
+      serviceProblem: () =>
+          pymd.hostPolicy.deviceServiceProblem(pymd.resolvedUsbmuxAddress()),
     );
   }
 
@@ -81,6 +90,20 @@ final class DeviceRunOperation {
   final OsMajorVersion _osMajorVersion;
   final TerminateInstalledApp _terminate;
   final LaunchInstalledApp _launch;
+  final Future<String?> Function() _serviceProblem;
+
+  // studio: 002 — resolve and gate the device before any build work (#147).
+  /// Checks the host device service, resolves the device and enforces the
+  /// minimum iOS version; pass the result to [run] after the build.
+  Future<PrecheckedDevice> precheck({
+    required DeviceSearchMode mode,
+    String? selector,
+  }) => DevicePrecheck(
+    log: log,
+    serviceProblem: _serviceProblem,
+    resolveDevice: backend.resolveDevice,
+    osMajor: _osMajorVersion,
+  ).run(selector: selector, mode: mode);
 
   Future<Device> run({
     required PackResult pack,
@@ -88,23 +111,29 @@ final class DeviceRunOperation {
     required DeviceSearchMode mode,
     required CoreDeviceLaunchProfile launchProfile,
     Future<bool> Function()? onRestartRequested,
+    // studio: 002 — the device from [precheck]; skips resolution and the gate.
+    PrecheckedDevice? prechecked,
   }) async {
     if (pack.kind != PackOutputKind.app) {
       throw XcrossError(
         'A framework-only KMP build cannot be run on a device.',
       );
     }
-    final device = await backend.resolveDevice(selector: selector, mode: mode);
-    log.logInfo('Device', '${device.name} ${log.dim(device.udid)}');
-    final major = await _osMajorVersion(device);
-    if (major == null) {
-      log.logWarn(
-        'Could not read the device OS version; attempting the native '
-        'CoreDevice path.',
-      );
-    }
-    if (major != null && major < 17) {
-      throw XcrossError('Native device launching requires iOS 17 or later.');
+    final device =
+        prechecked?.device ??
+        await backend.resolveDevice(selector: selector, mode: mode);
+    if (prechecked == null) {
+      log.logInfo('Device', '${device.name} ${log.dim(device.udid)}');
+      final major = await _osMajorVersion(device);
+      if (major == null) {
+        log.logWarn(
+          'Could not read the device OS version; attempting the native '
+          'CoreDevice path.',
+        );
+      }
+      if (major != null && major < 17) {
+        throw XcrossError('Native device launching requires iOS 17 or later.');
+      }
     }
     // Launch the exact id install() produced: the device may carry stale
     // team-qualified builds of this app under other identities, and the

@@ -8,6 +8,7 @@ import 'package:darwin_sdk_kit/shared/sdk/darwin_sdk_repository.dart';
 import 'package:darwin_sdk_kit/shared/toolchain/darwin_toolchain_resolver.dart';
 import 'package:darwin_sdk_kit/target/shared/ios_build_platform.dart';
 import 'package:meta/meta.dart';
+import 'package:xcross/src/shared/toolchain/path_linker_guard.dart'; // studio: 002
 import 'package:xcross/src/shared/xcrun/xcrun_operation.dart';
 
 @internal
@@ -356,15 +357,42 @@ final class XcrunSdkCommand {
     return toolExitCode;
   }
 
+  // studio: 002 — a configured PATH entry (e.g. a Swift toolchain `bin`)
+  // comes before xcross's linker-pinning shim; never let a clang/ld from a
+  // directory whose ld64.lld cannot link iOS win the lookup (#148).
+  static const _linkerSensitiveTools = {'clang', 'clang++', 'ld'};
+
+  /// First PATH hit for [name] other than this xcrun itself; for compilers
+  /// and the linker, also skipping directories with an unusable ld64.lld.
+  Future<String?> _pathTool(String name) async {
+    final self = runner.host.paths.pathKey(executable);
+    final guard = _linkerSensitiveTools.contains(name)
+        ? PathLinkerGuard(toolchain)
+        : null;
+    for (final candidate in await runner.whichAll(
+      name,
+      useConfiguration: false,
+    )) {
+      if (runner.host.paths.pathKey(candidate) == self) continue;
+      if (guard != null &&
+          await guard.directoryProblem(
+                runner.host.paths.context.dirname(candidate),
+              ) !=
+              null) {
+        continue;
+      }
+      return candidate;
+    }
+    return null;
+  }
+
   Future<String?> _resolveTool(
     DarwinSdk sdk,
     String name, {
     required String? sysroot,
   }) async {
-    final pathTool = await runner.which(name, useConfiguration: false);
-    if (pathTool != null &&
-        runner.host.paths.pathKey(pathTool) !=
-            runner.host.paths.pathKey(executable)) {
+    final pathTool = await _pathTool(name);
+    if (pathTool != null) {
       // On Windows, PATH lookup can append PATHEXT's `.EXE` spelling even if
       // the actual shim is `clang.exe`. native_toolchain_c recognizes configured
       // compilers by a case-sensitive `endsWith('clang.exe')`, so return the

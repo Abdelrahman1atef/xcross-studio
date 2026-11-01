@@ -35,6 +35,9 @@ final class PymdDevices {
   ///   wireless devices appear on Linux/Windows: tunneld's RemotePairing
   ///   monitor finds them over mDNS and builds the tunnel, no usbmuxd
   ///   involved.
+  // studio: 002 — upper bound for `usbmux list` so `run` cannot hang.
+  static const usbmuxListTimeout = Duration(seconds: 20);
+
   Future<List<Device>> devices({
     DeviceSearchMode mode = DeviceSearchMode.all,
   }) async {
@@ -48,11 +51,14 @@ final class PymdDevices {
 
     List<Device> viaUsbmux;
     try {
-      final result = await pymd.run(args);
+      // studio: 002 — bounded, so `run` cannot hang before the build.
+      final result = await pymd.run(args, timeout: usbmuxListTimeout);
       viaUsbmux = parseDevices(
         result.stdout,
         allowEmptyOutput: wirelessAllowed,
       );
+    } on PymdTimeoutError {
+      rethrow; // studio: 002 — a hang is not "no USB devices".
     } on TunnelError {
       if (!wirelessAllowed) rethrow;
       viaUsbmux = const [];
@@ -171,6 +177,8 @@ final class PymdDevices {
         name: (map['DeviceName'] as String?) ?? udid,
         udid: udid,
         type: ConnectionType.parse((map['ConnectionType'] as String?) ?? 'USB'),
+        // studio: 002 — the listing already carries the OS version.
+        osVersion: map['ProductVersion'] as String?,
       );
     }).toList();
   }

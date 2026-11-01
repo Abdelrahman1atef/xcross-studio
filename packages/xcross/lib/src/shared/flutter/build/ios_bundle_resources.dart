@@ -7,6 +7,21 @@ import 'package:xcross/src/shared/flutter/build/internal/recursive_directory_cop
 import 'package:xcross/src/shared/flutter/build/pbxproj.dart';
 import 'package:xcross/src/shared/flutter/project/pbx_project_reader.dart';
 
+// studio: 002 — staging reports what it skips instead of skipping silently.
+/// Why a project resource was not copied into the bundle.
+@internal
+enum SkippedResourceReason { assetCatalog, uncompiledStoryboard, missing }
+
+/// A project resource left out of the bundle.
+@internal
+final class SkippedResource {
+  const SkippedResource(this.path, this.reason);
+
+  /// The resource path as the Xcode project lists it.
+  final String path;
+  final SkippedResourceReason reason;
+}
+
 /// Stages the application target's Xcode resources into an app bundle.
 @internal
 final class IosBundleResources {
@@ -22,16 +37,19 @@ final class IosBundleResources {
   final p.Context paths;
   final PbxProjectReader projects;
 
-  Future<void> stage({
+  /// Copies the resources and returns the ones it had to skip
+  /// (studio: 002).
+  Future<List<SkippedResource>> stage({
     required String projectRoot,
     required String bundleDir,
   }) async {
+    final skipped = <SkippedResource>[];
     final pbxprojPath = projects.findPbxproj(projectRoot);
     final project = pbxprojPath == null
         ? null
         : projects.parseFile(pbxprojPath);
     final target = project?.applicationTarget;
-    if (project == null || target == null) return;
+    if (project == null || target == null) return skipped;
 
     final infoPlist = _resolveBuildSettingPath(
       project,
@@ -44,18 +62,35 @@ final class IosBundleResources {
           .where(PbxProject.isTargetResource),
     };
     for (var source in resources) {
-      if (paths.extension(source) == '.xcassets') continue;
+      final listed = source;
+      if (paths.extension(source) == '.xcassets') {
+        skipped.add(
+          SkippedResource(listed, SkippedResourceReason.assetCatalog),
+        );
+        continue;
+      }
       if (paths.basename(source) == 'AppFrameworkInfo.plist') continue;
       if (infoPlist != null && paths.equals(source, infoPlist)) continue;
 
-      if (paths.extension(source) == '.storyboard') {
+      final storyboard = paths.extension(source) == '.storyboard';
+      if (storyboard) {
         source = paths.setExtension(source, '.storyboardc');
       }
 
       var sourceType = _sourceType(source);
       if (sourceType == FileSystemEntityType.notFound) {
         final relocated = _findRelocatedResource(projectRoot, source);
-        if (relocated == null) continue;
+        if (relocated == null) {
+          skipped.add(
+            SkippedResource(
+              listed,
+              storyboard
+                  ? SkippedResourceReason.uncompiledStoryboard
+                  : SkippedResourceReason.missing,
+            ),
+          );
+          continue;
+        }
         source = relocated;
         sourceType = _sourceType(source);
       }
@@ -82,6 +117,7 @@ final class IosBundleResources {
         await fileSystem.file(source).copy(fileSystem.file(destination).path);
       }
     }
+    return skipped;
   }
 
   FileSystemEntityType _sourceType(String source) {

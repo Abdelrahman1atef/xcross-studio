@@ -492,7 +492,8 @@ final class Pymd {
       exitCode = await process.exitCode.timeout(timeout);
     } on TimeoutException {
       await runner.killTree(process);
-      throw TunnelError(
+      // studio: 002 — typed so the run precheck can report device.query_timeout.
+      throw PymdTimeoutError(
         'pymobiledevice3 ${arguments.join(' ')} timed out after '
         '${timeout.inSeconds}s',
       );

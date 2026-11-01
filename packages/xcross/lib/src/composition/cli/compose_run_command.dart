@@ -18,6 +18,7 @@ import 'package:xcross/src/shared/compose/watch/kotlin_source_watcher.dart';
 import 'package:xcross/src/shared/models/pack_result.dart';
 import 'package:xcross/src/shared/runtime/xcross_runtime.dart';
 import 'package:xcross/src/target/iphone/device/core_device_launch_profile.dart';
+import 'package:xcross/src/target/iphone/device/device_precheck.dart'; // studio: 002
 import 'package:xcross/src/target/iphone/device/device_run_operation.dart';
 import 'package:xcross/src/target/shared/runtime/build_features.dart';
 
@@ -32,6 +33,22 @@ typedef ComposeRunDevice =
       required CoreDeviceLaunchProfile launchProfile,
       Future<bool> Function()? onRestartRequested,
     });
+
+// studio: 002 — device precheck before the build (#147).
+@internal
+typedef ComposeRunPrecheck =
+    Future<PrecheckedDevice?> Function({
+      required DeviceSearchMode mode,
+      String? selector,
+    });
+
+/// Shares one device operation and the prechecked device between the
+/// precheck (before the build) and the device run (after it).
+@internal
+final class ComposeDeviceSession {
+  Future<DeviceRunOperation>? operation;
+  PrecheckedDevice? prechecked;
+}
 
 @internal
 @CliOptions()
@@ -89,6 +106,7 @@ final class ComposeRunCommand<T extends PlatformHostInterface>
          pymd,
          sockets,
          composePhysicalFeatures(runtime),
+         ComposeDeviceSession(), // studio: 002
        );
 
   ComposeRunCommand._withRuntime(
@@ -96,6 +114,7 @@ final class ComposeRunCommand<T extends PlatformHostInterface>
     Pymd pymd,
     DeviceSockets sockets,
     XcrossBuildFeatures<T> features,
+    ComposeDeviceSession session,
   ) : this.withSeams(
         log: runtime.log,
         files: runtime.host.fileSystem,
@@ -117,24 +136,32 @@ final class ComposeRunCommand<T extends PlatformHostInterface>
               required launchProfile,
               onRestartRequested,
             }) async {
-              final operation = await DeviceRunOperation.resolve(
+              final operation = await (session.operation ??= _resolveOperation(
+                runtime,
                 pymd,
-                sockets: sockets,
-                httpClients: runtime.signingHttpClients,
-                connector: runtime.vmConnector,
-                vmOutput: runtime.vmOutput,
-                hostServices: runtime.appleHostServices,
-                createNativeLibraryLoader: runtime.createNativeLibraryLoader,
-                prompt: runtime.commandPrompt,
-              );
+                sockets,
+              ));
               await operation.run(
                 pack: pack,
                 selector: selector,
                 mode: mode,
                 launchProfile: launchProfile,
                 onRestartRequested: onRestartRequested,
+                prechecked: session.prechecked, // studio: 002
               );
             },
+        // studio: 002 — resolve and gate the device before the build.
+        precheck: ({required mode, selector}) async {
+          final operation = await (session.operation ??= _resolveOperation(
+            runtime,
+            pymd,
+            sockets,
+          ));
+          return session.prechecked = await operation.precheck(
+            selector: selector,
+            mode: mode,
+          );
+        },
       );
 
   ComposeRunCommand.withSeams({
@@ -143,8 +170,27 @@ final class ComposeRunCommand<T extends PlatformHostInterface>
     required this.projectRoot,
     required ComposeCliPackOperation packOperation,
     required ComposeRunDevice runDevice,
+    // studio: 002 — without it, a seamed command skips the device precheck.
+    ComposeRunPrecheck? precheck,
   }) : _packOperation = packOperation,
-       _runDevice = runDevice;
+       _runDevice = runDevice,
+       _precheck = precheck;
+  static Future<DeviceRunOperation>
+  _resolveOperation<H extends PlatformHostInterface>(
+    XcrossRuntime<H> runtime,
+    Pymd pymd,
+    DeviceSockets sockets,
+  ) => DeviceRunOperation.resolve(
+    pymd,
+    sockets: sockets,
+    httpClients: runtime.signingHttpClients,
+    connector: runtime.vmConnector,
+    vmOutput: runtime.vmOutput,
+    hostServices: runtime.appleHostServices,
+    createNativeLibraryLoader: runtime.createNativeLibraryLoader,
+    prompt: runtime.commandPrompt,
+  );
+
   @override
   ArgParser populateOptions(ArgParser parser) =>
       _$populateComposeRunArgsParser(parser);
@@ -157,6 +203,7 @@ final class ComposeRunCommand<T extends PlatformHostInterface>
   final Log log;
   final ComposeCliPackOperation _packOperation;
   final ComposeRunDevice _runDevice;
+  final ComposeRunPrecheck? _precheck;
 
   @override
   String get name => 'run';
@@ -176,6 +223,8 @@ final class ComposeRunCommand<T extends PlatformHostInterface>
   @override
   Future<void> run() async {
     if (options.verbose) log.setVerbose();
+    // studio: 002 — fail before the build when the device cannot be used.
+    await _precheck?.call(selector: _deviceSelector, mode: _searchMode);
     final pack = await _packOperation(
       options: ComposeBuildOptions(bundleId: options.bundleId),
       requireRunnableApp: true,

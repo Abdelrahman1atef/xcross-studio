@@ -23,11 +23,7 @@ final class FlutterBuildRequest<T extends PlatformHostInterface> {
     this.packageLocalArtifactJunctionCapability = false,
     this.artifactJunctionCapabilityResolver,
   }) : appName = runtime.pubspecs.loadSync(projectRoot).name,
-       versions = runtime.versions.resolve(
-         projectRoot,
-         buildName: options.buildName,
-         buildNumber: options.buildNumber,
-       );
+       versions = _resolveVersions(runtime, projectRoot, options);
   final FlutterBuildRuntime<T> runtime;
   final String projectRoot;
   final String appName;
@@ -37,6 +33,46 @@ final class FlutterBuildRequest<T extends PlatformHostInterface> {
   final bool swiftPmArtifactJunctionCapability;
   final bool packageLocalArtifactJunctionCapability;
   final ArtifactJunctionCapabilityResolver? artifactJunctionCapabilityResolver;
+
+  // studio: 002 — flag > pubspec > xcconfig > project file > default.
+  static IosBundleVersions _resolveVersions<T extends PlatformHostInterface>(
+    FlutterBuildRuntime<T> runtime,
+    String projectRoot,
+    FlutterBuildOptions options,
+  ) {
+    final pubspec = runtime.pubspecs.loadSync(projectRoot);
+    final xcconfig = _xcconfigVersions(runtime, projectRoot);
+    return runtime.versions.resolve(
+      projectRoot,
+      buildName: options.buildName,
+      buildNumber: options.buildNumber,
+      pubspecBuildName: pubspec.buildName,
+      pubspecBuildNumber: pubspec.buildNumber,
+      xcconfigBuildName:
+          xcconfig['FLUTTER_BUILD_NAME'] ?? xcconfig['MARKETING_VERSION'],
+      xcconfigBuildNumber:
+          xcconfig['FLUTTER_BUILD_NUMBER'] ??
+          xcconfig['CURRENT_PROJECT_VERSION'],
+    );
+  }
+
+  /// The Debug (else Generated) xcconfig settings; empty when unreadable.
+  static Map<String, String> _xcconfigVersions<T extends PlatformHostInterface>(
+    FlutterBuildRuntime<T> runtime,
+    String projectRoot,
+  ) {
+    final paths = runtime.host.paths.context;
+    final directory = paths.join(projectRoot, 'ios', 'Flutter');
+    try {
+      return runtime.xcconfigs.readDebugConfigurationSync(
+        debugPath: paths.join(directory, 'Debug.xcconfig'),
+        generatedPath: paths.join(directory, 'Generated.xcconfig'),
+        sdk: runtime.target.buildPlatform.sdkName,
+      );
+    } on FormatException {
+      return const {};
+    }
+  }
 }
 
 @internal

@@ -433,6 +433,12 @@ Exit codes: `0` report printed (problems are listed as issues), `1` the input ca
 `inspect.*` error code; with `--json` an error document is printed), `64` usage error. The command never modifies the
 input and never contacts the network or a device.
 
+<!-- studio: 002 -->
+**Diagnostics codes:** errors and warnings from the fork carry stable codes such as `device.ios_unsupported`,
+`toolchain.path_linker_unusable` or `build.asset_catalog_skipped`, each followed by a `hint:` line; see
+`specs/002-quick-wins/contracts/diagnostics.md`. Bundle versions come from `--build-name`/`--build-number`, then
+`pubspec.yaml`, then the xcconfig, then the Xcode project, then 1.0.0 (1).
+
 **Reporting a bug:** attach the output of `xcross inspect <ipa> --json --normalize`. By design it contains no device
 UDIDs, certificate data, API keys or Info.plist values outside a short allow-list, and no absolute paths.
 </details>

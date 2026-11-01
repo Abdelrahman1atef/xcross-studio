@@ -16,22 +16,83 @@ final class IosBundleVersionsResolver {
   /// the *application* target's build settings, so those are read here rather
   /// than taking whichever value appears first in the file (which, in a
   /// project with extensions, is usually an extension's).
+  ///
+  /// studio: 002 — each value is the first usable one of: the CLI flag, the
+  /// pubspec `version`, the xcconfig value, the project file value, the
+  /// default; the chosen source is recorded.
   IosBundleVersions resolve(
     String projectRoot, {
     String? buildName,
     String? buildNumber,
+    String? pubspecBuildName,
+    String? pubspecBuildNumber,
+    String? xcconfigBuildName,
+    String? xcconfigBuildNumber,
   }) {
     final settings = _applicationBuildSettings(projectRoot);
-    return IosBundleVersions(
-      shortVersion:
-          buildName ??
-          _setting(settings, 'MARKETING_VERSION') ??
-          IosBundleVersions.fallback.shortVersion,
-      bundleVersion:
-          buildNumber ??
-          _setting(settings, 'CURRENT_PROJECT_VERSION') ??
-          IosBundleVersions.fallback.bundleVersion,
+    return decide(
+      buildName: buildName,
+      buildNumber: buildNumber,
+      pubspecBuildName: pubspecBuildName,
+      pubspecBuildNumber: pubspecBuildNumber,
+      xcconfigBuildName: xcconfigBuildName,
+      xcconfigBuildNumber: xcconfigBuildNumber,
+      projectBuildName: _setting(settings, 'MARKETING_VERSION'),
+      projectBuildNumber: _setting(settings, 'CURRENT_PROJECT_VERSION'),
     );
+  }
+
+  /// The precedence itself, independent of any file: flag > pubspec >
+  /// xcconfig > project file > default, separately for name and number.
+  @visibleForTesting
+  static IosBundleVersions decide({
+    String? buildName,
+    String? buildNumber,
+    String? pubspecBuildName,
+    String? pubspecBuildNumber,
+    String? xcconfigBuildName,
+    String? xcconfigBuildNumber,
+    String? projectBuildName,
+    String? projectBuildNumber,
+  }) {
+    final (shortVersion, shortSource) = _first([
+      (_clean(buildName), VersionSource.flag),
+      (_clean(pubspecBuildName), VersionSource.pubspec),
+      (_clean(xcconfigBuildName), VersionSource.xcconfig),
+      (_clean(projectBuildName), VersionSource.projectFile),
+      (IosBundleVersions.fallback.shortVersion, VersionSource.fallback),
+    ]);
+    final (bundleVersion, bundleSource) = _first([
+      (_clean(buildNumber), VersionSource.flag),
+      (_clean(pubspecBuildNumber), VersionSource.pubspec),
+      (_clean(xcconfigBuildNumber), VersionSource.xcconfig),
+      (_clean(projectBuildNumber), VersionSource.projectFile),
+      (IosBundleVersions.fallback.bundleVersion, VersionSource.fallback),
+    ]);
+    return IosBundleVersions(
+      shortVersion: shortVersion,
+      bundleVersion: bundleVersion,
+      shortVersionSource: shortSource,
+      bundleVersionSource: bundleSource,
+    );
+  }
+
+  static (String, VersionSource) _first(
+    List<(String?, VersionSource)> candidates,
+  ) {
+    for (final (value, source) in candidates) {
+      if (value != null) return (value, source);
+    }
+    throw StateError('the fallback candidate is always present');
+  }
+
+  /// A usable version value: non-empty and without an unresolved `$(VAR)`.
+  static String? _clean(String? value) {
+    final trimmed = value?.trim();
+    if (trimmed == null || trimmed.isEmpty || trimmed.contains(r'$')) {
+      return null;
+    }
+    return trimmed;
   }
 
   Map<String, Object?> _applicationBuildSettings(String projectRoot) {
