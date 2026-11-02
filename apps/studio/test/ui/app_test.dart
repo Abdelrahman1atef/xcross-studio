@@ -119,7 +119,7 @@ void main() {
       ('Devices', 'Install an app (.ipa)'),
       ('Signing', 'Sign in'),
       ('Logs & Debug', 'Device log'),
-      ('Plugins', 'Podspec-only plugins'),
+      ('Plugins', 'Plugins marked "Podspec only"'),
       ('Settings', 'xcross command-line tool'),
       ('Overview', 'Readiness'),
     ]) {

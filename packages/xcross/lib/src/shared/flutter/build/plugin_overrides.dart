@@ -304,6 +304,20 @@ final class PluginOverrides {
       );
       return plugin;
     }
+    // studio: 009 — never drop an overridden plugin silently: a staged copy
+    // without its Package.swift fell through every check of the build
+    // (found on Windows, where staging lost all files; 2026-11-02).
+    if (!staged.usesSwiftPackageManager) {
+      warnings.warn(
+        XcrossCodes.buildPluginOverrideInvalid,
+        subject: override.directory,
+        message:
+            'Override folder ${override.directory} for plugin '
+            '"${plugin.name}" did not produce ${staged.swiftPackageManifest}; '
+            'it is not used.',
+      );
+      return plugin;
+    }
     warnings.warn(
       XcrossCodes.buildPluginOverrideApplied,
       subject: plugin.name,
@@ -390,7 +404,10 @@ final class PluginOverrides {
                 .directory(entity.path)
                 .listSync(recursive: true, followLinks: false)) {
           if (nested is! File) continue;
-          final relative = _paths.relative(nested.path, from: source);
+          final relative = _paths.relative(
+            _plainPath(nested.path),
+            from: _plainPath(source),
+          );
           planned[_paths.join(prefix, relative)] = nested.path;
         }
       }
@@ -409,15 +426,20 @@ final class PluginOverrides {
     }
     final root = _fileSystem.directory(destination);
     if (!root.existsSync()) return;
+    // Compared as canonical plain paths: Windows listings come back with the
+    // long-path prefix and never matched, so every staged file was deleted
+    // as a stray (found on Windows, 2026-11-02).
     final wanted = {
       for (final relative in planned.keys)
-        _paths.normalize(_paths.join(destination, relative)),
+        _paths.canonicalize(_plainPath(_paths.join(destination, relative))),
     };
     final directories = <String>[];
     for (final entity in root.listSync(recursive: true, followLinks: false)) {
       if (entity is Directory) {
         directories.add(entity.path);
-      } else if (!wanted.contains(_paths.normalize(entity.path))) {
+      } else if (!wanted.contains(
+        _paths.canonicalize(_plainPath(entity.path)),
+      )) {
         entity.deleteSync();
       }
     }
@@ -428,6 +450,14 @@ final class PluginOverrides {
       final directory = _fileSystem.directory(path);
       if (directory.listSync().isEmpty) directory.deleteSync();
     }
+  }
+
+  /// [path] without the Windows long-path prefix that the host file system
+  /// adds to listed entries (`\\?\C:\…`, `\\?\UNC\server\…`).
+  static String _plainPath(String path) {
+    if (path.startsWith(r'\\?\UNC\')) return r'\\' + path.substring(8);
+    if (path.startsWith(r'\\?\')) return path.substring(4);
+    return path;
   }
 
   static bool _same(List<int> a, List<int> b) {

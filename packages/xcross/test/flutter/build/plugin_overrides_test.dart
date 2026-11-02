@@ -153,6 +153,70 @@ flutter:
   });
 
   group('AC-006-3 podspec-only plugin + override', () {
+    test(
+      'staging keeps every file with Windows long-path names',
+      testOn: 'windows',
+      () {
+        const longFs = OverrideTestFileSystem(longPaths: true);
+        plugin('foo');
+        final source = IosPlugin(
+          name: 'foo',
+          fileSystem: longFs,
+          packageRoot: p.join(pubCache, 'foo'),
+        );
+        overrideDir([projectRoot('foo')], manifest: '// mine');
+        final staging = p.join(tmp.path, 'staging');
+
+        final staged = PluginOverrides(
+          locator: PluginOverrideLocator(
+            fileSystem: longFs,
+            paths: p.context,
+            projectRoot: project,
+            environment: {'HOME': home},
+          ),
+          warnings: BuildWarnings(Log(output: log)),
+        ).apply([source], stagingRoot: staging).single;
+
+        final package = p.join(staging, 'foo', 'ios', 'foo');
+        expect(staged.usesSwiftPackageManager, isTrue);
+        expect(File(p.join(package, 'Package.swift')).existsSync(), isTrue);
+        expect(
+          File(p.join(package, 'Classes', 'fooPlugin.m')).existsSync(),
+          isTrue,
+          reason: 'nested files were copied onto themselves before',
+        );
+        expect(
+          File(p.join(staging, 'foo', 'pubspec.yaml')).existsSync(),
+          isTrue,
+          reason: 'top-level files were deleted as strays before',
+        );
+      },
+    );
+
+    test('a staged copy without its Package.swift warns and keeps the '
+        'original plugin (never dropped silently)', () {
+      final source = plugin('foo');
+      overrideDir([projectRoot('foo')]);
+      final staging = p.join(tmp.path, 'staging');
+      final lossy = OverrideTestFileSystem(lostRoot: staging);
+
+      final result = PluginOverrides(
+        locator: PluginOverrideLocator(
+          fileSystem: lossy,
+          paths: p.context,
+          projectRoot: project,
+          environment: {'HOME': home},
+        ),
+        warnings: BuildWarnings(Log(output: log)),
+      ).apply([source], stagingRoot: staging).single;
+
+      expect(result.packageRoot, source.packageRoot);
+      final messages = log.messages.join('\n');
+      expect(messages, contains('[build.plugin_override_invalid]'));
+      expect(messages, contains('did not produce'));
+      expect(messages, isNot(contains('[build.plugin_override_applied]')));
+    });
+
     test('is staged as a Swift package; the pub cache is untouched', () {
       final source = plugin('foo');
       expect(source.usesSwiftPackageManager, isFalse);
@@ -300,12 +364,29 @@ flutter:
 /// dart:io-backed host file system for this test.
 @internal
 final class OverrideTestFileSystem implements HostFileSystemInterface {
-  const OverrideTestFileSystem();
+  const OverrideTestFileSystem({this.longPaths = false, this.lostRoot});
+
+  /// Hand out `\\?\C:\…` paths like the host file system on Windows.
+  final bool longPaths;
+
+  /// Writes under this folder land elsewhere (a staging that loses files).
+  final String? lostRoot;
+
+  String _path(String path) {
+    final lost = lostRoot;
+    if (lost != null && p.isWithin(lost, path)) {
+      return p.join('${lost}_void', p.relative(path, from: lost));
+    }
+    if (longPaths && p.isAbsolute(path) && !path.startsWith(r'\\?\')) {
+      return '\\\\?\\$path';
+    }
+    return path;
+  }
 
   @override
-  File file(String path) => File(path);
+  File file(String path) => File(_path(path));
   @override
-  Directory directory(String path) => Directory(path);
+  Directory directory(String path) => Directory(_path(path));
   @override
   Link link(String path) => Link(path);
   @override

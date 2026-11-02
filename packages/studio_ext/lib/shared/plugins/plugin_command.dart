@@ -135,12 +135,19 @@ final class ProjectPlugins {
   List<String> platformFiles(ProjectPlugin plugin) {
     final dir = fileSystem.directory(plugin.platformDirectory);
     if (!dir.existsSync()) return const [];
+    // Relative to the listing's own root: on Windows the host file system
+    // hands back long-path names (\\?\C:\…) that `paths.relative` against
+    // the plain C:\… folder cannot relate, which dropped every file (found
+    // drafting pusher_channels_flutter, 2026-11-02).
+    final root = dir.path.replaceAll(RegExp(r'[\\/]+$'), '');
     return [
       for (final entity in dir.listSync(recursive: true, followLinks: false))
         if (fileSystem.file(entity.path).existsSync())
-          paths
-              .relative(entity.path, from: plugin.platformDirectory)
-              .replaceAll(r'\', '/'),
+          (entity.path.startsWith(root)
+                  ? entity.path.substring(root.length)
+                  : paths.relative(entity.path, from: plugin.platformDirectory))
+              .replaceAll(r'\', '/')
+              .replaceFirst(RegExp('^/+'), ''),
     ]..sort();
   }
 }
@@ -299,6 +306,22 @@ final class PluginShimCommand extends Command<void> {
       }
       out.parent.createSync(recursive: true);
       out.writeAsStringSync(draft.text);
+      // Mixed Swift/Objective-C plugins: write patched copies of the
+      // Objective-C files into the override folder (laid over the plugin's
+      // sources at build time) so they import the split Swift target.
+      final patched = <String>[];
+      for (final relative in draft.objcSources) {
+        final source = fs.file(
+          paths.joinAll([target.platformDirectory, ...relative.split('/')]),
+        );
+        if (!source.existsSync()) continue;
+        final text = patchSwiftHeaderImports(source.readAsStringSync(), name);
+        if (text == null) continue;
+        final copy = fs.file(paths.joinAll([folder, ...relative.split('/')]));
+        copy.parent.createSync(recursive: true);
+        copy.writeAsStringSync(text);
+        patched.add(relative);
+      }
       final message = StringBuffer()
         ..writeln('✔ Wrote ${out.path}')
         ..writeln(
@@ -306,6 +329,12 @@ final class PluginShimCommand extends Command<void> {
               ? '  (overrides the Package.swift $name ships)'
               : '  ($name ships only a podspec)',
         );
+      for (final relative in patched) {
+        message.writeln(
+          '✔ Patched $relative (imports the Swift target with '
+          '@import ${name}_swift;)',
+        );
+      }
       if (draft.notes.isNotEmpty) {
         message.writeln('Review before building:');
         for (final note in draft.notes) {

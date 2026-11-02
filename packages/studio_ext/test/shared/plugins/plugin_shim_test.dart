@@ -159,7 +159,47 @@ void main() {
       expect(text, contains('"OldSwiftPlugin.m"'));
       expect(text, contains('pusher-websocket-swift'));
       expect(text, contains('from: "10.1.0"'));
-      expect(draft.notes.single, contains('@import old_swift_plugin_swift;'));
+      expect(draft.notes.single, contains('"old_swift_plugin_swift"'));
+      expect(draft.objcSources, [
+        'Classes/OldSwiftPlugin.m',
+        'Classes/OldSwiftPlugin.h',
+      ]);
+    });
+
+    test('AC-006-9 the Swift-header imports become @import of the Swift '
+        'target', () {
+      const pusherStyle = '''
+#import "PusherChannelsFlutterPlugin.h"
+#if __has_include(<pusher_channels_flutter/pusher_channels_flutter-Swift.h>)
+#import <pusher_channels_flutter/pusher_channels_flutter-Swift.h>
+#else
+// fallback comment
+#import "pusher_channels_flutter-Swift.h"
+#endif
+
+@implementation PusherChannelsFlutterPlugin
+@end
+''';
+      final patched = patchSwiftHeaderImports(
+        pusherStyle,
+        'pusher_channels_flutter',
+      );
+      expect(patched, isNotNull);
+      expect(patched, contains('@import pusher_channels_flutter_swift;'));
+      expect(patched, isNot(contains('-Swift.h')));
+      expect(patched, contains('#import "PusherChannelsFlutterPlugin.h"'));
+      expect(patched, contains('@implementation PusherChannelsFlutterPlugin'));
+      expect(
+        patchSwiftHeaderImports(
+          '#import "Other.h"\n',
+          'pusher_channels_flutter',
+        ),
+        isNull,
+      );
+      expect(
+        patchSwiftHeaderImports('  #import "x-Swift.h"\n', 'x'),
+        '@import x_swift;\n',
+      );
     });
   });
 
@@ -239,6 +279,68 @@ end
             home: p.join(temp.path, 'home'),
           ),
         );
+
+    test('AC-006-10 a mixed plugin gets patched Objective-C files, also with '
+        'Windows long-path names', () async {
+      final root = p.join(temp.path, 'pub', 'mixed_plugin');
+      File(p.join(root, 'pubspec.yaml'))
+        ..createSync(recursive: true)
+        ..writeAsStringSync('name: mixed_plugin\nversion: 1.0.0\n');
+      void ios(String path, String text) =>
+          File(p.joinAll([root, 'ios', ...path.split('/')]))
+            ..createSync(recursive: true)
+            ..writeAsStringSync(text);
+      ios(
+        'mixed_plugin.podspec',
+        "Pod::Spec.new do |s|\n  s.source_files = 'Classes/**/*'\n"
+            "  s.dependency 'Flutter'\nend\n",
+      );
+      ios('Classes/MixedPlugin.h', '#import <Flutter/Flutter.h>\n');
+      ios(
+        'Classes/MixedPlugin.m',
+        '#import "MixedPlugin.h"\n#import "mixed_plugin-Swift.h"\n',
+      );
+      ios('Classes/SwiftMixedPlugin.swift', 'public class X {}\n');
+      File(p.join(project, '.flutter-plugins-dependencies')).writeAsStringSync(
+        jsonEncode({
+          'plugins': {
+            'ios': [
+              {'name': 'mixed_plugin', 'path': root},
+            ],
+          },
+        }),
+      );
+      // The host file system on Windows lists \\?\-prefixed paths.
+      await (CommandRunner<void>('xcross', 'test')..addCommand(
+            PluginCommand(
+              fileSystem: const IoFileSystem(longPathPrefix: true),
+              paths: p.context,
+              write: out.add,
+              home: p.join(temp.path, 'home'),
+            ),
+          ))
+          .run(['plugin', 'shim', 'mixed_plugin', '--project', project]);
+      final folder = p.join(
+        project,
+        'xcross_overrides',
+        'mixed_plugin',
+        '1.0.0',
+      );
+      expect(out.join(), isNot(contains('No Swift or Objective-C sources')));
+      expect(
+        File(p.join(folder, 'Package.swift')).readAsStringSync(),
+        contains('name: "mixed_plugin_swift"'),
+      );
+      expect(
+        File(p.join(folder, 'Classes', 'MixedPlugin.m')).readAsStringSync(),
+        '#import "MixedPlugin.h"\n@import mixed_plugin_swift;\n',
+      );
+      expect(
+        File(p.join(folder, 'Classes', 'MixedPlugin.h')).existsSync(),
+        isFalse,
+      );
+      expect(out.join(), contains('✔ Patched Classes/MixedPlugin.m'));
+    });
 
     test('list shows how each plugin is built', () async {
       await runner().run(['plugin', 'list', '--project', project]);

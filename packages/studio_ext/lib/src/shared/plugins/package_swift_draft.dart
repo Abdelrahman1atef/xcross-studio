@@ -94,10 +94,35 @@ String swiftRequirement(String? requirement) {
 /// A drafted `Package.swift` and what the user must review.
 @internal
 final class PackageSwiftDraft {
-  const PackageSwiftDraft(this.text, this.notes);
+  const PackageSwiftDraft(this.text, this.notes, {this.objcSources = const []});
 
   final String text;
   final List<String> notes;
+
+  /// Objective-C sources (relative to the podspec folder) of a plugin split
+  /// into Swift + Objective-C targets: their `<plugin>-Swift.h` imports must
+  /// become `@import <plugin>_swift;` (see [patchSwiftHeaderImports]).
+  final List<String> objcSources;
+}
+
+/// [source] with its imports of the Swift compatibility header
+/// (`#import "<x>-Swift.h"`, `#import <x/x-Swift.h>`, and Flutter's
+/// `#if __has_include(<…-Swift.h>) … #else … #endif` fallback block)
+/// replaced by `@import <plugin>_swift;`, or null when it has none.
+@internal
+String? patchSwiftHeaderImports(String source, String plugin) {
+  final module = '@import ${plugin}_swift;';
+  var patched = source.replaceAllMapped(
+    RegExp(
+      r'#if\s+__has_include\([<"][^>"]*-Swift\.h[>"]\)[\s\S]*?#endif[^\n]*',
+    ),
+    (_) => module,
+  );
+  patched = patched.replaceAllMapped(
+    RegExp(r'^[ \t]*#import\s+[<"][^>"]*-Swift\.h[>"][^\n]*', multiLine: true),
+    (_) => module,
+  );
+  return patched == source ? null : patched;
 }
 
 /// Drafts a `Package.swift` for [plugin] from [spec]. [files] are the
@@ -197,9 +222,8 @@ PackageSwiftDraft draftPackageSwift({
     notes.add(
       'Swift and Objective-C cannot share a SwiftPM target, so the draft '
       'splits them: "$plugin" (Objective-C, the registered plugin class) and '
-      '"${plugin}_swift". In the Objective-C files replace '
-      '#import "$plugin-Swift.h" (or <$plugin/$plugin-Swift.h>) with '
-      '@import ${plugin}_swift; and keep the Swift classes @objc public.',
+      '"${plugin}_swift". The Swift classes the Objective-C side uses must '
+      'stay public (they usually are).',
     );
   }
 
@@ -279,7 +303,15 @@ PackageSwiftDraft draftPackageSwift({
     ..writeln(targets.join('\n'))
     ..writeln('    ]')
     ..writeln(')');
-  return PackageSwiftDraft(text.toString(), notes);
+  return PackageSwiftDraft(
+    text.toString(),
+    notes,
+    objcSources: [
+      if (mixed)
+        for (final file in [...native, ...headers])
+          if (targetPath == '.') file else '$targetPath/$file',
+    ],
+  );
 }
 
 /// The directory every pattern starts with (`Classes/**/*` → `Classes`),

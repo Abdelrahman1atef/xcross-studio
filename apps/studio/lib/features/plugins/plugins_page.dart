@@ -26,6 +26,21 @@ class PluginStatus {
 
   bool get needsOverride => kind == 'podspec only';
 
+  /// What the badge means, for its tooltip.
+  String get explanation => switch (kind) {
+    'swiftpm' =>
+      'The plugin ships a Swift package (Package.swift); xcross builds it.',
+    'override' =>
+      'Your project has xcross_overrides/$name/…/Package.swift; xcross '
+          'builds the plugin from it.',
+    'podspec only' =>
+      'The plugin describes its iOS code only for CocoaPods, which xcross '
+          'does not use. Without an override its iOS part is left out and '
+          'the app fails when it calls the plugin.',
+    'no iOS code' => 'Pure Dart on iOS; nothing native to build.',
+    _ => 'xcross could not tell how this plugin is built.',
+  };
+
   /// Badge for the integration mode (§6.6).
   (XStatus, String) get badge => switch (kind) {
     'swiftpm' => (XStatus.ready, 'SwiftPM supported'),
@@ -63,7 +78,7 @@ class _PluginsPageState extends State<PluginsPage> {
 
   Future<void> _draft(String project, PluginStatus plugin) async {
     final job = Services.of(context).jobs.run(
-      'Draft override (${plugin.name})',
+      'Make buildable (${plugin.name})',
       XcrossCommands.pluginShim(plugin.name, project: project),
     );
     setState(() => _shim = job);
@@ -97,15 +112,18 @@ class _PluginsPageState extends State<PluginsPage> {
           ],
           children: [
             const XCallout(
-              title: 'Podspec-only plugins',
+              title: 'Plugins marked "Podspec only"',
               children: [
                 XNote(
-                  'xcross builds plugins as Swift packages. A plugin that '
-                  'only ships a CocoaPods podspec is skipped, and the app '
-                  'then fails when it calls the plugin. "Draft override" '
-                  'writes xcross_overrides/<plugin>/<version>/Package.swift '
-                  'in your project from the podspec; review it, then build. '
-                  'The pub cache is never modified.',
+                  'xcross builds plugins as Swift packages. Some plugins '
+                  'describe their iOS code only for CocoaPods, which xcross '
+                  'does not use, so their iOS part would be left out and the '
+                  'app fails when it calls them. "Make buildable" writes a '
+                  'Swift package recipe for the plugin (from its podspec) '
+                  'into your project at '
+                  'xcross_overrides/<plugin>/<version>/Package.swift; the '
+                  'next build uses it. Read the notes it prints. Your pub '
+                  'cache is never changed; delete the folder to undo.',
                 ),
               ],
             ),
@@ -144,21 +162,32 @@ class _PluginsPageState extends State<PluginsPage> {
                                 '${plugin.name} ${plugin.version ?? ''}'.trim(),
                               ),
                             ),
-                            XStatusBadge(
-                              status: plugin.badge.$1,
-                              label: plugin.badge.$2,
+                            Tooltip(
+                              message: plugin.explanation,
+                              child: XStatusBadge(
+                                status: plugin.badge.$1,
+                                label: plugin.badge.$2,
+                              ),
                             ),
                             const SizedBox(width: XSpace.s2),
                             SizedBox(
-                              width: 150,
+                              width: 190,
                               child: plugin.needsOverride
-                                  ? XButton(
-                                      label: 'Draft override',
-                                      icon: Icons.auto_fix_high,
-                                      variant: XButtonVariant.secondary,
-                                      onPressed: running
-                                          ? null
-                                          : () => _draft(project, plugin),
+                                  ? Tooltip(
+                                      message:
+                                          'Writes xcross_overrides/'
+                                          '${plugin.name}/'
+                                          '${plugin.version ?? '<version>'}/'
+                                          "Package.swift from the plugin's "
+                                          'podspec so xcross can build it.',
+                                      child: XButton(
+                                        label: 'Make buildable',
+                                        icon: Icons.auto_fix_high,
+                                        variant: XButtonVariant.secondary,
+                                        onPressed: running
+                                            ? null
+                                            : () => _draft(project, plugin),
+                                      ),
                                     )
                                   : null,
                             ),
@@ -170,7 +199,7 @@ class _PluginsPageState extends State<PluginsPage> {
               ),
             if (_shim != null)
               XCard(
-                title: 'Draft review notes',
+                title: 'Package.swift written: review the notes',
                 child: JobConsole(job: _shim!, height: 200),
               ),
           ],
