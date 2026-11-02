@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:args/command_runner.dart';
 import 'package:cli_kit/shared/errors/errors.dart';
 import 'package:path/path.dart' as p;
+import 'package:studio_ext/src/target/iphone/device/crash_reports.dart';
+import 'package:studio_ext/src/target/iphone/device/crash_tools.dart';
 import 'package:studio_ext/src/target/iphone/device/device_codes.dart';
 import 'package:studio_ext/target/iphone/device/app_command.dart';
 import 'package:studio_ext/target/iphone/device/crashes_command.dart';
@@ -318,6 +320,39 @@ void main() {
         contains(p.join('Retired', 'Runner-2026-11-01-090000.ips')),
       );
       expect(text(), contains('exception: EXC_BAD_ACCESS (SIGSEGV)'));
+    });
+
+    test('AC-010-9 --app also takes the process name of an app that is '
+        'no longer installed', () async {
+      await runner(backend()).run(['crashes', 'list', '--app', 'Runner']);
+      expect(const LineSplitter().convert(text()), hasLength(2));
+      await expectLater(
+        runner(backend()).run(['crashes', 'list', '--app', 'Nothing']),
+        throwsA(
+          isA<CliError>().having(
+            (e) => e.message,
+            'message',
+            startsWith('[app.not_installed]'),
+          ),
+        ),
+      );
+    });
+
+    test('AC-010-9 the saved path is shown without the long-path prefix', () {
+      const summary = CrashReportSummary(
+        exceptionType: null,
+        signal: null,
+        frames: [],
+      );
+      expect(
+        const PulledCrash(r'\\?\C:\r\Runner.ips', summary).shownPath,
+        r'C:\r\Runner.ips',
+      );
+      expect(
+        const PulledCrash(r'\\?\UNC\srv\share\a.ips', summary).shownPath,
+        r'\\srv\share\a.ips',
+      );
+      expect(const PulledCrash('/tmp/a.ips', summary).shownPath, '/tmp/a.ips');
     });
 
     test('AC-010-9 a report that cannot be copied is an error', () async {

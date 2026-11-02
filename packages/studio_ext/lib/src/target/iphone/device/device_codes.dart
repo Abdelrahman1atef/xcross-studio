@@ -35,7 +35,7 @@ abstract final class DeviceCodes {
   );
   static const appNotInstalled = DeviceCode(
     'app.not_installed',
-    'Check the bundle id (see the app list with `xcross app info`), or '
+    'Check the bundle id (see the app list with `xcross app list`), or '
         'install the app first.',
   );
   static const crashNotFound = DeviceCode(

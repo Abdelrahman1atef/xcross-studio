@@ -30,20 +30,28 @@ final class CrashTools {
   /// Reports on the device, newest first, limited to [appId]'s process.
   Future<List<CrashName>> reports(String udid, String? appId) async {
     String? process;
+    final names = await backend.crashNames(udid);
     if (appId != null) {
       final entry = (await backend.installedApps(udid))[appId];
-      if (entry == null) {
+      if (entry != null) {
+        process = entry['CFBundleExecutable'] as String? ?? appId;
+      } else if (names.any((n) => CrashName.tryParse(n)?.process == appId)) {
+        // studio: 010 — a process name (such as Runner) of an app that is no
+        // longer installed: its reports stay on the device (found on the
+        // iPhone X, 2026-11-02).
+        process = appId;
+      } else {
         throw DeviceFailure(
           DeviceCodes.appNotInstalled,
-          '$appId is not installed on the iPhone.',
+          '$appId is not installed on the iPhone and no crash report has '
+          'that process name.',
         );
       }
-      process = entry['CFBundleExecutable'] as String? ?? appId;
     }
     // A report can be listed both at the top level and under /Retired.
     final seen = <String>{};
     return [
-      for (final entry in await backend.crashNames(udid))
+      for (final entry in names)
         if (CrashName.tryParse(entry) case final name?
             when (process == null || name.process == process) &&
                 seen.add(name.name))
@@ -83,4 +91,13 @@ final class PulledCrash {
 
   final String path;
   final CrashReportSummary summary;
+
+  /// [path] without the Windows long-path prefix, for messages.
+  String get shownPath {
+    const unc = r'\\?\UNC\';
+    const local = r'\\?\';
+    if (path.startsWith(unc)) return '\\\\${path.substring(unc.length)}';
+    if (path.startsWith(local)) return path.substring(local.length);
+    return path;
+  }
 }

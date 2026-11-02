@@ -153,7 +153,7 @@ final class CrashesPullCommand extends Command<void> {
           'exception: ${summary.exceptionType ?? 'unknown'}'
           '${summary.signal == null ? '' : ' (${summary.signal})'}';
       final lines = <String>[
-        'Saved ${pulled.path}',
+        'Saved ${pulled.shownPath}',
         '${report.process} crashed at ${report.time.replaceFirst('T', ' ')}',
         exceptionLine,
         if (summary.frames.isNotEmpty) ...[
