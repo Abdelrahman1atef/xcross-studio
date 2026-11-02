@@ -29,6 +29,9 @@ abstract class ProcessLauncher {
 
   /// Opens [path] in the file manager.
   Future<void> openFolder(String path);
+
+  /// Opens [url] in the default browser.
+  Future<void> openUrl(String url);
 }
 
 /// [ProcessLauncher] over `dart:io`.
@@ -67,6 +70,10 @@ class IoProcessLauncher implements ProcessLauncher {
     }
     if (process is _IoRunningProcess) process.process.kill();
   }
+
+  // explorer / xdg-open hand an http(s) URL to the default browser.
+  @override
+  Future<void> openUrl(String url) => openFolder(url);
 
   @override
   Future<void> openFolder(String path) async {

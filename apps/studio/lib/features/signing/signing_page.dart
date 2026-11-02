@@ -102,8 +102,15 @@ class _SigningFormState extends State<SigningForm> {
   String? _keyPath;
   String? _error;
 
+  bool _showAuthDetails = false;
+
+  void _onJob() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
+    _auth?.removeListener(_onJob);
     for (final c in [_appleId, _password, _anisette, _issuer, _keyId]) {
       c.dispose();
     }
@@ -146,14 +153,102 @@ class _SigningFormState extends State<SigningForm> {
         anisetteUrl: _anisette.text,
       );
     }
+    _auth?.removeListener(_onJob);
     setState(() {
       _error = null;
-      _auth = services.jobs.run('Sign in', command);
+      _showAuthDetails = false;
+      // Listened to so "Signing in…" ends with the job (it stayed on).
+      _auth = services.jobs.run('Sign in', command)..addListener(_onJob);
     });
     _password.clear();
     _auth!.done.then((_) {
       if (mounted) services.readiness.runDoctor();
     });
+  }
+
+  static const _ascKeysUrl =
+      'https://appstoreconnect.apple.com/access/integrations/api';
+
+  /// The sign-in outcome in the design system's diagnostic shape (§8.2):
+  /// title, one sentence, steps, actions, raw text behind "Show details".
+  Widget _result(BuildContext context) {
+    final services = Services.of(context);
+    final readiness = services.readiness;
+    if (_auth?.status != JobStatus.succeeded) return const SizedBox.shrink();
+    Widget card(XStatus status, String title, List<Widget> children) => Padding(
+      padding: const EdgeInsets.only(bottom: XSpace.s3),
+      child: XCallout(title: title, status: status, children: children),
+    );
+    if (readiness.checking) {
+      return card(XStatus.running, 'Saved. Verifying with Apple…', const [
+        Text(
+          'Your credentials are saved. XCross Studio is asking Apple whether '
+          'it accepts them (about 10 seconds).',
+        ),
+      ]);
+    }
+    if (readiness.signing.health == Health.ok) {
+      return card(XStatus.ready, 'Signed in', const [
+        Text('Apple accepted your credentials.'),
+      ]);
+    }
+    final raw = readiness.signing.message ?? '';
+    final rejectedKey = _useApiKey && raw.contains('HTTP 401');
+    final keyId = _keyId.text.trim().isEmpty ? 'your key' : _keyId.text.trim();
+    return card(XStatus.failed, 'Apple did not accept these credentials', [
+      if (rejectedKey) ...[
+        const Text(
+          'Your details are saved, but Apple refused the API key (HTTP 401). '
+          'The key is probably not an App Store Connect API key, was revoked, '
+          'or belongs to another team.',
+        ),
+        const SizedBox(height: XSpace.s2),
+        Text(
+          '1. In App Store Connect, open Users and Access → Integrations → '
+          'App Store Connect API.\n'
+          '2. Check that $keyId is listed as active, with the Admin or App '
+          'Manager role.\n'
+          '3. Copy the Issuer ID shown at the top of that page.\n'
+          '4. If the key is missing, create a Team Key and pick its '
+          'AuthKey_….p8 here. Push (APNs) and Sign in with Apple keys do not '
+          'work.',
+        ),
+      ] else
+        const Text(
+          'Your details are saved, but the check with Apple failed. The '
+          'details below say why.',
+        ),
+      const SizedBox(height: XSpace.s3),
+      Wrap(
+        spacing: XSpace.s2,
+        runSpacing: XSpace.s2,
+        children: [
+          if (rejectedKey)
+            XButton(
+              label: 'Open App Store Connect',
+              icon: Icons.open_in_new,
+              onPressed: () => services.launcher.openUrl(_ascKeysUrl),
+            ),
+          if (_useApiKey)
+            XButton(
+              label: 'Use Apple ID instead',
+              icon: Icons.person,
+              variant: XButtonVariant.secondary,
+              onPressed: () => setState(() => _useApiKey = false),
+            ),
+          XButton(
+            label: _showAuthDetails ? 'Hide details' : 'Show details',
+            variant: XButtonVariant.text,
+            onPressed: () =>
+                setState(() => _showAuthDetails = !_showAuthDetails),
+          ),
+        ],
+      ),
+      if (_showAuthDetails && raw.isNotEmpty) ...[
+        const SizedBox(height: XSpace.s2),
+        SelectableText(raw, style: XType.mono),
+      ],
+    ]);
   }
 
   @override
@@ -195,7 +290,7 @@ class _SigningFormState extends State<SigningForm> {
             XTextField(controller: _keyId, label: 'Key ID'),
             const SizedBox(height: XSpace.s2),
             XFilePickerField(
-              label: 'AuthKey_<keyId>.p8',
+              label: 'Private key (.p8)',
               directory: false,
               extensions: const ['p8'],
               value: _keyPath,
@@ -270,41 +365,7 @@ class _SigningFormState extends State<SigningForm> {
                 _auth!,
                 Services.of(context).readiness,
               ]),
-              builder: (context, _) {
-                final readiness = Services.of(context).readiness;
-                if (_auth!.status != JobStatus.succeeded) {
-                  return const SizedBox.shrink();
-                }
-                final health = readiness.signing.health;
-                final (status, title, text) = readiness.checking
-                    ? (
-                        XStatus.running,
-                        'Saved. Verifying with Apple…',
-                        'Your credentials are saved. XCross Studio is now '
-                            'asking Apple whether it accepts them (about 10 '
-                            'seconds).',
-                      )
-                    : health == Health.ok
-                    ? (
-                        XStatus.ready,
-                        'Signed in',
-                        'Apple accepted your credentials.',
-                      )
-                    : (
-                        XStatus.failed,
-                        'Saved, but Apple did not accept them',
-                        readiness.signing.message ??
-                            'Run the checks again for details.',
-                      );
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: XSpace.s3),
-                  child: XCallout(
-                    title: title,
-                    status: status,
-                    children: [Text(text)],
-                  ),
-                );
-              },
+              builder: (context, _) => _result(context),
             ),
             JobConsole(
               job: _auth!,

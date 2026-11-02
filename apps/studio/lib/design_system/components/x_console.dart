@@ -150,21 +150,29 @@ class _XConsoleState extends State<XConsole> {
             padding: const EdgeInsets.only(bottom: XSpace.s2),
             child: Row(
               children: [
-                if (widget.title != null) ...[
-                  Flexible(
-                    child: Text(
-                      widget.title!,
-                      overflow: TextOverflow.ellipsis,
-                      style: XType.body.copyWith(
-                        color: c.textPrimary,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
+                // Title and badge share one Expanded so the actions stay at
+                // the right edge (a Flexible title next to a Spacer split the
+                // free space and left the copy button mid-row).
+                Expanded(
+                  child: Row(
+                    children: [
+                      if (widget.title != null) ...[
+                        Flexible(
+                          child: Text(
+                            widget.title!,
+                            overflow: TextOverflow.ellipsis,
+                            style: XType.body.copyWith(
+                              color: c.textPrimary,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: XSpace.s2),
+                      ],
+                      XStatusBadge(status: status, label: label),
+                    ],
                   ),
-                  const SizedBox(width: XSpace.s2),
-                ],
-                XStatusBadge(status: status, label: label),
-                const Spacer(),
+                ),
                 IconButton(
                   tooltip: 'Copy output',
                   iconSize: 16,

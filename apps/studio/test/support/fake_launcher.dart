@@ -86,4 +86,7 @@ class FakeLauncher implements ProcessLauncher {
 
   @override
   Future<void> openFolder(String path) async => opened.add(path);
+
+  @override
+  Future<void> openUrl(String url) async => opened.add(url);
 }
