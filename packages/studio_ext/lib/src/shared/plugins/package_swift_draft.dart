@@ -238,6 +238,15 @@ PackageSwiftDraft draftPackageSwift({
     '            ]',
   ].join('\n');
 
+  // CocoaPods puts every header folder of a pod on the search path, so pods
+  // `#import "Name.h"` across folders; google_maps_flutter_ios imports
+  // "google_maps_flutter_pigeon_messages.g.h" from include/<name>/ ("file
+  // not found" under SwiftPM, 2026-11-02). Same for the drafts.
+  final headerSearchPaths = {
+    for (final header in headers)
+      if (header.contains('/')) header.substring(0, header.lastIndexOf('/')),
+  }.toList()..sort();
+
   String target({
     required String name,
     required List<String> dependencies,
@@ -258,6 +267,10 @@ PackageSwiftDraft draftPackageSwift({
         block('resources', resourceLines),
       if (objc && headers.isNotEmpty)
         '            publicHeadersPath: "$publicHeaders"',
+      if (objc && headerSearchPaths.isNotEmpty)
+        block('cSettings', [
+          for (final dir in headerSearchPaths) '.headerSearchPath("$dir")',
+        ]),
       if (linker.isNotEmpty && name == plugin) block('linkerSettings', linker),
     ];
     return ['        .target(', arguments.join(',\n'), '        ),'].join('\n');

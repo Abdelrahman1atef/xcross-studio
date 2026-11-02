@@ -247,10 +247,14 @@ end
     final text = draft.text;
     final resources = text.indexOf('resources: [');
     final headers = text.indexOf('publicHeadersPath:');
+    final cSettings = text.indexOf('cSettings: [');
     final linker = text.indexOf('linkerSettings:');
     expect(resources, isNonNegative);
     expect(headers, greaterThan(resources));
-    expect(linker, greaterThan(headers));
+    expect(cSettings, greaterThan(headers));
+    expect(linker, greaterThan(cSettings));
+    // `#import "Plugin.h"` from another folder, as CocoaPods allows.
+    expect(text, contains('.headerSearchPath("include/spm_layout")'));
   });
 
   group('AC-006-10 xcross plugin list / shim', () {
