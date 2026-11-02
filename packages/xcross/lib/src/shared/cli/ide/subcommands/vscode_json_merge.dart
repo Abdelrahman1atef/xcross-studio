@@ -2,7 +2,18 @@ import 'dart:convert';
 import 'package:meta/meta.dart';
 
 @internal
-const String xcrossLaunchName = 'xcross: iOS device';
+// studio: 009 — two named entries so the iPhone shows up in the IDE's run
+// dropdown in both modes; iOS 15/16 only run release/profile builds.
+/// The debug (hot reload) entry; needs iOS 17 or later.
+const String xcrossLaunchName = 'xcross: iPhone · debug (iOS 17+)';
+
+/// Earlier name of the debug entry, still recognised (and renamed) on update.
+@internal
+const String xcrossLegacyLaunchName = 'xcross: iOS device';
+
+/// The release entry (`--release`); the one iOS 15/16 devices can run.
+@internal
+const String xcrossReleaseLaunchName = 'xcross: iPhone · release (iOS 15/16)';
 @internal
 const String dapPathSetting = 'dart.customFlutterDapPath';
 @internal
@@ -130,8 +141,10 @@ abstract final class VscodeJsonMerge {
       '${const JsonEncoder.withIndent('  ').convert(value)}\n';
 
   /// Canonical launch.json fields for the xcross entry (except `args`).
-  static Map<String, Object?> xcrossLaunchFields() => {
-    'name': xcrossLaunchName,
+  static Map<String, Object?> xcrossLaunchFields([
+    String name = xcrossLaunchName,
+  ]) => {
+    'name': name,
     'type': 'dart',
     'request': 'launch',
     'debuggerType': 'flutter',
@@ -156,8 +169,10 @@ abstract final class VscodeJsonMerge {
   /// The legacy top-level `xcross` flag is migrated into `env`.
   static Map<String, Object?> _withCanonicalFields(
     Map<Object?, Object?> entry,
-    Map<String, String> generatedEnvironment,
-  ) {
+    Map<String, String> generatedEnvironment, {
+    String name = xcrossLaunchName,
+    bool release = false,
+  }) {
     final merged = <String, Object?>{
       for (final e in entry.entries) '${e.key}': e.value,
     };
@@ -165,17 +180,31 @@ abstract final class VscodeJsonMerge {
     final env = _withMarker(merged['env'], generatedEnvironment);
     return merged
       ..remove('xcross')
-      ..addAll(xcrossLaunchFields())
+      ..addAll(xcrossLaunchFields(name))
       ..['env'] = env
-      ..['args'] = args;
+      ..['args'] = release && !_hasModeArg(args)
+          ? [...?(args as List<Object?>?), '--release']
+          : args;
   }
+
+  static bool _hasModeArg(Object? args) =>
+      args is List &&
+      (args.contains('--release') || args.contains('--profile'));
 
   static bool _isXcrossConfig(Object? config) =>
       config is Map &&
       (config['name'] == xcrossLaunchName ||
+          config['name'] == xcrossLegacyLaunchName ||
+          config['name'] == xcrossReleaseLaunchName ||
           config['xcross'] == true ||
           (config['env'] is Map &&
               (config['env']! as Map)[xcrossEnvKey] == xcrossEnvValue));
+
+  /// The xcross release/profile entry (by name, or marker + mode flag).
+  static bool _isXcrossRelease(Object? config) =>
+      config is Map &&
+      (config['name'] == xcrossReleaseLaunchName ||
+          (_isXcrossConfig(config) && _hasModeArg(config['args'])));
 
   /// Upsert the xcross launch configuration into a launch.json document.
   static Map<String, Object?> mergeLaunchDoc(
@@ -186,7 +215,9 @@ abstract final class VscodeJsonMerge {
     doc.putIfAbsent('version', () => '0.2.0');
 
     final configs = <Object?>[...?doc['configurations'] as List<Object?>?];
-    final index = configs.indexWhere(_isXcrossConfig);
+    final index = configs.indexWhere(
+      (config) => _isXcrossConfig(config) && !_isXcrossRelease(config),
+    );
     if (index < 0) {
       configs.add({
         ...xcrossLaunchFields(),
@@ -197,6 +228,21 @@ abstract final class VscodeJsonMerge {
       configs[index] = _withCanonicalFields(
         configs[index]! as Map,
         generatedEnvironment,
+      );
+    }
+    final release = configs.indexWhere(_isXcrossRelease);
+    if (release < 0) {
+      configs.add({
+        ...xcrossLaunchFields(xcrossReleaseLaunchName),
+        'env': _withMarker(null, generatedEnvironment),
+        'args': <Object?>['--release'],
+      });
+    } else {
+      configs[release] = _withCanonicalFields(
+        configs[release]! as Map,
+        generatedEnvironment,
+        name: xcrossReleaseLaunchName,
+        release: true,
       );
     }
 

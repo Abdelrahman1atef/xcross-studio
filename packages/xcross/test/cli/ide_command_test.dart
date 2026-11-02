@@ -64,12 +64,47 @@ void main() {
       final doc = VscodeJsonMerge.mergeLaunchDoc(null);
       expect(doc['version'], '0.2.0');
       final configs = doc['configurations']! as List;
-      expect(configs, hasLength(1));
-      expect(configs.single, {
+      expect(configs, hasLength(2));
+      expect(configs.first, {
         ...VscodeJsonMerge.xcrossLaunchFields(),
         'env': {'XCROSS': 'true'},
         'args': <Object?>[],
       });
+      expect(configs.last, {
+        ...VscodeJsonMerge.xcrossLaunchFields(xcrossReleaseLaunchName),
+        'env': {'XCROSS': 'true'},
+        'args': <Object?>['--release'],
+      });
+    });
+
+    test('AC-005-1 the iPhone shows as debug and release entries; a '
+        'release entry keeps its args', () {
+      final first = VscodeJsonMerge.mergeLaunchDoc(null);
+      final names = [
+        for (final c in first['configurations']! as List) (c as Map)['name'],
+      ];
+      expect(names, [xcrossLaunchName, xcrossReleaseLaunchName]);
+      expect(xcrossLaunchName, contains('iPhone'));
+      expect(xcrossReleaseLaunchName, contains('iOS 15/16'));
+
+      final again = VscodeJsonMerge.mergeLaunchDoc({
+        'configurations': [
+          {
+            'name': xcrossReleaseLaunchName,
+            'type': 'dart',
+            'env': {'XCROSS': 'true'},
+            'args': ['--udid', 'ABC'],
+          },
+        ],
+      });
+      final configs = again['configurations']! as List;
+      expect(configs, hasLength(2));
+      final release =
+          configs.firstWhere(
+                (c) => (c as Map)['name'] == xcrossReleaseLaunchName,
+              )
+              as Map;
+      expect(release['args'], ['--udid', 'ABC', '--release']);
     });
 
     test('propagates configured selector into generated environment', () {
@@ -77,11 +112,12 @@ void main() {
         null,
         generatedEnvironment: const {'XCROSS_CONFIG': '/config.yaml'},
       );
-      final config = (doc['configurations']! as List).single as Map;
-      expect(config['env'], {
-        'XCROSS_CONFIG': '/config.yaml',
-        'XCROSS': 'true',
-      });
+      for (final config in doc['configurations']! as List) {
+        expect((config as Map)['env'], {
+          'XCROSS_CONFIG': '/config.yaml',
+          'XCROSS': 'true',
+        });
+      }
     });
 
     test('appends beside foreign configs and preserves their content', () {
@@ -92,13 +128,13 @@ void main() {
         ],
       });
       final configs = doc['configurations']! as List;
-      expect(configs, hasLength(2));
+      expect(configs, hasLength(3));
       expect(configs.first, {
         'name': 'Flutter',
         'type': 'dart',
         'request': 'launch',
       });
-      expect((configs.last as Map)['env'], {'XCROSS': 'true'});
+      expect((configs[1] as Map)['env'], {'XCROSS': 'true'});
     });
 
     test('preserves args on an existing xcross entry', () {
@@ -115,7 +151,8 @@ void main() {
           },
         ],
       });
-      final entry = (doc['configurations']! as List).single as Map;
+      final entry = (doc['configurations']! as List).first as Map;
+      expect(entry['name'], xcrossLaunchName, reason: 'legacy name renamed');
       expect(entry['args'], ['--udid', 'ABC']);
       expect(entry['env'], {'MY_KEY': 'mine', 'XCROSS': 'true'});
       expect(entry.containsKey('xcross'), isFalse);
@@ -130,7 +167,7 @@ void main() {
           {'name': 'xcross: iOS device', 'type': 'dart'},
         ],
       });
-      final entry = (doc['configurations']! as List).single as Map;
+      final entry = (doc['configurations']! as List).first as Map;
       expect(entry['env'], {'XCROSS': 'true'});
       expect(entry['args'], <Object?>[]);
     });
@@ -343,6 +380,42 @@ void main() {
           ),
         ).run();
         expect(file.readAsStringSync(), before);
+      },
+    );
+
+    test(
+      testOn: '!windows',
+      'AC-005-1 writes debug + release entries and updates its own stale '
+      'file, never a user-made one',
+      () async {
+        Future<void> run(String exe) => IdeaCommand(
+          XcrossIdeLauncher(
+            host: LinuxHost(currentDirectory: temp.path),
+            log: testLog(),
+            executable: exe,
+          ),
+        ).run();
+        final run_ = p.join(temp.path, '.run');
+        await run('/old/xcross');
+        final debug = File(p.join(run_, 'xcross_ios_device.run.xml'));
+        final release = File(p.join(run_, 'xcross_ios_release.run.xml'));
+        expect(debug.readAsStringSync(), contains(xcrossLaunchName));
+        expect(release.readAsStringSync(), contains(xcrossReleaseLaunchName));
+        expect(release.readAsStringSync(), contains('--release'));
+
+        // A newer xcross path: xcross's own files are updated, with a backup.
+        await run('/new/xcross');
+        expect(debug.readAsStringSync(), contains('/new/xcross flutter dap'));
+        expect(
+          File('${debug.path}.bak').readAsStringSync(),
+          contains('/old/xcross flutter dap'),
+        );
+
+        // A run config the user wrote is left alone.
+        release.writeAsStringSync('<component name="Mine" />');
+        await run('/newer/xcross');
+        expect(release.readAsStringSync(), '<component name="Mine" />');
+        expect(IdeaCommand.isXcrossRunXml(debug.readAsStringSync()), isTrue);
       },
     );
   });
