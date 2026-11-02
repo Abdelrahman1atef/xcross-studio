@@ -1,7 +1,6 @@
 import 'package:args/command_runner.dart';
 import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:path/path.dart' as p;
-import 'package:studio_ext/src/target/iphone/device/crash_reports.dart';
 import 'package:studio_ext/src/target/iphone/device/crash_tools.dart';
 import 'package:studio_ext/src/target/iphone/device/device_codes.dart';
 import 'package:studio_ext/src/target/iphone/device/log_output.dart';
@@ -60,7 +59,7 @@ final class CrashesListCommand extends Command<void> {
       final reports = await _tools.reports(udid, args.option('app'));
       final detailed = reports.take(_detailLimit).toList();
       final summaries = detailed.isEmpty
-          ? const <String, CrashReportSummary>{}
+          ? const <String, PulledCrash>{}
           : await _tools.pullAndRead(
               udid,
               detailed,
@@ -70,7 +69,7 @@ final class CrashesListCommand extends Command<void> {
         _tools.write('No crash reports.\n');
       }
       for (final report in reports) {
-        final type = summaries[report.name]?.exceptionType;
+        final type = summaries[report.name]?.summary.exceptionType;
         _tools.write(
           args.flag('json')
               ? ndjsonLine({
@@ -140,17 +139,24 @@ final class CrashesPullCommand extends Command<void> {
         );
       }
       final out = args.option('out')!;
-      final summary = (await _tools.pullAndRead(udid, [
+      final pulled = (await _tools.pullAndRead(udid, [
         report,
       ], out))[report.name];
+      if (pulled == null) {
+        throw DeviceFailure(
+          DeviceCodes.crashNotFound,
+          '${report.name} could not be copied from the iPhone.',
+        );
+      }
+      final summary = pulled.summary;
       final exceptionLine =
-          'exception: ${summary?.exceptionType ?? 'unknown'}'
-          '${summary?.signal == null ? '' : ' (${summary!.signal})'}';
+          'exception: ${summary.exceptionType ?? 'unknown'}'
+          '${summary.signal == null ? '' : ' (${summary.signal})'}';
       final lines = <String>[
-        'Saved ${_tools.paths.join(out, report.name)}',
+        'Saved ${pulled.path}',
         '${report.process} crashed at ${report.time.replaceFirst('T', ' ')}',
         exceptionLine,
-        if (summary != null && summary.frames.isNotEmpty) ...[
+        if (summary.frames.isNotEmpty) ...[
           'crashed thread:',
           for (final frame in summary.frames) '  $frame',
         ],

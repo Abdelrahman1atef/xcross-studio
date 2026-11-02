@@ -36,8 +36,9 @@ abstract interface class DeviceLogBackend {
   /// Crash report paths as listed by `crash ls` (top level).
   Future<List<String>> crashNames(String udid);
 
-  /// Copies the named reports into [directory].
-  Future<void> pullCrashes(String udid, List<String> names, String directory);
+  /// Copies the reports at [paths] (device paths such as `/X.ips` or
+  /// `/Retired/X.ips`) into [directory], keeping their folders.
+  Future<void> pullCrashes(String udid, List<String> paths, String directory);
 }
 
 /// [DeviceLogBackend] over pymobiledevice3: plain usbmux, no tunnel, no DDI.
@@ -159,10 +160,13 @@ final class PymdDeviceLogBackend implements DeviceLogBackend {
     };
   }
 
+  // Depth 2: iOS moves a report into /Retired once it has been copied off
+  // (our own `crashes list` copies the newest ones), and a top-level listing
+  // would then lose it (found on the iPhone X, 2026-11-02).
   @override
   Future<List<String>> crashNames(String udid) async => [
     for (final line in const LineSplitter().convert(
-      await _run(['crash', 'ls'], udid),
+      await _run(['crash', 'ls', '--depth', '2'], udid),
     ))
       if (line.trim().isNotEmpty) line.trim(),
   ];
@@ -170,21 +174,27 @@ final class PymdDeviceLogBackend implements DeviceLogBackend {
   @override
   Future<void> pullCrashes(
     String udid,
-    List<String> names,
+    List<String> paths,
     String directory,
   ) async {
-    if (names.isEmpty) return;
-    final basenames = [
-      for (final name in names) RegExp.escape(name.split('/').last),
-    ];
-    await _run([
-      'crash',
-      'pull',
-      directory,
-      '/',
-      '--match',
-      '^(${basenames.join('|')})\$',
-    ], udid);
+    // `crash pull` does not descend into /Retired from `/`, so each folder is
+    // pulled on its own (found on the iPhone X, 2026-11-02).
+    final byFolder = <String, List<String>>{};
+    for (final path in paths) {
+      final cut = path.lastIndexOf('/');
+      final folder = cut <= 0 ? '/' : path.substring(0, cut);
+      byFolder.putIfAbsent(folder, () => []).add(path.substring(cut + 1));
+    }
+    for (final MapEntry(key: folder, value: names) in byFolder.entries) {
+      await _run([
+        'crash',
+        'pull',
+        directory,
+        folder,
+        '--match',
+        '^(${[for (final name in names) RegExp.escape(name)].join('|')})\$',
+      ], udid);
+    }
   }
 }
 

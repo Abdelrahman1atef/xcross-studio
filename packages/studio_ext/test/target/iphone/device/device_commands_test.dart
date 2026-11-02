@@ -266,6 +266,27 @@ void main() {
       },
     );
 
+    test('AC-010-9 retired reports stay listed, once each', () async {
+      await runner(
+        FakeDeviceBackend(
+          apps: apps,
+          crashes: [
+            '/Retired',
+            '/Runner-2026-11-01-090000.ips',
+            '/Retired/Runner-2026-11-01-090000.ips',
+            '/Retired/Runner-2026-09-01-070000.ips',
+          ],
+          crashFiles: {
+            'Runner-2026-11-01-090000.ips': ips,
+            'Runner-2026-09-01-070000.ips': ips,
+          },
+        ),
+      ).run(['crashes', 'list', '--app', appId]);
+      final lines = const LineSplitter().convert(text());
+      expect(lines, hasLength(2));
+      expect(lines.last, contains('Runner-2026-09-01-070000.ips'));
+    });
+
     test('AC-010-9 list newest first with exception types', () async {
       await runner(backend()).run(['crashes', 'list', '--app', appId]);
       final lines = const LineSplitter().convert(text());
@@ -279,6 +300,43 @@ void main() {
       for (final line in const LineSplitter().convert(text())) {
         expect(schema.validate(jsonDecode(line)), isEmpty, reason: line);
       }
+    });
+
+    test('AC-010-9 a retired report is pulled from /Retired', () async {
+      final dir = '${temp.path}/retired';
+      await runner(
+        FakeDeviceBackend(
+          apps: apps,
+          crashes: ['/Retired', '/Retired/Runner-2026-11-01-090000.ips'],
+          crashFiles: {'Runner-2026-11-01-090000.ips': ips},
+        ),
+      ).run(['crashes', 'pull', '--latest', '--out', dir]);
+      final saved = File('$dir/Retired/Runner-2026-11-01-090000.ips');
+      expect(saved.existsSync(), isTrue);
+      expect(
+        text(),
+        contains(p.join('Retired', 'Runner-2026-11-01-090000.ips')),
+      );
+      expect(text(), contains('exception: EXC_BAD_ACCESS (SIGSEGV)'));
+    });
+
+    test('AC-010-9 a report that cannot be copied is an error', () async {
+      await expectLater(
+        runner(
+          FakeDeviceBackend(
+            apps: apps,
+            crashes: ['/Runner-2026-11-01-090000.ips'],
+          ),
+        ).run(['crashes', 'pull', '--latest', '--out', '${temp.path}/x']),
+        throwsA(
+          isA<CliError>().having(
+            (e) => e.message,
+            'message',
+            contains('could not be copied'),
+          ),
+        ),
+      );
+      expect(text(), isNot(contains('Saved')));
     });
 
     test('AC-010-9 pull --latest saves and summarises', () async {

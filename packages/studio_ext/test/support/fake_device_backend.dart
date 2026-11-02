@@ -108,14 +108,16 @@ final class FakeDeviceBackend implements DeviceLogBackend {
   @override
   Future<void> pullCrashes(
     String udid,
-    List<String> names,
+    List<String> paths,
     String directory,
   ) async {
+    final names = [for (final path in paths) path.split('/').last];
     calls.add('crash pull ${names.join(',')}');
-    for (final name in names) {
-      final text = crashFiles[name];
+    for (final path in paths) {
+      final text = crashFiles[path.split('/').last];
       if (text == null) continue;
-      File('$directory/$name')
+      // Like `crash pull`, keep the device folder (/Retired/…).
+      File('$directory$path')
         ..parent.createSync(recursive: true)
         ..writeAsStringSync(text);
     }

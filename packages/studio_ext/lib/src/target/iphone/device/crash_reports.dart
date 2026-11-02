@@ -9,7 +9,8 @@ final class CrashName {
     required this.name,
     required this.process,
     required this.time,
-  });
+    String? path,
+  }) : path = path ?? '/$name';
 
   static final _pattern = RegExp(
     r'^(.+)-(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})(\d{2})\.ips$',
@@ -21,8 +22,10 @@ final class CrashName {
     final name = entry.split('/').last;
     final match = _pattern.firstMatch(name);
     if (match == null) return null;
+    final trimmed = entry.trim();
     return CrashName(
       name: name,
+      path: trimmed.startsWith('/') ? trimmed : '/$trimmed',
       process: match[1]!,
       time:
           '${match[2]}-${match[3]}-${match[4]}T${match[5]}:${match[6]}:${match[7]}',
@@ -30,6 +33,9 @@ final class CrashName {
   }
 
   final String name;
+
+  /// Path on the device (`/Retired/<name>` once iOS has retired it).
+  final String path;
   final String process;
 
   /// `YYYY-MM-DDTHH:MM:SS` (device-local).

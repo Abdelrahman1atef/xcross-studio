@@ -40,22 +40,26 @@ final class CrashTools {
       }
       process = entry['CFBundleExecutable'] as String? ?? appId;
     }
+    // A report can be listed both at the top level and under /Retired.
+    final seen = <String>{};
     return [
       for (final entry in await backend.crashNames(udid))
         if (CrashName.tryParse(entry) case final name?
-            when process == null || name.process == process)
+            when (process == null || name.process == process) &&
+                seen.add(name.name))
           name,
     ]..sort(CrashName.newestFirst);
   }
 
-  /// Pulls [names] into [directory] and reads their summaries.
-  Future<Map<String, CrashReportSummary>> pullAndRead(
+  /// Pulls [names] into [directory] and reads their summaries, keyed by
+  /// report name. Reports that could not be copied are missing.
+  Future<Map<String, PulledCrash>> pullAndRead(
     String udid,
     List<CrashName> names,
     String directory,
   ) async {
     fileSystem.directory(directory).createSync(recursive: true);
-    await backend.pullCrashes(udid, [for (final n in names) n.name], directory);
+    await backend.pullCrashes(udid, [for (final n in names) n.path], directory);
     final found = <String, String>{};
     final root = fileSystem.directory(directory);
     for (final entity in root.listSync(recursive: true)) {
@@ -64,9 +68,19 @@ final class CrashTools {
     }
     return {
       for (final MapEntry(key: name, value: path) in found.entries)
-        name: CrashReportSummary.fromIps(
-          fileSystem.file(path).readAsStringSync(),
+        name: PulledCrash(
+          path,
+          CrashReportSummary.fromIps(fileSystem.file(path).readAsStringSync()),
         ),
     };
   }
+}
+
+/// A report copied off the device: where it was saved and what it says.
+@internal
+final class PulledCrash {
+  const PulledCrash(this.path, this.summary);
+
+  final String path;
+  final CrashReportSummary summary;
 }

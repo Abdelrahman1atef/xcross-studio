@@ -8,7 +8,7 @@ repository folder: the installed upstream `xcross` does not have the XCross Stud
 |---|---|---|---|---|
 | 1 | AC-008-9 | open each sidebar destination (013 shell) | all seven render | ⏳ |
 | 2 | — | Overview → Run checks (or Settings → Toolchain) | doctor output with ✔/✖ (no `?` characters) | ⏳ |
-| 3 | AC-008-1 | Devices, phone connected | "iPhone X · iOS 16.7.16 · release/profile only" | ⏳ |
+| 3 | AC-008-1 | Devices, phone connected | "iPhone X · iOS 16.7.16 · release/profile only" | ✅ (CLI) 2026-11-02, iPhone X iOS 16.7.16, Windows: `xcross devices` lists the phone with iOS 16.7.16; GUI view not yet checked |
 | 4 | AC-008-1 | unplug, Refresh | "No iPhone is connected by USB" + hint | ⏳ |
 | 5 | — | Build & Run → pick a Flutter project → Build IPA (release) | live build output; Open output folder works | ⏳ |
 | 6 | — | Build & Run → Build & Run (release) | signed + installed; tap-the-icon guidance | ⏳ |
