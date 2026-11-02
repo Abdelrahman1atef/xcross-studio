@@ -245,17 +245,19 @@ PackageSwiftDraft draftPackageSwift({
     bool objc = false,
   }) {
     // No trailing comma after the last argument: Swift accepts that only
-    // from 6.1 on.
+    // from 6.1 on. The order is PackageDescription's: `resources` before
+    // `publicHeadersPath`, or the manifest fails with "type 'Any' has no
+    // member 'target'" (google_maps_flutter_ios, 2026-11-02).
     final arguments = <String>[
       '            name: "$name"',
       block('dependencies', dependencies),
       '            path: "$targetPath"',
       if (exclude.isNotEmpty)
         block('exclude', [for (final e in exclude) '"$e"']),
-      if (objc && headers.isNotEmpty)
-        '            publicHeadersPath: "$publicHeaders"',
       if (resourceLines.isNotEmpty && name == plugin)
         block('resources', resourceLines),
+      if (objc && headers.isNotEmpty)
+        '            publicHeadersPath: "$publicHeaders"',
       if (linker.isNotEmpty && name == plugin) block('linkerSettings', linker),
     ];
     return ['        .target(', arguments.join(',\n'), '        ),'].join('\n');

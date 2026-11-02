@@ -296,11 +296,14 @@ final class PluginShimCommand extends Command<void> {
       final folder = version == null
           ? paths.join(base, name)
           : paths.join(base, name, version);
-      final out = fs.file(paths.join(folder, 'Package.swift'));
+      // The logical path, for messages: the host file's path carries the
+      // Windows long-path prefix ("✔ Wrote \\?\D:\…").
+      final shown = paths.join(folder, 'Package.swift');
+      final out = fs.file(shown);
       if (out.existsSync() && !args.flag('force')) {
         throw PluginFailure(
           'plugin.override_exists',
-          '${out.path} already exists.',
+          '$shown already exists.',
           'Edit it, or pass --force to replace it with a new draft.',
         );
       }
@@ -323,7 +326,7 @@ final class PluginShimCommand extends Command<void> {
         patched.add(relative);
       }
       final message = StringBuffer()
-        ..writeln('✔ Wrote ${out.path}')
+        ..writeln('✔ Wrote $shown')
         ..writeln(
           plugins.hasSwiftPackage(target)
               ? '  (overrides the Package.swift $name ships)'

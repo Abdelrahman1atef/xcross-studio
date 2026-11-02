@@ -224,6 +224,35 @@ end
     expect(draft.notes, isEmpty);
   });
 
+  test('AC-006-9 resources come before publicHeadersPath (Swift argument '
+      'order)', () {
+    // google_maps_flutter_ios 2.18.3: a privacy manifest plus include/.
+    final draft = draftPackageSwift(
+      plugin: 'spm_layout',
+      spec: Podspec.parse('''
+Pod::Spec.new do |s|
+  s.name = 'spm_layout'
+  s.source_files = 'spm_layout/Sources/spm_layout/**/*.{h,m}'
+  s.public_header_files = 'spm_layout/Sources/spm_layout/include/**/*.h'
+  s.resource_bundles = {'spm_layout_privacy' => ['spm_layout/Sources/spm_layout/Resources/PrivacyInfo.xcprivacy']}
+  s.frameworks = 'CoreLocation'
+  s.dependency 'Flutter'
+end
+'''),
+      files: const [
+        'spm_layout/Sources/spm_layout/Plugin.m',
+        'spm_layout/Sources/spm_layout/include/spm_layout/Plugin.h',
+      ],
+    );
+    final text = draft.text;
+    final resources = text.indexOf('resources: [');
+    final headers = text.indexOf('publicHeadersPath:');
+    final linker = text.indexOf('linkerSettings:');
+    expect(resources, isNonNegative);
+    expect(headers, greaterThan(resources));
+    expect(linker, greaterThan(headers));
+  });
+
   group('AC-006-10 xcross plugin list / shim', () {
     late Directory temp;
     late String project;
