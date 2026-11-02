@@ -18,6 +18,18 @@ final class DoctorCheck {
   final String name;
   final String message;
   final String? path;
+
+  // studio: 015 — [path] without the Windows long-path prefix, for output
+  // ("✓ Flutter SDK  \\?\D:\flutter", seen on Windows 2026-11-02).
+  String? get shownPath {
+    final value = path;
+    const unc = r'\\?\UNC\';
+    const local = r'\\?\';
+    if (value == null) return null;
+    if (value.startsWith(unc)) return '\\\\${value.substring(unc.length)}';
+    if (value.startsWith(local)) return value.substring(local.length);
+    return value;
+  }
 }
 
 @internal

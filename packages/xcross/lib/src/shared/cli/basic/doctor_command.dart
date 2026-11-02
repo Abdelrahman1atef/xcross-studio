@@ -48,7 +48,7 @@ final class DoctorCommand extends Command<void> {
           'name': check.name,
           'status': check.status.name,
           'message': check.message,
-          'path': check.path,
+          'path': check.shownPath,
         });
       }
       if (index > 0) _writeLine('');
@@ -127,7 +127,7 @@ final class DoctorCommand extends Command<void> {
     const indent = '    ';
     final name = check.name.padRight(nameWidth);
     final prefix = '$indent$color$marker${ansi.none} ';
-    final path = check.path;
+    final path = check.shownPath;
     // A bare "Found" says nothing the location does not, so the location
     // takes its place on the row.
     if (path != null && check.message == 'Found') {

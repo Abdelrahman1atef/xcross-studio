@@ -138,6 +138,24 @@ void main() {
     );
   });
 
+  test('locations are shown without the Windows long-path prefix', () {
+    expect(
+      DoctorCommand.formatCheck(
+        const DoctorCheck.success(
+          'Flutter SDK',
+          'Found',
+          path: r'\\?\D:\Programing\flutter',
+        ),
+        log: testLog(),
+      ),
+      r'    ✓ Flutter SDK  D:\Programing\flutter',
+    );
+    expect(
+      const DoctorCheck.success('x', 'y', path: r'\\?\UNC\srv\f').shownPath,
+      r'\\srv\f',
+    );
+  });
+
   test('warnings do not fail doctor', () async {
     final lines = <String>[];
     final runner = doctorRunner(lines, [
