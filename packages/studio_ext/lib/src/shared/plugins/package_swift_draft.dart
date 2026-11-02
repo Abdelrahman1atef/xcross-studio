@@ -5,13 +5,24 @@ import 'package:studio_ext/src/shared/plugins/podspec.dart';
 /// A pod with a known Swift package.
 @internal
 final class KnownPackage {
-  const KnownPackage(this.url, this.package, this.product);
+  const KnownPackage(
+    this.url,
+    this.package,
+    this.product, {
+    this.objectiveCModules = const {},
+  });
 
   final String url;
 
   /// SwiftPM package identity (last URL path component).
   final String package;
   final String product;
+
+  /// Pod module → the module its Objective-C API has in the Swift package,
+  /// where they differ (`@import GoogleMapsUtils;` must become
+  /// `@import GoogleMapsUtilsObjC;`: the SwiftPM `GoogleMapsUtils` module is
+  /// the Swift layer).
+  final Map<String, String> objectiveCModules;
 }
 
 /// Swift packages for pods that plugins commonly depend on.
@@ -38,6 +49,9 @@ KnownPackage? knownPackageFor(String pod) {
       'https://github.com/googlemaps/google-maps-ios-utils',
       'google-maps-ios-utils',
       'GoogleMapsUtils',
+      // google_maps_flutter_ios: "unknown type name 'GMUGradient'" (gazayr,
+      // 2026-11-02).
+      objectiveCModules: {'GoogleMapsUtils': 'GoogleMapsUtilsObjC'},
     ),
     'PusherSwift' => const KnownPackage(
       'https://github.com/pusher/pusher-websocket-swift',
@@ -94,15 +108,43 @@ String swiftRequirement(String? requirement) {
 /// A drafted `Package.swift` and what the user must review.
 @internal
 final class PackageSwiftDraft {
-  const PackageSwiftDraft(this.text, this.notes, {this.objcSources = const []});
+  const PackageSwiftDraft(
+    this.text,
+    this.notes, {
+    this.objcSources = const [],
+    this.splitsSwift = false,
+    this.moduleRenames = const {},
+  });
 
   final String text;
   final List<String> notes;
 
-  /// Objective-C sources (relative to the podspec folder) of a plugin split
-  /// into Swift + Objective-C targets: their `<plugin>-Swift.h` imports must
-  /// become `@import <plugin>_swift;` (see [patchSwiftHeaderImports]).
+  /// Objective-C sources and headers (relative to the podspec folder) that
+  /// may need patched copies: see [splitsSwift] and [moduleRenames].
   final List<String> objcSources;
+
+  /// The plugin is split into Swift + Objective-C targets: `<plugin>-Swift.h`
+  /// imports must become `@import <plugin>_swift;`
+  /// (see [patchSwiftHeaderImports]).
+  final bool splitsSwift;
+
+  /// `@import` renames for the Swift packages' Objective-C modules
+  /// (see [patchModuleImports]).
+  final Map<String, String> moduleRenames;
+}
+
+/// [source] with `@import <from>;` replaced by `@import <to>;` for every
+/// entry of [renames], or null when nothing changed.
+@internal
+String? patchModuleImports(String source, Map<String, String> renames) {
+  var patched = source;
+  for (final MapEntry(key: from, value: to) in renames.entries) {
+    patched = patched.replaceAll(
+      RegExp('@import[ \\t]+${RegExp.escape(from)}[ \\t]*;'),
+      '@import $to;',
+    );
+  }
+  return patched == source ? null : patched;
 }
 
 /// [source] with its imports of the Swift compatibility header
@@ -174,6 +216,7 @@ PackageSwiftDraft draftPackageSwift({
   ];
   final todo = <String>[];
   final seenPackages = <String>{};
+  final moduleRenames = <String, String>{};
   for (final dependency in spec.dependencies) {
     if (dependency.name == 'Flutter') continue;
     final known = knownPackageFor(dependency.name);
@@ -184,6 +227,7 @@ PackageSwiftDraft draftPackageSwift({
       notes.add('Add a Swift package for pod $dependency.');
       continue;
     }
+    moduleRenames.addAll(known.objectiveCModules);
     if (seenPackages.add(known.package)) {
       dependencyLines.add(
         '.package(url: "${known.url}", '
@@ -322,10 +366,12 @@ PackageSwiftDraft draftPackageSwift({
     text.toString(),
     notes,
     objcSources: [
-      if (mixed)
+      if (mixed || moduleRenames.isNotEmpty)
         for (final file in [...native, ...headers])
           if (targetPath == '.') file else '$targetPath/$file',
     ],
+    splitsSwift: mixed,
+    moduleRenames: moduleRenames,
   );
 }
 

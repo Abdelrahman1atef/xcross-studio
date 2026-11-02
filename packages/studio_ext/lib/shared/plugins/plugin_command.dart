@@ -309,21 +309,42 @@ final class PluginShimCommand extends Command<void> {
       }
       out.parent.createSync(recursive: true);
       out.writeAsStringSync(draft.text);
-      // Mixed Swift/Objective-C plugins: write patched copies of the
-      // Objective-C files into the override folder (laid over the plugin's
-      // sources at build time) so they import the split Swift target.
-      final patched = <String>[];
+      // Write patched copies of Objective-C files into the override folder
+      // (laid over the plugin's sources at build time): mixed plugins import
+      // the split Swift target, and pods whose Objective-C module has another
+      // name in its Swift package import that name.
+      final patched = <String, String>{};
       for (final relative in draft.objcSources) {
         final source = fs.file(
           paths.joinAll([target.platformDirectory, ...relative.split('/')]),
         );
         if (!source.existsSync()) continue;
-        final text = patchSwiftHeaderImports(source.readAsStringSync(), name);
-        if (text == null) continue;
+        final original = source.readAsStringSync();
+        var text = original;
+        final reasons = <String>[];
+        if (draft.splitsSwift) {
+          final swift = patchSwiftHeaderImports(text, name);
+          if (swift != null) {
+            text = swift;
+            reasons.add('@import ${name}_swift;');
+          }
+        }
+        final renamed = patchModuleImports(text, draft.moduleRenames);
+        if (renamed != null) {
+          text = renamed;
+          reasons.add(
+            [
+              for (final MapEntry(key: from, value: to)
+                  in draft.moduleRenames.entries)
+                if (original.contains(from)) '@import $to; for $from',
+            ].join(', '),
+          );
+        }
+        if (text == original) continue;
         final copy = fs.file(paths.joinAll([folder, ...relative.split('/')]));
         copy.parent.createSync(recursive: true);
         copy.writeAsStringSync(text);
-        patched.add(relative);
+        patched[relative] = reasons.join('; ');
       }
       final message = StringBuffer()
         ..writeln('✔ Wrote $shown')
@@ -332,11 +353,8 @@ final class PluginShimCommand extends Command<void> {
               ? '  (overrides the Package.swift $name ships)'
               : '  ($name ships only a podspec)',
         );
-      for (final relative in patched) {
-        message.writeln(
-          '✔ Patched $relative (imports the Swift target with '
-          '@import ${name}_swift;)',
-        );
+      for (final MapEntry(key: relative, value: reason) in patched.entries) {
+        message.writeln('✔ Patched $relative ($reason)');
       }
       if (draft.notes.isNotEmpty) {
         message.writeln('Review before building:');

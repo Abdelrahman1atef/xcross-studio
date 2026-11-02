@@ -375,6 +375,65 @@ end
       expect(out.join(), contains('✔ Patched Classes/MixedPlugin.m'));
     });
 
+    test('AC-006-12 a pod whose Objective-C module is renamed in its Swift '
+        'package gets patched imports', () async {
+      // google_maps_flutter_ios: `@import GoogleMapsUtils;` must become
+      // `@import GoogleMapsUtilsObjC;` under SwiftPM.
+      final root = p.join(temp.path, 'pub', 'maps_plugin');
+      File(p.join(root, 'pubspec.yaml'))
+        ..createSync(recursive: true)
+        ..writeAsStringSync('name: maps_plugin\nversion: 1.0.0\n');
+      void ios(String path, String text) =>
+          File(p.joinAll([root, 'ios', ...path.split('/')]))
+            ..createSync(recursive: true)
+            ..writeAsStringSync(text);
+      ios(
+        'maps_plugin.podspec',
+        "Pod::Spec.new do |s|\n  s.source_files = 'Classes/**/*'\n"
+            "  s.dependency 'Flutter'\n"
+            "  s.dependency 'Google-Maps-iOS-Utils', '>= 5.0'\nend\n",
+      );
+      ios('Classes/Trampoline.h', '@import GoogleMapsUtils;\n');
+      ios('Classes/MapsPlugin.m', '#import "Trampoline.h"\n');
+      File(p.join(project, '.flutter-plugins-dependencies')).writeAsStringSync(
+        jsonEncode({
+          'plugins': {
+            'ios': [
+              {'name': 'maps_plugin', 'path': root},
+            ],
+          },
+        }),
+      );
+      await runner().run([
+        'plugin',
+        'shim',
+        'maps_plugin',
+        '--project',
+        project,
+      ]);
+      final folder = p.join(
+        project,
+        'xcross_overrides',
+        'maps_plugin',
+        '1.0.0',
+      );
+      expect(
+        File(p.join(folder, 'Classes', 'Trampoline.h')).readAsStringSync(),
+        '@import GoogleMapsUtilsObjC;\n',
+      );
+      expect(
+        File(p.join(folder, 'Classes', 'MapsPlugin.m')).existsSync(),
+        isFalse,
+        reason: 'unchanged files are not copied',
+      );
+      expect(
+        out.join(),
+        contains(
+          '✔ Patched Classes/Trampoline.h (@import GoogleMapsUtilsObjC;',
+        ),
+      );
+    });
+
     test('list shows how each plugin is built', () async {
       await runner().run(['plugin', 'list', '--project', project]);
       final text = out.join();
