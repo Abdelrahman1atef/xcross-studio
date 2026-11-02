@@ -24,7 +24,8 @@ AuthArgs _$parseAuthArgsResult(ArgResults result) => AuthArgs()
 ArgParser _$populateAuthArgsParser(ArgParser parser) => parser
   ..addOption(
     'issuer-id',
-    help: 'App Store Connect API "Issuer ID" (one per team).',
+    help:
+        'App Store Connect API "Issuer ID" (one per team). Leave it out for an individual key.',
   )
   ..addOption(
     'key-id',

@@ -32,7 +32,11 @@ part 'auth_command.g.dart';
 @internal
 @CliOptions()
 final class AuthArgs {
-  @CliOption(help: 'App Store Connect API "Issuer ID" (one per team).')
+  @CliOption(
+    help:
+        'App Store Connect API "Issuer ID" (one per team). Leave it out for '
+        'an individual key.',
+  )
   late String? issuerId;
 
   late bool issuerIdWasParsed;
