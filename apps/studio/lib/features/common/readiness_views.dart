@@ -23,6 +23,7 @@ String areaTitle(ReadinessArea area) => switch (area) {
   ReadinessArea.swift => 'Swift',
   ReadinessArea.llvm => 'LLVM',
   ReadinessArea.darwinSdk => 'Darwin SDK',
+  ReadinessArea.iosCompiler => 'iOS release compiler',
   ReadinessArea.auth => 'Authentication',
   ReadinessArea.device => 'Device',
 };

@@ -3,6 +3,7 @@ import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:cli_kit/shared/process/process.dart';
 import 'package:http/http.dart' as http;
 import 'package:meta/meta.dart';
+import 'package:xcross/src/composition/flutter/flutter_sdk_services.dart'; // studio: 014
 import 'package:xcross/src/host/linux/flutter/ios_gen_snapshot_host.dart';
 import 'package:xcross/src/host/macos/flutter/ios_gen_snapshot_host.dart';
 import 'package:xcross/src/host/shared/flutter/ios_gen_snapshot_host.dart';
@@ -77,6 +78,11 @@ composeIosGenSnapshotResolver<T extends PlatformHostInterface>({
     createHttpClient: createHttpClient,
     cacheRoot: genSnapshotCacheRoot(runner),
     pins: config.config?.iosGenSnapshot ?? const {},
+    // studio: 014 — the error names the Flutter version to switch to.
+    suggestVersion: composeFlutterSdkSuggestion(
+      runner: runner,
+      createHttpClient: createHttpClient,
+    ),
   );
 }
 

@@ -382,10 +382,23 @@ abstract final class XcrossCli {
           // studio: `inspect --json` prints one machine-readable document.
           command?.name == 'inspect' && command?.flag('json') == true ||
           // studio: 010 — NDJSON from the device commands.
-          _deviceJson(command);
+          _deviceJson(command) ||
+          // studio: 014 — `flutter sdk list --json` prints one document.
+          _flutterSdkJson(command);
     } on FormatException {
       return false;
     }
+  }
+
+  // studio: 014
+  static bool _flutterSdkJson(ArgResults? command) {
+    if (command?.name != 'flutter') return false;
+    final sdk = command?.command;
+    final list = sdk?.command;
+    return sdk?.name == 'sdk' &&
+        list?.name == 'list' &&
+        list!.options.contains('json') &&
+        list.flag('json');
   }
 
   // studio: 010 — `logs --json`, `app info --json`, `crashes list --json`;

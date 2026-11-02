@@ -8,6 +8,7 @@ import '../../src/cli/xcross_commands.dart';
 import '../../src/state/job.dart';
 import '../../src/state/readiness.dart';
 import '../common/doctor_checklist.dart';
+import '../common/flutter_sdk_fix.dart';
 import '../common/job_views.dart';
 import '../common/readiness_views.dart';
 import '../signing/signing_page.dart';
@@ -71,6 +72,7 @@ class _SetupWizardState extends State<SetupWizard> {
         ReadinessArea.flutter,
         ReadinessArea.swift,
         ReadinessArea.llvm,
+        ReadinessArea.iosCompiler,
       ]),
       WizardStep.sdk => area([ReadinessArea.darwinSdk]),
       WizardStep.auth => area([ReadinessArea.auth]),
@@ -331,6 +333,7 @@ class _SetupWizardState extends State<SetupWizard> {
                 ReadinessArea.flutter,
                 ReadinessArea.swift,
                 ReadinessArea.llvm,
+                ReadinessArea.iosCompiler,
                 ReadinessArea.device,
               ])
                 XToolchainCard(
@@ -341,6 +344,16 @@ class _SetupWizardState extends State<SetupWizard> {
                 ),
             ],
           ),
+          // Feature 014: one-click fix for a Flutter without an iOS compiler.
+          for (final check in readiness.area(ReadinessArea.iosCompiler).checks)
+            if (GenSnapshotProblem.fromCheck(check) case final problem?) ...[
+              const SizedBox(height: XSpace.s3),
+              FlutterSdkFixCard(
+                problem: problem,
+                retryLabel: 'Check again',
+                onFixed: readiness.runDoctor,
+              ),
+            ],
           const SizedBox(height: XSpace.s4),
           Wrap(
             spacing: XSpace.s2,

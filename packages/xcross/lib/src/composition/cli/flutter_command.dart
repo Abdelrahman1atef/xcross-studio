@@ -6,11 +6,13 @@ import 'package:dart_mobile_device/target/iphone/tunnel/pymd_tunnel_availability
 import 'package:meta/meta.dart';
 import 'package:xcross/src/composition/cli/flutter_build_command.dart';
 import 'package:xcross/src/composition/cli/flutter_run_command.dart';
+import 'package:xcross/src/composition/flutter/flutter_sdk_services.dart'; // studio: 014
 import 'package:xcross/src/composition/flutter/ios_gen_snapshot.dart';
 import 'package:xcross/src/composition/ios_target.dart';
 import 'package:xcross/src/shared/cli/flutter/subcommands/dap_command.dart';
 import 'package:xcross/src/shared/cli/flutter/subcommands/flutter_clean_command.dart';
 import 'package:xcross/src/shared/cli/flutter/subcommands/flutter_precache_command.dart';
+import 'package:xcross/src/shared/cli/flutter/subcommands/flutter_sdk_command.dart'; // studio: 014
 import 'package:xcross/src/shared/flutter/gen_snapshot/ios_gen_snapshot_resolver.dart';
 import 'package:xcross/src/shared/flutter/models/flutter/flutter_build_mode.dart';
 import 'package:xcross/src/shared/runtime/xcross_runtime.dart';
@@ -30,6 +32,8 @@ final class FlutterCommand<T extends PlatformHostInterface>
     addSubcommand(FlutterRunCommand(runtime, pymd, sockets: sockets));
     if (doctorCommand != null) addSubcommand(doctorCommand);
     addSubcommand(_precache(runtime));
+    // studio: 014 — a Flutter SDK with an iOS compiler for this host.
+    addSubcommand(FlutterSdkCommand(composeFlutterSdkServices(runtime)));
     addSubcommand(
       FlutterCleanCommand(
         log: runtime.log,

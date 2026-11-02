@@ -161,6 +161,28 @@ abstract final class XcrossCodes {
     'Remove the stale reference from the Xcode project or restore the file.',
   );
 
+  // studio: 014 — a Flutter SDK whose iOS AOT compiler exists for this host.
+  static const buildGenSnapshotUnavailable = DiagnosticCode(
+    'build.gen_snapshot_unavailable',
+    'Run `xcross flutter sdk auto` to install a Flutter version that has an '
+        'iOS compiler for this computer, just for xcross (your own Flutter is '
+        'not changed).',
+  );
+  static const toolchainFlutterSdkInstallFailed = DiagnosticCode(
+    'toolchain.flutter_sdk_install_failed',
+    'Check the internet connection and free disk space, then run the same '
+        'command again; a partial download is cleaned up first.',
+  );
+  static const toolchainFlutterSdkVersionUnavailable = DiagnosticCode(
+    'toolchain.flutter_sdk_version_unavailable',
+    'Pick a version from `xcross flutter sdk list`, or pass --force to '
+        'install it anyway.',
+  );
+  static const toolchainGitMissing = DiagnosticCode(
+    'toolchain.git_missing',
+    'Install Git from https://git-scm.com, open a new terminal, and retry.',
+  );
+
   static const all = [
     deviceIosUnsupported,
     deviceNotFound,
@@ -189,6 +211,10 @@ abstract final class XcrossCodes {
     buildRunnerProjectFailed, // studio: 007
     buildRunnerLegacyRegistration,
     buildRunnerSceneDelegateReplaced,
+    buildGenSnapshotUnavailable, // studio: 014
+    toolchainFlutterSdkInstallFailed,
+    toolchainFlutterSdkVersionUnavailable,
+    toolchainGitMissing,
   ];
 }
 

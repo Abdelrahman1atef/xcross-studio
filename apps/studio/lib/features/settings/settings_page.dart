@@ -8,6 +8,7 @@ import '../../src/cli/xcross_commands.dart';
 import '../../src/state/job.dart';
 import '../../src/state/settings.dart';
 import '../common/doctor_checklist.dart';
+import '../common/flutter_sdk_fix.dart';
 import '../common/job_views.dart';
 
 /// Settings (§6.7): the xcross CLI, toolchain readout, IDE integration,
@@ -153,6 +154,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     )
                   : DoctorChecklist(checks: readiness.checks),
             ),
+            const FlutterSdkSettingsCard(), // feature 014
             XCard(
               title: 'IDE integration',
               subtitle: 'Run & Debug on the iPhone from your editor.',

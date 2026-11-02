@@ -173,7 +173,7 @@ enum XDiagnosticSeverity { info, warning, error }
 
 /// An actionable problem (design system §8.2): what happened, the stable
 /// code from the CLI (never invented), and the suggested fix.
-class XDiagnosticCard extends StatelessWidget {
+class XDiagnosticCard extends StatefulWidget {
   const XDiagnosticCard({
     super.key,
     required this.severity,
@@ -183,6 +183,8 @@ class XDiagnosticCard extends StatelessWidget {
     this.hint,
     this.command,
     this.onViewLogs,
+    this.actions = const [],
+    this.details,
   });
 
   final XDiagnosticSeverity severity;
@@ -201,8 +203,29 @@ class XDiagnosticCard extends StatelessWidget {
   final String? command;
   final VoidCallback? onViewLogs;
 
+  /// Fix buttons, shown before Copy command / Show details / View logs.
+  final List<Widget> actions;
+
+  /// The raw text behind the card, revealed by "Show details".
+  final String? details;
+
+  @override
+  State<XDiagnosticCard> createState() => _XDiagnosticCardState();
+}
+
+class _XDiagnosticCardState extends State<XDiagnosticCard> {
+  bool _showDetails = false;
+
   @override
   Widget build(BuildContext context) {
+    final severity = widget.severity;
+    final message = widget.message;
+    final title = widget.title;
+    final code = widget.code;
+    final hint = widget.hint;
+    final command = widget.command;
+    final onViewLogs = widget.onViewLogs;
+    final details = widget.details;
     final c = XTheme.of(context).colors;
     final (status, glyph) = switch (severity) {
       XDiagnosticSeverity.error => (XStatus.failed, '✕'),
@@ -243,7 +266,7 @@ class XDiagnosticCard extends StatelessWidget {
               style: XType.mono.copyWith(color: c.textSecondary),
             ),
           ],
-          if (hint != null && hint!.isNotEmpty) ...[
+          if (hint != null && hint.isNotEmpty) ...[
             const SizedBox(height: XSpace.s2),
             Text(
               'Suggested fix',
@@ -253,21 +276,37 @@ class XDiagnosticCard extends StatelessWidget {
               ),
             ),
             SelectableText(
-              hint!,
+              hint,
               style: XType.body.copyWith(color: c.textPrimary),
             ),
           ],
-          if (command != null || onViewLogs != null) ...[
+          if (widget.actions.isNotEmpty ||
+              command != null ||
+              onViewLogs != null ||
+              details != null) ...[
             const SizedBox(height: XSpace.s2),
             Wrap(
               spacing: XSpace.s2,
+              runSpacing: XSpace.s2,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
+                ...widget.actions,
                 if (command != null)
                   TextButton.icon(
                     onPressed: () =>
-                        Clipboard.setData(ClipboardData(text: command!)),
+                        Clipboard.setData(ClipboardData(text: command)),
                     icon: const Icon(Icons.copy, size: 16),
                     label: const Text('Copy command'),
+                  ),
+                if (details != null)
+                  TextButton.icon(
+                    onPressed: () =>
+                        setState(() => _showDetails = !_showDetails),
+                    icon: Icon(
+                      _showDetails ? Icons.expand_less : Icons.expand_more,
+                      size: 16,
+                    ),
+                    label: Text(_showDetails ? 'Hide details' : 'Show details'),
                   ),
                 if (onViewLogs != null)
                   TextButton.icon(
@@ -276,6 +315,21 @@ class XDiagnosticCard extends StatelessWidget {
                     label: const Text('View logs'),
                   ),
               ],
+            ),
+          ],
+          if (details != null && _showDetails) ...[
+            const SizedBox(height: XSpace.s2),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(XSpace.s2),
+              decoration: BoxDecoration(
+                color: c.console,
+                borderRadius: BorderRadius.circular(XRadius.sm),
+              ),
+              child: SelectableText(
+                details,
+                style: XType.mono.copyWith(color: c.textSecondary),
+              ),
             ),
           ],
         ],

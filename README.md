@@ -480,6 +480,16 @@ bundles the `xcross` CLI next to the app. Install `pymobiledevice3` separately (
 step list, progress bar, issue list and Install button. Schema:
 [specs/012-build-events/contracts/events.schema.json](specs/012-build-events/contracts/events.schema.json).
 
+<!-- studio: 014 -->
+**Flutter newer than the iOS compiler?** Release and profile iPhone builds need Flutter's iOS AOT compiler, which
+xcross downloads for Windows/Linux from `arxdeus/xcross_gen_snapshot`. That repository can trail Flutter by a patch
+release or two.
+- When it does, the build stops with `[build.gen_snapshot_unavailable]` and names the version to use.
+- `xcross flutter sdk auto` installs that version once (into `<config>/xcross/flutter-sdks/`) and uses it for iOS
+  builds only. Your own Flutter is not changed.
+- `xcross flutter sdk list` shows what is used; `xcross flutter sdk reset` switches back.
+- In the desktop app this is one button: **Set up Flutter X for iPhone builds**.
+
 ## Compose Multiplatform
 
 `xcross compose` builds Kotlin Multiplatform iOS targets on Windows x64 and Linux x64 using the same private Darwin SDK, Swift, LLVM, and `xcross auth` signing flow as Flutter. Linux arm64 can run the CLI, but Compose iOS builds are limited by missing upstream Kotlin/Native host artifacts.

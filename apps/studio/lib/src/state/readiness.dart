@@ -9,7 +9,18 @@ import 'settings.dart';
 enum Health { ok, warning, failed, checking, unknown }
 
 /// The readiness areas the Overview cards and the status bar show.
-enum ReadinessArea { flutter, swift, llvm, darwinSdk, auth, device }
+enum ReadinessArea {
+  flutter,
+  swift,
+  llvm,
+  darwinSdk,
+
+  /// The iOS release compiler (`gen_snapshot`) for the active Flutter
+  /// (feature 014).
+  iosCompiler,
+  auth,
+  device,
+}
 
 /// One area's health and the message of its worst check.
 class AreaHealth {
@@ -75,6 +86,10 @@ class ReadinessController extends ChangeNotifier {
   static ReadinessArea? areaOf(DoctorCheckResult check) {
     final name = check.name.toLowerCase();
     if (name.contains('darwin sdk')) return ReadinessArea.darwinSdk;
+    // "AOT compiler (release)": only the release compiler decides readiness.
+    if (name.contains('aot compiler')) {
+      return name.contains('release') ? ReadinessArea.iosCompiler : null;
+    }
     if (name.contains('flutter sdk') || name == 'flutter') {
       return ReadinessArea.flutter;
     }
@@ -128,12 +143,14 @@ class ReadinessController extends ChangeNotifier {
     );
   }
 
-  /// Toolchain summary (Flutter, Swift, LLVM, Darwin SDK) for the status bar.
+  /// Toolchain summary (Flutter, Swift, LLVM, Darwin SDK, iOS compiler) for
+  /// the status bar.
   AreaHealth get toolchain => _combine([
     ReadinessArea.flutter,
     ReadinessArea.swift,
     ReadinessArea.llvm,
     ReadinessArea.darwinSdk,
+    ReadinessArea.iosCompiler,
   ]);
 
   AreaHealth get signing => area(ReadinessArea.auth);

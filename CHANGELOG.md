@@ -1,5 +1,17 @@
 ## Unreleased (XCross Studio)
 
+- iPhone release builds no longer stop at an unexplained "No prebuilt iOS AOT compiler (gen_snapshot)" error when
+  your Flutter is newer than the compilers published for Windows/Linux. The error is now
+  `[build.gen_snapshot_unavailable]`, names the Flutter version to use, and points at the new
+  `xcross flutter sdk auto`. That command installs that version once (into `<config>/xcross/flutter-sdks/`) and uses
+  it for iOS builds only; your own Flutter is not changed.
+  - `xcross flutter sdk list|install|use|reset` manage it.
+  - `xcross flutter doctor` reports the missing release compiler as ✗ with the fix.
+  - XCross Studio explains it in plain words with a one-click "Set up Flutter X for iPhone builds" and "Build
+    again" (Build & Run, Overview, setup wizard), and Settings shows which Flutter iPhone builds use.
+
+  ([specs/014-flutter-sdk-compat](specs/014-flutter-sdk-compat/spec.md))
+
 - The desktop app follows the XCross Studio design system ([docs/XCross_Studio_Design_System.md](docs/XCross_Studio_Design_System.md)): dark theme from the doc's tokens (Inter and JetBrains Mono bundled under the SIL OFL), a shell with top bar (project, iPhone), seven destinations (Overview, Build & Run, Devices, Signing, Logs & Debug, Plugins, Settings), a resizable console dock and a status bar (Toolchain / Signing / Device readiness from real doctor checks, running tasks, xcross version); a five-step first-run wizard (environment, Darwin SDK, sign-in, device, first build); command previews, reported build steps, diagnostic cards with the CLI's codes and hints; Apple ID risk and anisette notes; Ctrl+K quick commands, Ctrl+, Ctrl+L Ctrl+J shortcuts; light theme option. ([specs/013-gui-design-system](specs/013-gui-design-system/spec.md))
 
 - `xcross plugin list` shows each iOS plugin as Swift package, podspec only or overridden; `xcross plugin shim <plugin>` drafts `xcross_overrides/<plugin>/<version>/Package.swift` from the podspec (known pods such as Google Maps, Firebase and Pusher mapped to their Swift packages, mixed Swift/Objective-C split into two targets, review notes printed). ([specs/006-plugin-overrides](specs/006-plugin-overrides/spec.md))

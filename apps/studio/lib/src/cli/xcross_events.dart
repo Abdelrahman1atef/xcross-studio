@@ -50,6 +50,7 @@ sealed class XcrossEvent {
       'warning' || 'error' => BuildIssue.fromJson(json),
       'artifact' => BuildArtifact.fromJson(json),
       'check' => DoctorCheckResult.fromJson(json),
+      'flutter_sdks' => FlutterSdkStatus.fromJson(json),
       'done' => BuildDone(
         json['exitCode'] is int ? json['exitCode']! as int : 1,
       ),
@@ -408,4 +409,64 @@ class DoctorCheckResult extends XcrossEvent {
 class BuildDone extends XcrossEvent {
   const BuildDone(this.exitCode);
   final int exitCode;
+}
+
+/// `flutter_sdks`: the Flutter used for iOS builds and the fix for a missing
+/// iOS compiler (from `xcross flutter sdk list --json`, feature 014).
+class FlutterSdkStatus extends XcrossEvent {
+  const FlutterSdkStatus({
+    required this.platform,
+    required this.managed,
+    required this.available,
+    this.activeRoot,
+    this.activeVersion,
+    this.activeManaged = false,
+    this.compiler = 'unknown',
+    this.detail,
+    this.suggested,
+  });
+
+  factory FlutterSdkStatus.fromJson(Map<String, Object?> json) {
+    final active = json['active'] is Map
+        ? (json['active']! as Map).cast<String, Object?>()
+        : const <String, Object?>{};
+    return FlutterSdkStatus(
+      platform: _string(json['platform']) ?? '',
+      activeRoot: _string(active['root']),
+      activeVersion: _string(active['version']),
+      activeManaged: active['managed'] == true,
+      compiler: _string(active['compiler']) ?? 'unknown',
+      detail: _string(active['detail']),
+      managed: [
+        if (json['managed'] case final List<Object?> list)
+          for (final sdk in list)
+            if (sdk case {'version': final String version}) version,
+      ],
+      available: [
+        if (json['available'] case final List<Object?> list)
+          for (final version in list) '$version',
+      ],
+      suggested: _string(json['suggested']),
+    );
+  }
+
+  final String platform;
+  final String? activeRoot;
+  final String? activeVersion;
+
+  /// True when iOS builds use a Flutter that xcross installed.
+  final bool activeManaged;
+
+  /// `available`, `missing` or `unknown`.
+  final String compiler;
+  final String? detail;
+
+  /// Versions xcross installed.
+  final List<String> managed;
+
+  /// Versions with an iOS compiler for this computer, newest first.
+  final List<String> available;
+
+  /// The version `xcross flutter sdk auto` would install, when needed.
+  final String? suggested;
 }

@@ -13,6 +13,7 @@ import 'package:meta/meta.dart';
 import 'package:xcross/src/host/shared/flutter/engine_archive_writer.dart';
 import 'package:xcross/src/host/shared/flutter/ios_gen_snapshot_host.dart';
 import 'package:xcross/src/shared/config/config.dart';
+import 'package:xcross/src/shared/diagnostics/xcross_diagnostics.dart'; // studio: 014
 import 'package:xcross/src/shared/flutter/errors.dart';
 import 'package:xcross/src/shared/flutter/gen_snapshot/flutter_sdk_release.dart';
 import 'package:xcross/src/shared/flutter/gen_snapshot/ios_gen_snapshot_manifest.dart';
@@ -76,6 +77,7 @@ final class IosGenSnapshotResolver<T extends PlatformHostInterface> {
     required this.cacheRoot,
     this.pins = const {},
     this.releaseBaseUrl = defaultReleaseBaseUrl,
+    this.suggestVersion,
     DateTime Function()? now,
   }) : _now = now ?? DateTime.now {
     if (!identical(hostPolicy.host, runner.host)) {
@@ -97,6 +99,13 @@ final class IosGenSnapshotResolver<T extends PlatformHostInterface> {
   /// Pinned compilers keyed by Flutter version or engine revision.
   final Map<String, XcrossIosGenSnapshotPin> pins;
   final String releaseBaseUrl;
+
+  // studio: 014 — names the Flutter version to switch to when none is
+  // published for the active one (best effort; null skips the suggestion).
+  /// The newest Flutter with a published compiler for this host, for the
+  /// error when a release has none.
+  final Future<String?> Function(FlutterSdkRelease release, String platform)?
+  suggestVersion;
   final DateTime Function() _now;
 
   T get host => runner.host;
@@ -328,12 +337,20 @@ final class IosGenSnapshotResolver<T extends PlatformHostInterface> {
       'Looking up iOS gen_snapshot for Flutter ${release.version}',
       () => _manifest(release),
     );
-    if (manifest == null) throw _unavailable(release, mode);
+    if (manifest == null) {
+      throw _unavailable(
+        release,
+        mode,
+        suggestion: await _suggestion(release, platform),
+        platform: platform,
+      );
+    }
     if (manifest.engine != release.engine ||
         manifest.flutter != release.version) {
       throw _unavailable(
         release,
         mode,
+        platform: platform,
         reason:
             'The published compiler for Flutter ${manifest.flutter} targets '
             'engine ${_short(manifest.engine)}, but this SDK uses engine '
@@ -348,6 +365,8 @@ final class IosGenSnapshotResolver<T extends PlatformHostInterface> {
       throw _unavailable(
         release,
         mode,
+        suggestion: await _suggestion(release, platform),
+        platform: platform,
         reason:
             'The Flutter ${release.version} release has no $name for this '
             'host.',
@@ -534,22 +553,55 @@ final class IosGenSnapshotResolver<T extends PlatformHostInterface> {
   @visibleForTesting
   static const manifestTimeout = Duration(seconds: 30);
 
+  /// The suggested Flutter version, or null when unknown (offline, or no
+  /// suggestion service).
+  Future<String?> _suggestion(
+    FlutterSdkRelease release,
+    String platform,
+  ) async {
+    final suggest = suggestVersion;
+    if (suggest == null) return null;
+    try {
+      return await suggest(
+        release,
+        platform,
+      ).timeout(const Duration(seconds: 15));
+    } on Object catch (error) {
+      log.logTrace('No Flutter version suggestion: $error');
+      return null;
+    }
+  }
+
+  // studio: 014 — coded (`build.gen_snapshot_unavailable`), naming the
+  // version to switch to, with `xcross flutter sdk auto` as the hint.
   FlutterBuildError _unavailable(
     FlutterSdkRelease release,
     IosGenSnapshotMode mode, {
     String? reason,
+    String? suggestion,
+    String? platform,
   }) {
     final executable = _executableName;
     final buffer = StringBuffer(
-      'No prebuilt iOS AOT compiler (gen_snapshot) is available for '
-      'Flutter ${release.version} (engine ${release.shortEngine}).\n',
+      '[${XcrossCodes.buildGenSnapshotUnavailable.code}] No prebuilt iOS AOT '
+      'compiler (gen_snapshot) is available for Flutter ${release.version} '
+      '(engine ${release.shortEngine}).\n',
     );
     if (reason != null) buffer.writeln(reason);
+    buffer.writeln(
+      'Flutter publishes this compiler for macOS only; xcross downloads '
+      'Linux and Windows builds from $repositoryUrl/releases.',
+    );
+    if (suggestion != null) {
+      buffer.writeln(
+        'Newest Flutter with a published compiler for '
+        '${platform ?? 'this host'}: $suggestion.',
+      );
+    }
+    final target = suggestion == null
+        ? 'a Flutter version that has one'
+        : 'Flutter $suggestion';
     buffer
-      ..writeln(
-        'Flutter publishes this compiler for macOS only; xcross downloads '
-        'Linux and Windows builds from $repositoryUrl/releases.',
-      )
       ..writeln(
         'Switch to a Flutter version released there, or pin a compiler built '
         'for engine ${release.engine} in xcross config '
@@ -557,7 +609,11 @@ final class IosGenSnapshotResolver<T extends PlatformHostInterface> {
       )
       ..writeln('  ios_gen_snapshot:')
       ..writeln('    "${release.version}":')
-      ..write('      ${mode.name}: /absolute/path/to/$executable');
+      ..writeln('      ${mode.name}: /absolute/path/to/$executable')
+      ..write(
+        'hint: Run `xcross flutter sdk auto` to install $target just for iOS '
+        'builds (your own Flutter is not changed).',
+      );
     return FlutterBuildError(buffer.toString());
   }
 
