@@ -10,6 +10,7 @@ import '../../design_system/design_system.dart';
 import '../../src/cli/xcross_commands.dart';
 import '../../src/state/job.dart';
 import '../../src/state/project_info.dart';
+import '../common/flutter_sdk_fix.dart';
 import '../common/job_views.dart';
 
 /// Build & Run (§6.2): build, sign, install and launch with every step the
@@ -369,7 +370,28 @@ class _BuildRunPageState extends State<BuildRunPage> {
                 ),
                 const SizedBox(height: XSpace.s3),
               ],
-              JobPanel(job: job, input: job.title.startsWith('Run')),
+              if (GenSnapshotProblem.fromJob(job) case final problem?) ...[
+                FlutterSdkFixCard(
+                  problem: problem,
+                  retryLabel: job.title.startsWith('Run')
+                      ? 'Build & Run again'
+                      : 'Build again',
+                  onFixed: () => setState(
+                    () => _job = services.jobs.run(
+                      job.title,
+                      job.command,
+                      workingDirectory: job.workingDirectory,
+                      structured: true,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: XSpace.s3),
+              ],
+              JobPanel(
+                job: job,
+                input: job.title.startsWith('Run'),
+                skipCodes: const {GenSnapshotProblem.code},
+              ),
             ],
           ),
         );

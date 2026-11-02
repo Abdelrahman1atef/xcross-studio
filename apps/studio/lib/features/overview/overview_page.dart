@@ -10,6 +10,7 @@ import '../../design_system/design_system.dart';
 import '../../src/state/job.dart';
 import '../../src/state/project_info.dart';
 import '../../src/state/readiness.dart';
+import '../common/flutter_sdk_fix.dart';
 import '../common/job_views.dart';
 import '../common/readiness_views.dart';
 
@@ -124,6 +125,14 @@ class _OverviewPageState extends State<OverviewPage> {
                   ),
               ],
             ),
+            if (_compilerProblem(readiness) case final problem?) ...[
+              const SizedBox(height: XSpace.s3),
+              FlutterSdkFixCard(
+                problem: problem,
+                retryLabel: 'Check again',
+                onFixed: readiness.runDoctor,
+              ),
+            ],
             _deviceSummary(context),
             const XSectionTitle('Recent builds'),
             if (builds.isEmpty)
@@ -134,6 +143,16 @@ class _OverviewPageState extends State<OverviewPage> {
         );
       },
     );
+  }
+
+  /// The missing iOS compiler, when the latest doctor run reported it.
+  GenSnapshotProblem? _compilerProblem(ReadinessController readiness) {
+    for (final check in readiness.area(ReadinessArea.iosCompiler).checks) {
+      if (GenSnapshotProblem.fromCheck(check) case final problem?) {
+        return problem;
+      }
+    }
+    return null;
   }
 
   /// The one recommended action (§6.1): Open Project, Fix Setup or Build.

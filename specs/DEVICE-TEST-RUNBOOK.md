@@ -25,17 +25,16 @@ committed files.
    - Connect and trust the iPhone; "Device" turns ✓.
 4. **Release/profile builds need Flutter 3.47.6, not 3.47.8.** iOS 16 runs only release/profile. Those need an
    iOS AOT compiler (`gen_snapshot`) built for Windows, which xcross downloads from `arxdeus/xcross_gen_snapshot`.
-   The newest 3.47 build there is **3.47.6**, so `flutter build --release` fails with "No prebuilt iOS AOT compiler
-   … for Flutter 3.47.8". Fix without touching your main Flutter:
+   The newest 3.47 build there is **3.47.6**, so a release build fails with `[build.gen_snapshot_unavailable]`.
+   Fix it without touching your own Flutter (feature 014):
+   - **In XCross Studio:** Build & Run → Build IPA shows "Your Flutter (3.47.8) is newer than the iOS compiler …".
+     Click **Set up Flutter 3.47.6 for iPhone builds**, then **Build again**. The same button appears on Overview,
+     in the setup wizard and under Settings → Flutter for iOS builds.
+   - **On the CLI:** `& $X flutter sdk auto` (add `--yes` to skip the question). It installs Flutter 3.47.6 into
+     `%APPDATA%\xcross\flutter-sdks\3.47.6` (about 1 GB, once) and selects it for iOS builds only.
+     `& $X flutter sdk reset` switches back.
 
-   ```powershell
-   git clone --depth 1 --branch 3.47.6 https://github.com/flutter/flutter.git D:\Programing\flutter-3.47.6
-   D:\Programing\flutter-3.47.6\bin\flutter.bat --version      # downloads its Dart SDK once
-   $env:FLUTTER_ROOT = "D:\Programing\flutter-3.47.6"          # xcross uses this Flutter for this terminal
-   ```
-
-   For the GUI, or for good, set `roots.flutterSdk: D:\Programing\flutter-3.47.6` in the xcross config
-   (`& $X config show` prints its path). Debug builds work with 3.47.8 today, but iOS 16 can't run them.
+   Rows: `specs/014-flutter-sdk-compat/device-check.md`.
 5. Pick a Flutter test project (`$P`) and, if available, an `.ipa` from another source (`$IPA`).
 
 ## 1. Feature 010: device logs (rows 6–9)

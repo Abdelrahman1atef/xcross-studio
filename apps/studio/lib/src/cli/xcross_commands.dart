@@ -215,6 +215,23 @@ abstract final class XcrossCommands {
 
   static List<String> version() => const ['--version'];
 
+  // Feature 014: a Flutter SDK with an iOS compiler for this computer.
+  static List<String> flutterSdkList() => const [
+    'flutter',
+    'sdk',
+    'list',
+    '--json',
+  ];
+
+  static List<String> flutterSdkAuto() => const [
+    'flutter',
+    'sdk',
+    'auto',
+    '--yes',
+  ];
+
+  static List<String> flutterSdkReset() => const ['flutter', 'sdk', 'reset'];
+
   /// `xcross update --check`: reports the target version, installs nothing.
   static List<String> updateCheck() => const ['update', '--check'];
 

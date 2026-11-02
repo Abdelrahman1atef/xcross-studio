@@ -112,15 +112,26 @@ List<JobDiagnostic> diagnosticsOf(Job job) {
 
 /// The diagnostics of [job] as cards (at most [limit]).
 class JobDiagnostics extends StatelessWidget {
-  const JobDiagnostics({super.key, required this.job, this.limit = 4});
+  const JobDiagnostics({
+    super.key,
+    required this.job,
+    this.limit = 4,
+    this.skipCodes = const {},
+  });
 
   final Job job;
   final int limit;
 
+  /// Codes another card on the page already explains.
+  final Set<String> skipCodes;
+
   @override
   Widget build(BuildContext context) {
     final app = Services.of(context).app;
-    final all = diagnosticsOf(job);
+    final all = [
+      for (final d in diagnosticsOf(job))
+        if (!skipCodes.contains(d.code)) d,
+    ];
     if (all.isEmpty) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -197,11 +208,15 @@ class JobPanel extends StatelessWidget {
     required this.job,
     this.consoleHeight = 260,
     this.input = false,
+    this.skipCodes = const {},
   });
 
   final Job job;
   final double consoleHeight;
   final bool input;
+
+  /// Diagnostic codes another card on the page already explains.
+  final Set<String> skipCodes;
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -227,7 +242,7 @@ class JobPanel extends StatelessWidget {
             XBuildStepper(steps: stepItems(job)),
             const SizedBox(height: XSpace.s3),
           ],
-          JobDiagnostics(job: job),
+          JobDiagnostics(job: job, skipCodes: skipCodes),
           JobConsole(job: job, height: consoleHeight, input: input),
         ],
       );

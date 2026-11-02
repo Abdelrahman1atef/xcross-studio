@@ -422,6 +422,43 @@ void main() {
       expect(server.requests, ['/3.47.0/manifest.json']);
     });
 
+    test('AC-014-6 the error is coded and names the version to use', () async {
+      final asked = <String>[];
+      await expectLater(
+        _resolver(
+          LinuxIosGenSnapshotHost(host),
+          host,
+          cacheRoot: cacheRoot,
+          httpClient: server.manifestClient,
+          releaseBaseUrl: server.baseUrl,
+          suggestVersion: (release, platform) async {
+            asked.add('${release.version} $platform');
+            return '3.44.9';
+          },
+        ).resolve(
+          flutterRoot: flutterRoot,
+          engineDirectory: engineDirectory,
+          mode: IosGenSnapshotMode.release,
+        ),
+        throwsA(
+          isA<FlutterBuildError>().having(
+            (error) => error.message,
+            'message',
+            allOf(
+              startsWith('[build.gen_snapshot_unavailable] '),
+              contains('published compiler for linux-x64: 3.44.9.'),
+              endsWith(
+                'hint: Run `xcross flutter sdk auto` to install Flutter '
+                '3.44.9 just for iOS builds (your own Flutter is not '
+                'changed).',
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(asked, ['3.47.0 linux-x64']);
+    });
+
     test('treats a release for another engine as unavailable', () async {
       server.publish(
         '3.47.0',
@@ -1017,6 +1054,7 @@ IosGenSnapshotResolver<T> _resolver<T extends PlatformHostInterface>(
   String releaseBaseUrl = 'https://invalid.test/releases/download',
   Map<String, XcrossIosGenSnapshotPin> pins = const {},
   DateTime Function()? now,
+  Future<String?> Function(FlutterSdkRelease, String)? suggestVersion,
 }) {
   final log = testLog();
   return IosGenSnapshotResolver(
@@ -1034,6 +1072,7 @@ IosGenSnapshotResolver<T> _resolver<T extends PlatformHostInterface>(
     releaseBaseUrl: releaseBaseUrl,
     pins: pins,
     now: now,
+    suggestVersion: suggestVersion,
   );
 }
 

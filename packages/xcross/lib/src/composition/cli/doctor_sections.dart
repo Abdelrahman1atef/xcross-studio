@@ -1,5 +1,6 @@
 import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:meta/meta.dart';
+import 'package:xcross/src/composition/flutter/flutter_sdk_services.dart'; // studio: 014
 import 'package:xcross/src/composition/flutter/ios_gen_snapshot.dart';
 import 'package:xcross/src/composition/ios_target.dart';
 import 'package:xcross/src/shared/cli/basic/doctor_environment_checks.dart';
@@ -9,6 +10,7 @@ import 'package:xcross/src/shared/compose/toolchain/compose_toolchain_resolver.d
 import 'package:xcross/src/shared/flutter/gen_snapshot/ios_gen_snapshot_mode.dart';
 import 'package:xcross/src/shared/flutter/gen_snapshot/ios_gen_snapshot_resolver.dart';
 import 'package:xcross/src/shared/flutter/models/flutter/flutter_build_mode.dart';
+import 'package:xcross/src/shared/flutter/sdk/ios_compiler_catalog.dart'; // studio: 014
 import 'package:xcross/src/shared/packages/package_config_resolver.dart';
 import 'package:xcross/src/shared/runtime/xcross_runtime.dart';
 import 'package:xcross/src/target/shared/runtime/build_features.dart';
@@ -58,6 +60,8 @@ final class DoctorSections<T extends PlatformHostInterface> {
           'No pubspec.yaml in the current directory.',
         ),
         await _flutterSdk(),
+        // studio: 014 — the compiler depends on the Flutter, not the project.
+        ...await _aotCompilers(),
       ];
     }
     final project = _flutterPubspec();
@@ -129,14 +133,54 @@ final class DoctorSections<T extends PlatformHostInterface> {
           'Published; downloaded on the first build '
           '(`xcross flutter precache` fetches it now)',
         ),
-        null => DoctorCheck.warning(
+        null when found.unknown => DoctorCheck.warning(
           label,
-          '${found.detail ?? 'Unavailable'}'
-          '${found.unknown ? '' : ' Debug builds are unaffected.'}',
+          found.detail ?? 'Unavailable',
+        ),
+        // studio: 014 — a confirmed missing release compiler blocks iPhone
+        // release builds (the only kind iOS 15/16 run): ✗ with the fix.
+        null => _missingCompiler(
+          label,
+          mode,
+          found,
+          await _suggestion(found.release?.version),
         ),
       });
     }
     return checks;
+  }
+
+  // studio: 014
+  DoctorCheck _missingCompiler(
+    String label,
+    IosGenSnapshotMode mode,
+    IosGenSnapshotAvailability found,
+    String? suggestion,
+  ) {
+    final version = found.release?.version;
+    final message =
+        '${version == null ? 'This Flutter' : 'Flutter $version'} has no '
+        'published iOS ${mode.name} compiler for this computer'
+        '${suggestion == null ? '' : '; newest with one: $suggestion'}. '
+        'Fix: `xcross flutter sdk auto` (your own Flutter is not changed).';
+    return mode == IosGenSnapshotMode.release
+        ? DoctorCheck.failure(label, message)
+        : DoctorCheck.warning(label, message);
+  }
+
+  // studio: 014
+  Future<String?> _suggestion(String? current) async {
+    if (current == null) return null;
+    try {
+      final catalog = await composeIosCompilerCatalog(
+        runner: runtime.runner,
+        createHttpClient: runtime.createHttpClient,
+        platform: composeIosGenSnapshotHost(runtime.host).prebuiltPlatform,
+      ).load();
+      return suggestFlutterSdk(current, catalog.versions)?.version;
+    } on Object {
+      return null;
+    }
   }
 
   DoctorCheck _flutterPubspec() {
