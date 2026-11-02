@@ -1,5 +1,13 @@
 ## Unreleased (XCross Studio)
 
+- App Store Connect **individual** API keys: `xcross auth --key-id <id> --private-key <p8>` without `--issuer-id`
+  saves an individual key (signed as `sub: user`, no `iss`). A key passed with an Issuer ID that Apple only accepts
+  as individual is detected and saved that way. Apple does not let individual keys manage devices, certificates,
+  bundle IDs or profiles, so `xcross auth` and `xcross flutter doctor` say that signing needs a Team key or an
+  Apple ID. XCross Studio's Signing page has a Team key / Individual key choice (no Issuer ID field for individual
+  keys) and a card that explains the limit with "Create a Team key" and "Use Apple ID instead".
+  ([specs/015-individual-api-key](specs/015-individual-api-key/spec.md))
+
 - iPhone release builds no longer stop at an unexplained "No prebuilt iOS AOT compiler (gen_snapshot)" error when
   your Flutter is newer than the compilers published for Windows/Linux. The error is now
   `[build.gen_snapshot_unavailable]`, names the Flutter version to use, and points at the new

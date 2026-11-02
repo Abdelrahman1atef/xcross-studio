@@ -166,10 +166,12 @@ final class SigningSessionResolver implements SigningSessionProvider {
     AscCredentials credentials,
     String configDirectory,
   ) => SigningIdentity(
-    identityId: credentials.issuerId,
+    // studio: 015 — `identity` is the Issuer ID for team keys (unchanged)
+    // and `individual-<keyId>` for individual keys, which have none.
+    identityId: credentials.identity,
     identityDir: SigningSession.identityDirFor(
       configDirectory,
-      'appstoreconnect-${credentials.issuerId}',
+      'appstoreconnect-${credentials.identity}',
     ),
   );
 

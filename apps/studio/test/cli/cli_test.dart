@@ -140,6 +140,33 @@ void main() {
       expect(shown, 'xcross auth --apple-id=me@example.com --password ••••');
     });
 
+    test('AC-015-7 a team key passes the Issuer ID, an individual key '
+        'leaves it out', () {
+      expect(
+        XcrossCommands.authApiKey(
+          issuerId: ' issuer ',
+          keyId: 'K1',
+          privateKeyPath: 'k.p8',
+        ),
+        [
+          'auth',
+          '--issuer-id',
+          'issuer',
+          '--key-id',
+          'K1',
+          '--private-key',
+          'k.p8',
+        ],
+      );
+      expect(XcrossCommands.authApiKey(keyId: 'K1', privateKeyPath: 'k.p8'), [
+        'auth',
+        '--key-id',
+        'K1',
+        '--private-key',
+        'k.p8',
+      ]);
+    });
+
     test('FR-001 a bundled xcross next to the GUI is found', () {
       expect(
         XcrossInvocation.bundledNextTo(

@@ -12,6 +12,7 @@ import 'package:darwin_sdk_kit/shared/toolchain/darwin_toolchain_resolver.dart';
 import 'package:darwin_sdk_kit/target/shared/ios_build_platform.dart';
 import 'package:http/http.dart' as http;
 import 'package:meta/meta.dart';
+import 'package:xcross/src/shared/cli/basic/auth_command.dart'; // studio: 015
 import 'package:xcross/src/shared/cli/basic/doctor_models.dart';
 import 'package:xcross/src/shared/diagnostics/xcross_diagnostics.dart'; // studio: 002
 import 'package:xcross/src/shared/sdk/xcode_swift_requirement.dart';
@@ -320,9 +321,11 @@ final class DoctorEnvironmentChecks<T extends PlatformHostInterface> {
       'Apple rejected the key. In App Store Connect, open Users and Access → '
       'Integrations → App Store Connect API and check that $keyId is listed, '
       'active and has the Admin or App Manager role, and that the Issuer ID '
-      'shown there is the one you saved. A push (APNs) or Sign in with Apple '
-      'key from developer.apple.com is also a .p8 file but does not work '
-      'here. Or sign in with your Apple ID: xcross auth --apple-id=<email>.';
+      'shown there is the one you saved. An individual key (Integrations → '
+      'Individual Keys) is detected when you run xcross auth again; leave '
+      'out --issuer-id for one. A push (APNs) or Sign in with Apple key from '
+      'developer.apple.com is also a .p8 file but does not work here. Or '
+      'sign in with your Apple ID: xcross auth --apple-id=<email>.';
 
   static DoctorCheck _deviceCheck(Device device, int? osMajor) {
     final label = '${device.name} (${device.udid})';
@@ -388,11 +391,13 @@ final class DoctorEnvironmentChecks<T extends PlatformHostInterface> {
       );
     }
     String? keyId;
+    var individual = false;
     try {
       final credentials = await AscCredentialsLoader(
         hostServices: appleHostServices,
       ).load(path: path);
       keyId = credentials.keyId;
+      individual = credentials.keyType == AscKeyType.individual;
       final client = AscClient(
         credentials,
         httpClient: createAppleHttpClient(),
@@ -402,17 +407,24 @@ final class DoctorEnvironmentChecks<T extends PlatformHostInterface> {
       } finally {
         client.close();
       }
-      return const DoctorCheck.success(
+      return DoctorCheck.success(
         'Authentication',
-        'App Store Connect credentials are valid.',
+        individual
+            ? 'App Store Connect individual API key is valid.'
+            : 'App Store Connect credentials are valid.',
       );
     } on Object catch (error) {
-      // studio: 009 — a 401 means Apple rejects the key itself; say where to
-      // look (seen with a key Apple refused for both team and individual
-      // signing, 2026-11-02).
-      final hint = '$error'.contains('HTTP 401')
-          ? '\n${_rejectedKeyHint(keyId ?? 'this key')}'
-          : '';
+      // studio: 009/015 — a 401 means Apple refuses the request; for an
+      // individual key that is the provisioning limit, for a team key the
+      // key itself (seen 2026-11-02).
+      final refused = '$error'.contains('HTTP 401');
+      if (refused && individual) {
+        return const DoctorCheck.failure(
+          'Authentication',
+          individualKeyProvisioningNote,
+        );
+      }
+      final hint = refused ? '\n${_rejectedKeyHint(keyId ?? 'this key')}' : '';
       return DoctorCheck.failure(
         'Authentication',
         'App Store Connect credentials are unusable: $error$hint',

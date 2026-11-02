@@ -146,6 +146,13 @@ final class AscClient implements DevelopmentProvisioningClient {
   Future<void> revokeCertificate(String certificateId) =>
       _delete('/certificates/$certificateId');
 
+  // studio: 015 — a read every API key may make (team or individual), used
+  // to tell which kind a key is; provisioning reads may still be refused.
+  /// Throws when Apple rejects the credentials for a plain read.
+  Future<void> checkAccess() async {
+    await _get('/apps?limit=1');
+  }
+
   @override
   Future<List<AscDevice>> listDevices() async => [
     for (final entry in (await _get('/devices'))['data'] as List)

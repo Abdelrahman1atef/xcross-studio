@@ -17,6 +17,7 @@ AuthCommand authFixture({
   AppleHostServices? services,
   Abi abi = Abi.linuxX64,
   http.Client Function()? createAdiHttpClient,
+  http.Client Function()? createHttpClient,
 }) {
   final base = services ?? testRuntime().appleHostServices;
   return AuthCommand(
@@ -30,7 +31,8 @@ AuthCommand authFixture({
     ),
     createAdiHttpClient:
         createAdiHttpClient ?? () => throw StateError('Unexpected ADI HTTP'),
-    createHttpClient: () => throw StateError('Unexpected Apple HTTP'),
+    createHttpClient:
+        createHttpClient ?? () => throw StateError('Unexpected Apple HTTP'),
     createNativeLibraryLoader: () =>
         throw StateError('Unexpected native loader'),
   );

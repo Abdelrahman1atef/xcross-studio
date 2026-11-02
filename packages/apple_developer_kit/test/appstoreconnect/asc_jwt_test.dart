@@ -113,5 +113,61 @@ void main() {
         expect(signatureBytes, hasLength(64));
       },
     );
+
+    test(
+      'AC-015-1 an individual key is signed as the user, without iss',
+      () async {
+        final individual = AscCredentials(
+          hostServices: testHostServices,
+          issuerId: '',
+          keyId: credentials.keyId,
+          privateKeyPath: credentials.privateKeyPath,
+          keyType: AscKeyType.individual,
+        );
+        final payload =
+            jsonDecode(
+                  utf8.decode(
+                    base64Url.decode(
+                      base64Url.normalize(
+                        (await AscJwt.generate(individual)).split('.')[1],
+                      ),
+                    ),
+                  ),
+                )
+                as Map<String, dynamic>;
+        expect(payload['sub'], 'user');
+        expect(payload.containsKey('iss'), isFalse);
+        expect(payload['aud'], 'appstoreconnect-v1');
+        expect(individual.identity, 'individual-TESTKEY123');
+        expect(credentials.identity, 'issuer-1234');
+      },
+    );
+  });
+
+  test('AC-015-2 an individual key round-trips without an Issuer ID', () async {
+    final fixture = MappedAppleFixture();
+    addTearDown(fixture.dispose);
+    final keyPath = fixture.path('ApiKey_TEST.p8');
+    fixture.fileSystem.file(keyPath).writeAsStringSync('pem');
+    await AscCredentials(
+      hostServices: fixture.services,
+      issuerId: '',
+      keyId: 'TEST',
+      privateKeyPath: keyPath,
+      keyType: AscKeyType.individual,
+    ).save();
+    final configPath = AscCredentials.defaultConfigPath(
+      hostServices: fixture.services,
+    );
+    final saved =
+        jsonDecode(fixture.fileSystem.file(configPath).readAsStringSync())
+            as Map<String, dynamic>;
+    expect(saved.containsKey('issuerId'), isFalse);
+    expect(saved['keyType'], 'individual');
+    final loaded = await AscCredentialsLoader(
+      hostServices: fixture.services,
+    ).load();
+    expect(loaded.keyType, AscKeyType.individual);
+    expect(loaded.issuerId, '');
   });
 }

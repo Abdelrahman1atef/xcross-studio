@@ -245,14 +245,15 @@ abstract final class XcrossCommands {
     if (wifi) '--wifi',
   ];
 
+  /// A team key passes [issuerId]; an individual key leaves it out
+  /// (feature 015).
   static List<String> authApiKey({
-    required String issuerId,
+    String? issuerId,
     required String keyId,
     required String privateKeyPath,
   }) => [
     'auth',
-    '--issuer-id',
-    issuerId.trim(),
+    if (_set(issuerId)) ...['--issuer-id', issuerId!.trim()],
     '--key-id',
     keyId.trim(),
     '--private-key',

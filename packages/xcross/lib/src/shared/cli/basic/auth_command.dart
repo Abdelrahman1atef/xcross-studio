@@ -7,6 +7,7 @@ import 'dart:io';
 import 'package:apple_developer_kit/host/shared/adi/loader/loader.dart';
 import 'package:apple_developer_kit/host/shared/apple_host_services.dart';
 import 'package:apple_developer_kit/shared/adi/apk_fetch.dart';
+import 'package:apple_developer_kit/shared/appstoreconnect/asc_client.dart'; // studio: 015
 import 'package:apple_developer_kit/shared/appstoreconnect/asc_config.dart';
 import 'package:apple_developer_kit/shared/appstoreconnect/developer_services_team_discovery_client.dart';
 import 'package:apple_developer_kit/shared/grandslam/anisette/anisette_data_provider.dart';
@@ -98,6 +99,16 @@ const _authOptionNames = [
 /// `xcross auth` — save credentials for the native (no-Swift) signing
 /// pipeline. Supports both App Store Connect API keys and Apple ID/password
 /// GrandSlam login.
+/// studio: 015 — what an individual API key cannot do (seen on 2026-11-02:
+/// /v1/apps → 200, devices/certificates/bundleIds/profiles → 401).
+@internal
+const individualKeyProvisioningNote =
+    'Apple accepts this individual API key but does not let it manage '
+    'devices, certificates, bundle IDs or provisioning profiles, which '
+    'signing and installing need. Use a Team key (App Store Connect → Users '
+    'and Access → Integrations → Team Keys, role Admin or App Manager) or '
+    'sign in with your Apple ID: xcross auth --apple-id=<email>.';
+
 @internal
 final class AuthCommand extends ParsedCommand<AuthArgs, void> {
   AuthCommand({
@@ -242,10 +253,13 @@ final class AuthCommand extends ParsedCommand<AuthArgs, void> {
     final issuerId = options.issuerId;
     final keyId = options.keyId;
     final privateKeyPath = options.privateKey;
-    if (![issuerId, keyId, privateKeyPath].every(_present)) {
+    // studio: 015 — without --issuer-id the key is an individual key.
+    if (![keyId, privateKeyPath].every(_present) ||
+        (options.issuerIdWasParsed && !_present(issuerId))) {
       throw XcrossError(
-        'Provide non-empty values for all of --issuer-id, --key-id, and '
-        '--private-key, or none to use Apple ID login.',
+        'Provide --key-id and --private-key (plus --issuer-id for a team '
+        'key; leave it out for an individual key), or none of them to use '
+        'Apple ID login.',
       );
     }
     for (final (name, parsed) in [
@@ -267,17 +281,76 @@ final class AuthCommand extends ParsedCommand<AuthArgs, void> {
     final configPath = AscCredentials.defaultConfigPath(
       hostServices: hostServices,
     );
-    await AscCredentials(
-      issuerId: issuerId!,
+    var credentials = AscCredentials(
+      issuerId: _present(issuerId) ? issuerId! : '',
       keyId: keyId!,
       privateKeyPath: logicalKeyPath,
       hostServices: hostServices,
-    ).save(path: configPath);
+      keyType: _present(issuerId) ? AscKeyType.team : AscKeyType.individual,
+    );
+    credentials = await _detectKeyType(credentials);
+    await credentials.save(path: configPath);
     // Authentication mode is explicit: a newly saved ASC key should not be
     // silently shadowed by an older still-unexpired Apple ID session.
     await GrandSlamSessionStore(hostServices: hostServices).clear();
 
     log.logDone('App Store Connect credentials saved to $configPath');
+  }
+
+  /// Apple's verdict on a plain read with [credentials]: true accepted,
+  /// false refused (HTTP 401), null unknown (offline, other errors).
+  Future<bool?> _accepted(AscCredentials credentials) async {
+    AscClient? client;
+    try {
+      client = AscClient(credentials, httpClient: createHttpClient());
+      await client.checkAccess();
+      return true;
+    } on Object catch (error) {
+      return '$error'.contains('HTTP 401') ? false : null;
+    } finally {
+      client?.close();
+    }
+  }
+
+  /// studio: 015 — asks Apple which kind of key this is. A key refused as
+  /// a team key but accepted as an individual key is saved as individual
+  /// (the Issuer ID is then unused). For an individual key, warns when Apple
+  /// refuses the provisioning reads signing needs. Offline: unchanged.
+  Future<AscCredentials> _detectKeyType(AscCredentials credentials) async {
+    var result = credentials;
+    if (credentials.keyType == AscKeyType.team &&
+        await _accepted(credentials) == false) {
+      final individual = AscCredentials(
+        hostServices: hostServices,
+        issuerId: '',
+        keyId: credentials.keyId,
+        privateKeyPath: credentials.privateKeyPath,
+        keyType: AscKeyType.individual,
+      );
+      if (await _accepted(individual) == true) {
+        log.logInfo(
+          'Key type',
+          'individual API key (Apple refused it as a team key; the Issuer ID '
+              'is not needed)',
+        );
+        result = individual;
+      }
+    }
+    if (result.keyType == AscKeyType.individual) {
+      AscClient? client;
+      try {
+        client = AscClient(result, httpClient: createHttpClient());
+        await client.listDevices();
+      } on Object catch (error) {
+        final text = '$error';
+        if (text.contains('HTTP 401') || text.contains('HTTP 403')) {
+          log.logWarn(individualKeyProvisioningNote);
+        }
+      } finally {
+        client?.close();
+      }
+    }
+    return result;
   }
 
   // --------------------------------------------------------------- Apple ID

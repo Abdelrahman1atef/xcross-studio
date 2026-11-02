@@ -27,7 +27,11 @@ abstract final class AscJwt {
     final now = DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000;
     final header = {'alg': 'ES256', 'kid': credentials.keyId, 'typ': 'JWT'};
     final payload = {
-      'iss': credentials.issuerId,
+      // studio: 015 — individual keys are signed as the user, without iss.
+      if (credentials.keyType == AscKeyType.individual)
+        'sub': 'user'
+      else
+        'iss': credentials.issuerId,
       'iat': now,
       'exp': now + _ttl.inSeconds,
       'aud': _audience,

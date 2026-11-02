@@ -94,6 +94,10 @@ class SigningForm extends StatefulWidget {
 class _SigningFormState extends State<SigningForm> {
   Job? _auth;
   bool _useApiKey = false;
+
+  /// Individual key (Users and Access → Integrations → Individual Keys):
+  /// signed without an Issuer ID (feature 015).
+  bool _individualKey = false;
   final _appleId = TextEditingController();
   final _password = TextEditingController();
   final _anisette = TextEditingController();
@@ -131,14 +135,18 @@ class _SigningFormState extends State<SigningForm> {
     final services = Services.of(context);
     final List<String> command;
     if (_useApiKey) {
-      if (_issuer.text.trim().isEmpty ||
+      if ((!_individualKey && _issuer.text.trim().isEmpty) ||
           _keyId.text.trim().isEmpty ||
           _keyPath == null) {
-        setState(() => _error = 'Fill in the issuer ID, key ID and .p8 file.');
+        setState(
+          () => _error = _individualKey
+              ? 'Fill in the key ID and .p8 file.'
+              : 'Fill in the issuer ID, key ID and .p8 file.',
+        );
         return;
       }
       command = XcrossCommands.authApiKey(
-        issuerId: _issuer.text,
+        issuerId: _individualKey ? null : _issuer.text,
         keyId: _keyId.text,
         privateKeyPath: _keyPath!,
       );
@@ -193,6 +201,36 @@ class _SigningFormState extends State<SigningForm> {
       ]);
     }
     final raw = readiness.signing.message ?? '';
+    // studio: 015 — the doctor's wording for an individual key Apple
+    // accepts but will not let manage devices, certificates and profiles.
+    if (_useApiKey && raw.contains('individual API key')) {
+      return card(XStatus.failed, 'This individual key cannot sign apps', [
+        const Text(
+          'Apple accepts the key, but individual keys may not manage '
+          'devices, certificates or provisioning profiles, which installing '
+          'on an iPhone needs. Use a Team key (Admin or App Manager role) or '
+          'your Apple ID instead.',
+        ),
+        const SizedBox(height: XSpace.s3),
+        Wrap(
+          spacing: XSpace.s2,
+          runSpacing: XSpace.s2,
+          children: [
+            XButton(
+              label: 'Create a Team key',
+              icon: Icons.open_in_new,
+              onPressed: () => services.launcher.openUrl(_ascKeysUrl),
+            ),
+            XButton(
+              label: 'Use Apple ID instead',
+              icon: Icons.person,
+              variant: XButtonVariant.secondary,
+              onPressed: () => setState(() => _useApiKey = false),
+            ),
+          ],
+        ),
+      ]);
+    }
     final rejectedKey = _useApiKey && raw.contains('HTTP 401');
     final keyId = _keyId.text.trim().isEmpty ? 'your key' : _keyId.text.trim();
     return card(XStatus.failed, 'Apple did not accept these credentials', [
@@ -285,8 +323,33 @@ class _SigningFormState extends State<SigningForm> {
               ],
             ),
             const SizedBox(height: XSpace.s3),
-            XTextField(controller: _issuer, label: 'Issuer ID'),
+            SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(value: false, label: Text('Team key')),
+                ButtonSegment(value: true, label: Text('Individual key')),
+              ],
+              selected: {_individualKey},
+              onSelectionChanged: (choice) =>
+                  setState(() => _individualKey = choice.first),
+            ),
             const SizedBox(height: XSpace.s2),
+            XNote(
+              _individualKey
+                  ? 'Individual keys (Integrations → Individual Keys) need no '
+                        'Issuer ID. Apple lets them read App Store Connect but '
+                        'not manage devices, certificates or profiles, so '
+                        'installing on an iPhone needs a Team key or your '
+                        'Apple ID.'
+                  : 'Team keys (Integrations → Team Keys) need the Issuer ID '
+                        'shown above the key list and the Admin or App '
+                        'Manager role. Not sure? xcross detects an individual '
+                        'key when you sign in.',
+            ),
+            const SizedBox(height: XSpace.s3),
+            if (!_individualKey) ...[
+              XTextField(controller: _issuer, label: 'Issuer ID'),
+              const SizedBox(height: XSpace.s2),
+            ],
             XTextField(controller: _keyId, label: 'Key ID'),
             const SizedBox(height: XSpace.s2),
             XFilePickerField(

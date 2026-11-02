@@ -235,6 +235,20 @@ XCROSS_APP_GROUP=group.com.example.Shared xcross flutter run
 
 See [iOS app extensions](docs/app-extensions.md) for the details.
 
+App Store Connect has two kinds of key. A **Team key** (Users and Access →
+Integrations → Team Keys, role Admin or App Manager) is the one that signs and
+installs. An **Individual key** (Integrations → Individual Keys) has no Issuer
+ID: leave out `--issuer-id`, or pass one anyway and xcross notices Apple only
+accepts the key as individual and saves it that way.
+
+```sh
+xcross auth --key-id <id> --private-key /path/to/ApiKey_<id>.p8
+```
+
+Apple lets individual keys read App Store Connect but not manage devices,
+certificates, bundle IDs or profiles, so `xcross auth` and `xcross flutter
+doctor` warn that installing on an iPhone needs a Team key or your Apple ID.
+
 ### Working offline
 
 Apple is only needed to provision: the first run of an app on a device, or

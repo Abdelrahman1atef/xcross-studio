@@ -6,7 +6,19 @@ import 'package:apple_developer_kit/src/shared/config/config_dir.dart';
 import 'package:apple_developer_kit/src/shared/secure/secure_file.dart';
 import 'package:meta/meta.dart';
 
-/// App Store Connect API credentials (a Team-scoped API key).
+// studio: 015 — individual API keys (Users and Access → Integrations →
+// Individual Keys) are signed with `sub: "user"` instead of the team's
+// Issuer ID; Apple answers 401 to one signed the team way.
+/// Which kind of App Store Connect API key the credentials hold.
+enum AscKeyType {
+  /// A team key: tokens carry the team's Issuer ID (`iss`).
+  team,
+
+  /// A user's individual key: tokens carry `sub: "user"` and no Issuer ID.
+  individual,
+}
+
+/// App Store Connect API credentials (a team or individual API key).
 ///
 /// Loaded from a per-user config file, never from the project tree —
 /// project files are commonly committed to git, which is the wrong place for
@@ -18,11 +30,21 @@ final class AscCredentials {
     required this.issuerId,
     required this.keyId,
     required this.privateKeyPath,
+    this.keyType = AscKeyType.team,
   });
 
-  /// App Store Connect API "Issuer ID" (one per team).
+  /// App Store Connect API "Issuer ID" (one per team); empty for an
+  /// individual key.
   final AppleHostServices hostServices;
   final String issuerId;
+
+  /// Team or individual key; decides how request tokens are signed.
+  final AscKeyType keyType;
+
+  /// A stable name for this credential: the Issuer ID of a team key, or
+  /// `individual-<keyId>` for an individual key.
+  String get identity =>
+      keyType == AscKeyType.individual ? 'individual-$keyId' : issuerId;
 
   /// The API key's "Key ID", shown next to it in App Store Connect.
   final String keyId;
@@ -55,9 +77,10 @@ final class AscCredentials {
       SecureFile(hostServices: hostServices).writeString(
         path ?? defaultConfigPath(hostServices: hostServices),
         const JsonEncoder.withIndent('  ').convert({
-          'issuerId': issuerId,
+          if (issuerId.isNotEmpty) 'issuerId': issuerId,
           'keyId': keyId,
           'privateKeyPath': privateKeyPath,
+          if (keyType == AscKeyType.individual) 'keyType': 'individual',
         }),
       );
 
@@ -92,12 +115,14 @@ final class AscCredentialsLoader {
     if (doc is! Map) {
       throw AppleError('${file.path}: invalid document');
     }
-    final issuerId = doc['issuerId'] as String?;
+    final individual = doc['keyType'] == 'individual';
+    final issuerId = doc['issuerId'] as String? ?? (individual ? '' : null);
     final keyId = doc['keyId'] as String?;
     final privateKeyPath = doc['privateKeyPath'] as String?;
     if (issuerId == null || keyId == null || privateKeyPath == null) {
       throw AppleError(
-        '${file.path}: must specify issuerId, keyId, and privateKeyPath',
+        '${file.path}: must specify issuerId, keyId, and privateKeyPath '
+        '(or "keyType": "individual" without issuerId)',
       );
     }
     return AscCredentials(
@@ -105,6 +130,7 @@ final class AscCredentialsLoader {
       issuerId: issuerId,
       keyId: keyId,
       privateKeyPath: privateKeyPath,
+      keyType: individual ? AscKeyType.individual : AscKeyType.team,
     );
   }
 }
