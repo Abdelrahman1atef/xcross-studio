@@ -26,6 +26,7 @@ import 'package:xcross/src/shared/flutter/swiftpm/module_warmup.dart';
 import 'package:xcross/src/shared/flutter/swiftpm/plan_reader.dart';
 import 'package:xcross/src/shared/flutter/swiftpm/process_policy.dart';
 import 'package:xcross/src/shared/flutter/swiftpm/sdk_identity.dart';
+import 'package:xcross/src/shared/flutter/swiftpm/shared_search_paths.dart';
 import 'package:xcross/src/shared/flutter/swiftpm/source_repair.dart';
 import 'package:xcross/src/shared/flutter/swiftpm/toolchain.dart';
 import 'package:xcross/src/target/shared/flutter/flutter_target_build_policy.dart';
@@ -184,6 +185,13 @@ final class SwiftPmBuildDriver<T extends PlatformHostInterface> {
       toolsetPath: toolsetPath,
       linkerPath: linker,
       macroServerArguments: macroServerArguments,
+      // studio: 006 — every resolved xcframework visible to every target, as
+      // in Xcode (packages compile `@import` of frameworks they only reach
+      // indirectly).
+      interopSearchPaths: SwiftPmSharedSearchPaths(
+        fileSystem: planReader.fileSystem,
+        targetPolicy: targetPolicy,
+      ).arguments(scratchPath),
     );
 
     final (:targetBuildDir, :interopArguments) = await _planBuild(
