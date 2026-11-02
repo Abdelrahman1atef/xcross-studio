@@ -292,13 +292,33 @@ final class AuthCommand extends ParsedCommand<AuthArgs, void> {
       hostServices: hostServices,
       keyType: _present(issuerId) ? AscKeyType.team : AscKeyType.individual,
     );
-    credentials = await _detectKeyType(credentials);
+    final (detected, canProvision) = await _detectKeyType(credentials);
+    credentials = detected;
     await credentials.save(path: configPath);
-    // Authentication mode is explicit: a newly saved ASC key should not be
-    // silently shadowed by an older still-unexpired Apple ID session.
-    await GrandSlamSessionStore(hostServices: hostServices).clear();
+    final sessions = GrandSlamSessionStore(hostServices: hostServices);
+    if (canProvision) {
+      // Authentication mode is explicit: a newly saved ASC key should not be
+      // silently shadowed by an older still-unexpired Apple ID session.
+      await sessions.clear();
+    } else if (await _hasAppleIdSession(sessions)) {
+      // studio: 015 — a key that cannot sign must not cost the user a working
+      // Apple ID sign-in (it did on 2026-11-02, leaving nothing that signs).
+      log.logInfo(
+        'Apple ID',
+        'your Apple ID session is kept and is still used for signing.',
+      );
+    }
 
     log.logDone('App Store Connect credentials saved to $configPath');
+  }
+
+  Future<bool> _hasAppleIdSession(GrandSlamSessionStore sessions) async {
+    try {
+      final session = await sessions.load();
+      return session != null && !session.isExpired;
+    } on Object {
+      return false;
+    }
   }
 
   /// Apple's verdict on a plain read with [credentials]: true accepted,
@@ -320,8 +340,12 @@ final class AuthCommand extends ParsedCommand<AuthArgs, void> {
   /// a team key but accepted as an individual key is saved as individual
   /// (the Issuer ID is then unused). For an individual key, warns when Apple
   /// refuses the provisioning reads signing needs. Offline: unchanged.
-  Future<AscCredentials> _detectKeyType(AscCredentials credentials) async {
+  /// The flag is false only when Apple refused those reads.
+  Future<(AscCredentials, bool)> _detectKeyType(
+    AscCredentials credentials,
+  ) async {
     var result = credentials;
+    var canProvision = true;
     if (credentials.keyType == AscKeyType.team &&
         await _accepted(credentials) == false) {
       final individual = AscCredentials(
@@ -349,12 +373,13 @@ final class AuthCommand extends ParsedCommand<AuthArgs, void> {
         final text = '$error';
         if (text.contains('HTTP 401') || text.contains('HTTP 403')) {
           log.logWarn(individualKeyProvisioningNote);
+          canProvision = false;
         }
       } finally {
         client?.close();
       }
     }
-    return result;
+    return (result, canProvision);
   }
 
   // --------------------------------------------------------------- Apple ID

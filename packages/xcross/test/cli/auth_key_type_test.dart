@@ -2,6 +2,8 @@
 import 'dart:convert';
 
 import 'package:apple_developer_kit/shared/appstoreconnect/asc_config.dart';
+import 'package:apple_developer_kit/shared/grandslam/app_token_exchange.dart';
+import 'package:apple_developer_kit/shared/grandslam/grandslam_session_store.dart';
 import 'package:args/command_runner.dart';
 import 'package:basic_utils/basic_utils.dart';
 import 'package:http/http.dart' as http;
@@ -96,6 +98,30 @@ void main() {
       'individual /v1/apps',
       'individual /v1/devices',
     ]);
+  });
+
+  test('AC-015-8 an individual key that cannot sign keeps the Apple ID '
+      'session', () async {
+    final sessions = GrandSlamSessionStore(hostServices: fixture.services);
+    await sessions.save(
+      GrandSlamSession(
+        username: 'fixture@example.invalid',
+        token: DeveloperServicesLoginToken(
+          adsid: 'fixture',
+          token: 'not-a-real-token',
+          expiry: DateTime.utc(2099),
+        ),
+        teamId: 'FIXTURE',
+      ),
+    );
+    final saved = await run([
+      '--key-id',
+      'KEY123',
+      '--private-key',
+      'ApiKey_KEY123.p8',
+    ], []);
+    expect(saved.keyType, AscKeyType.individual);
+    expect((await sessions.load())?.username, 'fixture@example.invalid');
   });
 
   test('AC-015-5 offline: a team key stays a team key', () async {
