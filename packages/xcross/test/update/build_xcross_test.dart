@@ -82,6 +82,41 @@ void main() {
     },
   );
 
+  test('AC-009-9 a prebuilt OpenAppleMacrosServer in the bundle survives a '
+      'rebuild', () async {
+    seed();
+    final bundle = p.join(sandbox.path, 'build', 'cli', 'linux_x64', 'bundle');
+    final server = File(p.join(bundle, 'lib', 'OpenAppleMacrosServer'))
+      ..createSync(recursive: true)
+      ..writeAsStringSync('prebuilt server');
+    final result = await buildXcross(
+      output: fixtureSink(),
+      errors: fixtureSink(),
+      runner: fixtureRunner(LinuxHost(architecture: 'x64'), log: fixtureLog()),
+      dartExecutable: '/fixture/dart',
+      packageRoot: sandbox,
+      encodedVersion: 'fixture/current',
+      released: false,
+      runBuild: (_, arguments, {required workingDirectory}) async {
+        final target = arguments[arguments.indexOf('-t') + 1];
+        if (target == 'bin/xcross.dart') {
+          // `dart build cli` replaces the whole bundle.
+          Directory(bundle).deleteSync(recursive: true);
+          File(p.join(bundle, 'bin', 'xcross'))
+            ..createSync(recursive: true)
+            ..writeAsStringSync('current xcross');
+        } else {
+          File(
+            p.join(sandbox.path, 'build', 'xcrun', 'bundle', 'bin', 'xcrun'),
+          ).writeAsStringSync('current xcrun');
+        }
+        return 0;
+      },
+    );
+    expect(result, 0);
+    expect(server.readAsStringSync(), 'prebuilt server');
+  });
+
   test(
     'copies xcrun only beside the xcross bundle from this invocation',
     () async {

@@ -54,7 +54,12 @@ final class AppleDebugSymbols<T extends PlatformHostInterface> {
                 '${failures.join('\n')}\n'
                 'Assertion-enabled dsymutil builds, such as the one in some '
                 'Swift toolchains, crash on Dart debug info. Install an LLVM '
-                'release (`xcross setup`) to get dSYMs.',
+                'release (`xcross setup`) to get dSYMs.'
+                // studio: 015 — LLVM 23 for Windows has no dsymutil.exe, so
+                // "install LLVM" alone did not help (seen 2026-11-02).
+                ' The LLVM installer for Windows leaves dsymutil out; any '
+                'non-assertion dsymutil on PATH works. The app runs without '
+                'a dSYM; it only symbolicates native crash frames.',
     );
     return false;
   }

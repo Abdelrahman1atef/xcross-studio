@@ -106,6 +106,17 @@ Future<int> buildXcross({
       'cli',
       '${runner.host.name}_${runner.host.architecture}',
     );
+    // studio: 009 — `dart build cli` recreates bundle/ from scratch, which
+    // dropped a prebuilt OpenAppleMacrosServer copied into bundle/lib. The
+    // next plugin build then compiled swift-syntax from source (minutes and
+    // gigabytes of memory; seen 2026-11-02). Keep it across rebuilds.
+    final macrosName = runner.host.paths.executableName(_server);
+    final bundled = File(p.join(xcrossBuild, 'bundle', 'lib', macrosName));
+    final kept = File(p.join(packageRoot.path, 'build', 'kept-$macrosName'));
+    if (!bundleMacros && bundled.existsSync()) {
+      kept.parent.createSync(recursive: true);
+      await bundled.copy(kept.path);
+    }
     final xcrossResult = await _buildCliExecutable(
       run,
       packageRoot,
@@ -114,6 +125,11 @@ Future<int> buildXcross({
       output: xcrossBuild,
     );
     if (xcrossResult != 0) return xcrossResult;
+    if (!bundleMacros && kept.existsSync() && !bundled.existsSync()) {
+      bundled.parent.createSync(recursive: true);
+      await kept.copy(bundled.path);
+      output.writeln('Kept the bundled $macrosName.');
+    }
 
     final xcrunBuild = p.join(packageRoot.path, 'build', 'xcrun');
     final xcrunResult = await _buildCliExecutable(
