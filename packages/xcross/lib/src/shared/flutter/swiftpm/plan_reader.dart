@@ -279,6 +279,75 @@ final class SwiftPmPlanReader {
     return seen;
   }
 
+  static final RegExp _archiveCopy = RegExp(
+    r'^  ("(?:[^"\\]|\\.)*\.a"):\r?\n'
+    r'    tool: copy-tool\r?\n'
+    r'    inputs: \[("(?:[^"\\]|\\.)*")\]',
+    multiLine: true,
+  );
+
+  static final RegExp _pluginsModuleInputs = RegExp(
+    '^  "C\\.$pluginsProductName-[^"]*\\.module":\\r?\\n'
+    r'(?:    .*\r?\n)*?'
+    r'    inputs: \[(.*)\]',
+    multiLine: true,
+  );
+
+  /// studio: 006 — static libraries of binary targets (xcframework slices)
+  /// that the plan in [scratchPath] copies into [targetBuildDir] and the
+  /// plugins product depends on (its module command lists them as inputs;
+  /// SwiftPM also copies archives no product uses, such as GoogleMapsM4B.a).
+  List<String> plannedBinaryArchives(
+    String scratchPath,
+    String targetBuildDir,
+  ) {
+    final String text;
+    try {
+      text = fileSystem
+          .file(p.join(scratchPath, 'debug.yaml'))
+          .readAsStringSync();
+    } on Object {
+      return const [];
+    }
+    final archives = <String>{};
+    for (final match in _archiveCopy.allMatches(text)) {
+      final Object? output;
+      final Object? input;
+      try {
+        output = jsonDecode(match.group(1)!);
+        input = jsonDecode(match.group(2)!);
+      } on FormatException {
+        continue;
+      }
+      if (output is! String || input is! String) continue;
+      if (!input.toLowerCase().contains('.xcframework')) continue;
+      if (!p.equals(p.dirname(output), targetBuildDir)) continue;
+      archives.add(output);
+    }
+    final inputs = _pluginsModuleInputs.firstMatch(text)?.group(1);
+    if (inputs != null) {
+      archives.retainWhere((archive) => inputs.contains(jsonEncode(archive)));
+    }
+    return archives.toList()..sort();
+  }
+
+  /// Whether the plan's link commands already pass every [archives] path
+  /// through `-Xlinker`.
+  bool manifestLinksArchives(String scratchPath, List<String> archives) {
+    final String text;
+    try {
+      text = fileSystem
+          .file(p.join(scratchPath, 'debug.yaml'))
+          .readAsStringSync();
+    } on Object {
+      return false;
+    }
+    final flag = jsonEncode('-Xlinker');
+    return archives.every(
+      (archive) => text.contains('$flag,${jsonEncode(archive)}'),
+    );
+  }
+
   bool manifestCarriesInteropSearchPaths(
     String scratchPath,
     List<String> interopArguments,

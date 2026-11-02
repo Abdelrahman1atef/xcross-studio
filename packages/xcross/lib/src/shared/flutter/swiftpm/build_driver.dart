@@ -358,23 +358,37 @@ final class SwiftPmBuildDriver<T extends PlatformHostInterface> {
     // `swift build` planning process (~13s on Windows for
     // examples/flutter_example) on every build including incremental ones,
     // to reproduce a manifest that is already byte-identical.
+    // studio: 006 — static libraries of binary targets (GoogleMaps.a, …)
+    // that the plan copies but never links: SwiftPM only finds `lib*.a`
+    // through its `-L`, so the plugins dylib failed with undefined `GMS…`
+    // symbols (gazayr, 2026-11-02). Link them by path, as Xcode does.
+    final archives = planReader.plannedBinaryArchives(
+      scratchPath,
+      targetBuildDir,
+    );
+    final archiveArguments = [
+      for (final archive in archives) ...['-Xlinker', archive],
+    ];
     final needsInteropReplan =
-        interopArguments.isNotEmpty &&
-        !planReader.manifestCarriesInteropSearchPaths(
-          scratchPath,
-          interopArguments,
-        );
+        (interopArguments.isNotEmpty &&
+            !planReader.manifestCarriesInteropSearchPaths(
+              scratchPath,
+              interopArguments,
+            )) ||
+        (archives.isNotEmpty &&
+            !planReader.manifestLinksArchives(scratchPath, archives));
+    final arguments = [...interopArguments, ...archiveArguments];
     if (needsInteropReplan) {
       await sourceRepair.buildTranslatingSdkMismatch(
         () => buildPlan.recordPlan(
           swiftBuild,
-          [...baseArguments, ...interopArguments],
+          [...baseArguments, ...arguments],
           environment: environment,
           label: 'swift build plan (interop)',
         ),
       );
       await hostPolicy.repairBuildPlan(scratchPath, targetBuildDir);
     }
-    return (targetBuildDir: targetBuildDir, interopArguments: interopArguments);
+    return (targetBuildDir: targetBuildDir, interopArguments: arguments);
   }
 }

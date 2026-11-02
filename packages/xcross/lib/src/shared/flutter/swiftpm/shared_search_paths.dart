@@ -100,7 +100,7 @@ final class SwiftPmSharedSearchPaths<T extends PlatformHostInterface> {
     return found..sort();
   }
 
-  List<_Library> _libraries(String xcframework) {
+  List<XcframeworkLibrary> _libraries(String xcframework) {
     final info = fileSystem.file(p.join(xcframework, 'Info.plist'));
     if (!info.existsSync()) return const [];
     try {
@@ -120,7 +120,7 @@ final class SwiftPmSharedSearchPaths<T extends PlatformHostInterface> {
               (library['SupportedArchitectures'] as List).contains('arm64') &&
               library['LibraryIdentifier'] is String &&
               library['LibraryPath'] is String)
-            _Library(
+            XcframeworkLibrary(
               identifier: library['LibraryIdentifier'] as String,
               libraryPath: library['LibraryPath'] as String,
               headersPath: library['HeadersPath'] as String?,
@@ -132,8 +132,10 @@ final class SwiftPmSharedSearchPaths<T extends PlatformHostInterface> {
   }
 }
 
-final class _Library {
-  const _Library({
+/// One `AvailableLibraries` entry of an xcframework.
+@internal
+final class XcframeworkLibrary {
+  const XcframeworkLibrary({
     required this.identifier,
     required this.libraryPath,
     required this.headersPath,

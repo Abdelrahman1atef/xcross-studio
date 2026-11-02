@@ -1,4 +1,5 @@
 // studio: 006 — Xcode-style project-wide search paths for xcframeworks.
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:cli_kit/host/macos/macos_host.dart';
@@ -7,6 +8,8 @@ import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 import 'package:xcross/src/shared/flutter/swiftpm/artifact_filesystem.dart';
+import 'package:xcross/src/shared/flutter/swiftpm/plan_reader.dart';
+import 'package:xcross/src/shared/flutter/swiftpm/response_file_reader.dart';
 import 'package:xcross/src/shared/flutter/swiftpm/shared_search_paths.dart';
 import 'package:xcross/src/target/iphone/flutter/iphone_flutter_target.dart';
 
@@ -115,5 +118,75 @@ void main() {
       ).arguments(p.join(root.path, 'missing')),
       isEmpty,
     );
+  });
+
+  test('AC-006-13 static libraries the plan copies from xcframeworks are '
+      'linked by path', () {
+    final scratch = p.join(root.path, 'scratch');
+    final debug = p.join(scratch, 'arm64-apple-ios', 'debug');
+    final maps = p.join(debug, 'GoogleMaps.a');
+    final slice = p.join(
+      scratch,
+      'checkouts',
+      'ios-maps-sdk',
+      '.xa',
+      'abc',
+      'GoogleMaps.xcframework',
+      'ios-arm64',
+      'GoogleMaps.a',
+    );
+    final other = p.join(debug, 'Resources.bundle', 'x.a');
+    // Copied by SwiftPM but used by no product (GoogleMapsM4B.a).
+    final unused = p.join(debug, 'Unused.a');
+    final unusedSlice = p.join(
+      scratch,
+      'u.xcframework',
+      'ios-arm64',
+      'Unused.a',
+    );
+    String yaml(List<String> linkArgs) =>
+        'commands:\n'
+        '  ${jsonEncode(maps)}:\n'
+        '    tool: copy-tool\n'
+        '    inputs: [${jsonEncode(slice)}]\n'
+        '    outputs: [${jsonEncode(maps)}]\n'
+        '\n'
+        '  ${jsonEncode(other)}:\n'
+        '    tool: copy-tool\n'
+        '    inputs: [${jsonEncode(p.join(root.path, 'src', 'x.a'))}]\n'
+        '    outputs: [${jsonEncode(other)}]\n'
+        '\n'
+        '  ${jsonEncode(unused)}:\n'
+        '    tool: copy-tool\n'
+        '    inputs: [${jsonEncode(unusedSlice)}]\n'
+        '    outputs: [${jsonEncode(unused)}]\n'
+        '\n'
+        '  "C.FlutterPluginsGenerated-arm64-apple-ios-debug.module":\n'
+        '    tool: phony\n'
+        '    inputs: [${jsonEncode(maps)},"other"]\n'
+        '    outputs: ["<x>"]\n'
+        '\n'
+        '  "C.FlutterPluginsGenerated-debug.dylib":\n'
+        '    tool: shell\n'
+        '    args: [${linkArgs.map(jsonEncode).join(',')}]\n';
+    write(p.join(scratch, 'debug.yaml'), yaml(['swiftc', '-L', debug]));
+    final reader = SwiftPmPlanReader(
+      fileSystem: const IoArtifactFileSystem(),
+      responseFiles: SwiftPmResponseFileReader(
+        fileSystem: const IoArtifactFileSystem(),
+      ),
+    );
+
+    final archives = reader.plannedBinaryArchives(scratch, debug);
+
+    expect(archives, [
+      maps,
+    ], reason: 'only xcframework archives the plugins product uses');
+    expect(reader.manifestLinksArchives(scratch, archives), isFalse);
+    write(
+      p.join(scratch, 'debug.yaml'),
+      yaml(['swiftc', '-L', debug, '-Xlinker', maps]),
+    );
+    expect(reader.manifestLinksArchives(scratch, archives), isTrue);
   });
 }
