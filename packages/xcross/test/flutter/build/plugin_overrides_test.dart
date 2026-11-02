@@ -262,6 +262,36 @@ flutter:
       );
     });
 
+    test('AC-006-9 a plugin with ios/<name>/Sources but no Package.swift is '
+        'staged from ios/, matching shim paths', () {
+      // google_maps_flutter_ios 2.18: sources under ios/<name>/Sources/<name>
+      // and only a podspec.
+      final source = plugin('foo');
+      write(
+        p.join(source.packageRoot, 'ios', 'foo', 'Sources', 'foo', 'a.m'),
+        '// a',
+      );
+      expect(source.usesSwiftPackageManager, isFalse);
+      overrideDir([projectRoot('foo')]);
+      final staging = p.join(tmp.path, 'staging');
+
+      final staged = overrides().apply([source], stagingRoot: staging).single;
+
+      expect(
+        File(
+          p.join(staged.swiftPackageDir, 'foo', 'Sources', 'foo', 'a.m'),
+        ).existsSync(),
+        isTrue,
+        reason: 'a draft path "foo/Sources/foo" resolves in the staged copy',
+      );
+      expect(
+        File(
+          p.join(staged.swiftPackageDir, 'Classes', 'fooPlugin.m'),
+        ).existsSync(),
+        isTrue,
+      );
+    });
+
     test('re-staging keeps unchanged files and drops removed ones', () {
       final source = plugin('foo');
       final dir = overrideDir([projectRoot('foo')]);

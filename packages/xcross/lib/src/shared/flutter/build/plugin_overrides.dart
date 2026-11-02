@@ -335,7 +335,8 @@ final class PluginOverrides {
   ///
   /// - `pubspec.yaml` from the plugin (for its `pluginClass`);
   /// - `<platformDir>/<name>/`: the plugin's own Swift package directory when
-  ///   it has one, else the contents of its `<platformDir>/` folder
+  ///   it has one (with a Package.swift), else the contents of its
+  ///   `<platformDir>/` folder
   ///   (`Classes/`, `Assets/`, … without the podspec), with the override's
   ///   files on top.
   IosPlugin materialize(
@@ -349,7 +350,12 @@ final class PluginOverrides {
     if (_fileSystem.file(pubspec).existsSync()) {
       planned['pubspec.yaml'] = pubspec;
     }
-    if (_fileSystem.directory(plugin.swiftPackageDir).existsSync()) {
+    // studio: 006 — only a real Swift package (one with a Package.swift) is
+    // the root. google_maps_flutter_ios 2.18 ships `ios/<name>/Sources/…`
+    // without a manifest; staging just that folder put every path of a
+    // `xcross plugin shim` draft (relative to `ios/`) one level off:
+    // "invalid custom path" (gazayr, 2026-11-02).
+    if (plugin.usesSwiftPackageManager) {
       _plan(planned, plugin.swiftPackageDir, packageDir);
     } else {
       _plan(
