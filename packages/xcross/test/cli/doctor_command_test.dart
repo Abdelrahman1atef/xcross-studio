@@ -388,7 +388,7 @@ void main() {
     },
   );
 
-  test('device checks reject connected devices older than iOS 17', () async {
+  test('AC-005-1 device checks reject devices older than iOS 15', () async {
     final fixture = DoctorServiceFixture(
       baseHost: LinuxHost(
         currentDirectory: '/fixture',
@@ -396,7 +396,7 @@ void main() {
       ),
     );
     addTearDown(fixture.dispose);
-    fixture.devices.versions.addAll({'old': 16, 'new': 17});
+    fixture.devices.versions.addAll({'old': 14, 'new': 16});
     final checks = await fixture.checks.devices(const [
       Device(name: 'Old iPhone', udid: 'old', type: ConnectionType.usb),
       Device(name: 'New iPhone', udid: 'new', type: ConnectionType.usb),

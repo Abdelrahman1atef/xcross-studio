@@ -316,6 +316,14 @@ final class DoctorEnvironmentChecks<T extends PlatformHostInterface> {
     return checks;
   }
 
+  static String _rejectedKeyHint(String keyId) =>
+      'Apple rejected the key. In App Store Connect, open Users and Access → '
+      'Integrations → App Store Connect API and check that $keyId is listed, '
+      'active and has the Admin or App Manager role, and that the Issuer ID '
+      'shown there is the one you saved. A push (APNs) or Sign in with Apple '
+      'key from developer.apple.com is also a .p8 file but does not work '
+      'here. Or sign in with your Apple ID: xcross auth --apple-id=<email>.';
+
   static DoctorCheck _deviceCheck(Device device, int? osMajor) {
     final label = '${device.name} (${device.udid})';
     if (osMajor == null) {
@@ -324,10 +332,21 @@ final class DoctorEnvironmentChecks<T extends PlatformHostInterface> {
         '$label: could not read the iOS version.',
       );
     }
-    if (osMajor < 17) {
+    // studio: 009 — iOS 15/16 are supported since feature 005 (install over
+    // usbmux, open via the user's DDI or from the icon); only debug runs need
+    // iOS 17. This check still said "iOS 17 or later is required" (found on
+    // the iPhone X, 2026-11-02).
+    if (osMajor < 15) {
       return DoctorCheck.failure(
         'Device',
-        '$label runs iOS $osMajor; iOS 17 or later is required.',
+        '$label runs iOS $osMajor; iOS 15 or later is required.',
+      );
+    }
+    if (osMajor < 17) {
+      return DoctorCheck.success(
+        'Device',
+        '$label runs iOS $osMajor: release and profile builds '
+            '(debug needs iOS 17 or later).',
       );
     }
     return DoctorCheck.success('Device', '$label runs iOS $osMajor.');
@@ -368,10 +387,12 @@ final class DoctorEnvironmentChecks<T extends PlatformHostInterface> {
         'No credentials found. Run `xcross auth`.',
       );
     }
+    String? keyId;
     try {
       final credentials = await AscCredentialsLoader(
         hostServices: appleHostServices,
       ).load(path: path);
+      keyId = credentials.keyId;
       final client = AscClient(
         credentials,
         httpClient: createAppleHttpClient(),
@@ -386,9 +407,15 @@ final class DoctorEnvironmentChecks<T extends PlatformHostInterface> {
         'App Store Connect credentials are valid.',
       );
     } on Object catch (error) {
+      // studio: 009 — a 401 means Apple rejects the key itself; say where to
+      // look (seen with a key Apple refused for both team and individual
+      // signing, 2026-11-02).
+      final hint = '$error'.contains('HTTP 401')
+          ? '\n${_rejectedKeyHint(keyId ?? 'this key')}'
+          : '';
       return DoctorCheck.failure(
         'Authentication',
-        'App Store Connect credentials are unusable: $error',
+        'App Store Connect credentials are unusable: $error$hint',
       );
     }
   }

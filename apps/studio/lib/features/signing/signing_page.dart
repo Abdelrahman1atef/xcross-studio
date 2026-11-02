@@ -263,6 +263,49 @@ class _SigningFormState extends State<SigningForm> {
           if (_auth != null) ...[
             const SizedBox(height: XSpace.s3),
             JobDiagnostics(job: _auth!),
+            // Saving takes a moment; checking the credentials with Apple
+            // (flutter doctor) takes several seconds, so say which is which.
+            ListenableBuilder(
+              listenable: Listenable.merge([
+                _auth!,
+                Services.of(context).readiness,
+              ]),
+              builder: (context, _) {
+                final readiness = Services.of(context).readiness;
+                if (_auth!.status != JobStatus.succeeded) {
+                  return const SizedBox.shrink();
+                }
+                final health = readiness.signing.health;
+                final (status, title, text) = readiness.checking
+                    ? (
+                        XStatus.running,
+                        'Saved. Verifying with Apple…',
+                        'Your credentials are saved. XCross Studio is now '
+                            'asking Apple whether it accepts them (about 10 '
+                            'seconds).',
+                      )
+                    : health == Health.ok
+                    ? (
+                        XStatus.ready,
+                        'Signed in',
+                        'Apple accepted your credentials.',
+                      )
+                    : (
+                        XStatus.failed,
+                        'Saved, but Apple did not accept them',
+                        readiness.signing.message ??
+                            'Run the checks again for details.',
+                      );
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: XSpace.s3),
+                  child: XCallout(
+                    title: title,
+                    status: status,
+                    children: [Text(text)],
+                  ),
+                );
+              },
+            ),
             JobConsole(
               job: _auth!,
               height: 180,

@@ -259,36 +259,51 @@ void main() {
     },
   );
 
-  test('doctor preserves unknown, old and supported device messages', () async {
-    final fixture = DoctorServiceFixture(
-      baseHost: LinuxHost(
-        currentDirectory: '/fixture',
-        environment: const {'HOME': '/fixture'},
-      ),
-    );
-    addTearDown(fixture.dispose);
-    fixture.devices.versions.addAll({'unknown': null, 'old': 16, 'new': 17});
-    final checks = await fixture.checks.devices(const [
-      Device(name: 'Unknown', udid: 'unknown', type: ConnectionType.usb),
-      Device(name: 'Old', udid: 'old', type: ConnectionType.usb),
-      Device(name: 'New', udid: 'new', type: ConnectionType.usb),
-    ]);
-    expect(checks.map((check) => check.status), [
-      DoctorStatus.warning,
-      DoctorStatus.failure,
-      DoctorStatus.success,
-    ]);
-    expect(checks.map((check) => check.message), [
-      'Unknown (unknown): could not read the iOS version.',
-      'Old (old) runs iOS 16; iOS 17 or later is required.',
-      'New (new) runs iOS 17.',
-    ]);
-    expect(fixture.devices.calls, [
-      'version:unknown',
-      'version:old',
-      'version:new',
-    ]);
-  });
+  test(
+    'AC-005-1 doctor accepts iOS 15/16 devices and rejects older ones',
+    () async {
+      final fixture = DoctorServiceFixture(
+        baseHost: LinuxHost(
+          currentDirectory: '/fixture',
+          environment: const {'HOME': '/fixture'},
+        ),
+      );
+      addTearDown(fixture.dispose);
+      fixture.devices.versions.addAll({
+        'unknown': null,
+        'old': 14,
+        'legacy': 16,
+        'new': 17,
+      });
+      final checks = await fixture.checks.devices(const [
+        Device(name: 'Unknown', udid: 'unknown', type: ConnectionType.usb),
+        Device(name: 'Old', udid: 'old', type: ConnectionType.usb),
+        Device(name: 'Legacy', udid: 'legacy', type: ConnectionType.usb),
+        Device(name: 'New', udid: 'new', type: ConnectionType.usb),
+      ]);
+      expect(checks.map((check) => check.status), [
+        DoctorStatus.warning,
+        DoctorStatus.failure,
+        DoctorStatus.success,
+        DoctorStatus.success,
+      ]);
+      const legacy =
+          'Legacy (legacy) runs iOS 16: release and profile builds '
+          '(debug needs iOS 17 or later).';
+      expect(checks.map((check) => check.message), [
+        'Unknown (unknown): could not read the iOS version.',
+        'Old (old) runs iOS 14; iOS 15 or later is required.',
+        legacy,
+        'New (new) runs iOS 17.',
+      ]);
+      expect(fixture.devices.calls, [
+        'version:unknown',
+        'version:old',
+        'version:legacy',
+        'version:new',
+      ]);
+    },
+  );
 }
 
 @internal
