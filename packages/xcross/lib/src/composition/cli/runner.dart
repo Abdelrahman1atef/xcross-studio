@@ -23,12 +23,15 @@ import 'package:studio_ext/target/iphone/device/crashes_command.dart'; // studio
 import 'package:studio_ext/target/iphone/device/device_log_backend.dart'; // studio: 010
 import 'package:studio_ext/target/iphone/device/devices_command.dart'; // studio: 008
 import 'package:studio_ext/target/iphone/device/logs_command.dart'; // studio: 010
+import 'package:xcross/src/composition/cli/appstore_commands.dart'; // studio: 021
 import 'package:xcross/src/composition/cli/cache_command.dart';
 import 'package:xcross/src/composition/cli/compose_command.dart';
 import 'package:xcross/src/composition/cli/doctor_sections.dart';
 import 'package:xcross/src/composition/cli/flutter_command.dart';
 import 'package:xcross/src/composition/cli/install_command.dart'; // studio: 005
+import 'package:xcross/src/composition/cli/publish_commands.dart'; // studio: 019
 import 'package:xcross/src/composition/cli/sign_command.dart'; // studio: 011
+import 'package:xcross/src/composition/cli/testflight_commands.dart'; // studio: 020
 import 'package:xcross/src/composition/ios_target.dart';
 import 'package:xcross/src/composition/xcross_application.dart';
 import 'package:xcross/src/shared/cli/basic/auth_command.dart';
@@ -171,6 +174,10 @@ abstract final class XcrossCli {
         currentDirectory: () => runtime.host.paths.context.current,
         write: runtime.log.output.write,
       ),
+      // studio: 019–021 — App Store Connect: upload, TestFlight, App Store.
+      ...publishCommands(runtime),
+      ...testflightCommands(runtime),
+      ...appStoreCommands(runtime),
       // studio: 016 — `xcross project bundle-id`.
       ProjectCommand(
         fileSystem: runtime.host.fileSystem,
@@ -438,6 +445,8 @@ abstract final class XcrossCli {
           _deviceJson(command) ||
           // studio: 014 — `flutter sdk list --json` prints one document.
           _flutterSdkJson(command) ||
+          // studio: 019–021 — App Store Connect commands with --json.
+          _ascJson(command) ||
           // studio: 016 — `project bundle-id --json` prints one object.
           command?.name == 'project' &&
               command?.command?.name == 'bundle-id' &&
@@ -449,6 +458,18 @@ abstract final class XcrossCli {
     } on FormatException {
       return false;
     }
+  }
+
+  // studio: 019–021
+  static bool _ascJson(ArgResults? command) {
+    if (!const {'publish', 'testflight', 'appstore'}.contains(command?.name)) {
+      return false;
+    }
+    var leaf = command;
+    while (leaf?.command != null) {
+      leaf = leaf!.command;
+    }
+    return leaf != null && leaf.options.contains('json') && leaf.flag('json');
   }
 
   // studio: 014

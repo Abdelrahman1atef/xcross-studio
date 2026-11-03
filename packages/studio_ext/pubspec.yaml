@@ -12,11 +12,13 @@ environment:
 resolution: workspace
 
 dependencies:
+  apple_developer_kit: ^1.0.0 # studio: 019 — App Store Connect API
   archive: ^4.5.2
   args: ^2.7.0
   cli_kit: ^1.0.0
   crypto: ^3.0.8
   dart_mobile_device: ^1.0.0
+  http: ^1.6.0 # studio: 019 — uploads to presigned URLs
   meta: ^1.19.0
   path: ^1.9.1
   propertylistserialization: ^1.5.0
