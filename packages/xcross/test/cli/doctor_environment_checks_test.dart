@@ -248,6 +248,7 @@ void main() {
       expect(checks.map((check) => check.name), [
         'Device tools',
         'Authentication',
+        'App Store signing',
         'Device',
       ]);
       expect(checks.last.status, DoctorStatus.warning);

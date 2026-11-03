@@ -69,6 +69,8 @@
     across runs (`XCROSS_CERTIFICATE_PRIVATE_KEY` in CI, never revoked), a fresh `IOS_APP_STORE` profile per bundle
     (only xcross's own are replaced), production entitlements. It writes `build/xcross-ios/ipa/<name>.ipa` and
     `build/xcross-ios/archive/Runner.xcarchive` with dSYMs (`release.dsym_unavailable` without `dsymutil`).
+    Without a saved team key (or with an individual key) it stops before compiling, and `xcross flutter doctor`
+    shows this as "App Store signing", which the Release page's Signing step follows.
   - `xcross release check [<ipa|app>] [--json]` reports the app's configuration and what App Store Connect would
     reject, with `release.*` codes: signing and profile type, SDK below 26, DT keys, version format, bundle ID,
     usage descriptions per plugin, ATS, privacy manifests and required-reason APIs, export compliance, secrets in the

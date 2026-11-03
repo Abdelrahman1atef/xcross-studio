@@ -29,7 +29,10 @@ check`, which runs the local checks of the story's validation step with coded is
    no `get-task-allow`, `beta-reports-active` as the profile grants it. Capabilities follow the entitlements with the
    016 rules (truthful, never fatal).
 4. **AC-018-4**: A team key without provisioning rights, or an Apple ID sign-in, stops the export with a clear
-   message naming the role needed (Admin or App Manager team key).
+   message naming the role needed (Admin or App Manager team key). No saved key or an individual key stops
+   `flutter build --export-method app-store` before it compiles. `xcross flutter doctor` reports "App Store
+   signing" under Deployment: a warning without a saved team key or with an individual key, success with a team key
+   (Apple checks its role when the build signs).
 5. **AC-018-5**: dSYMs: `dsymutil` (from `PATH`, LLVM or the Swift toolchain) runs on `Runner` and `App.framework/App`
    into the archive's `dSYMs/`; without one the build warns `release.dsym_unavailable` and continues. Dart symbols
    from `--split-debug-info` stay where Flutter writes them and are listed in the archive `Info.plist`.

@@ -68,6 +68,72 @@ void main() {
     );
   }
 
+  // studio: 018 — App Store signing is reported on its own: an Apple ID or an
+  // individual key signs for devices but not for the App Store.
+  group('App Store signing', () {
+    Future<DoctorCheck> appStoreSigning(String? saved) async {
+      final fixture = AuthNamespaceFixture(style: p.Style.posix);
+      addTearDown(fixture.dispose);
+      if (saved != null) {
+        fixture.fileSystem.file(
+            AscCredentials.defaultConfigPath(hostServices: fixture.services),
+          )
+          ..parent.createSync(recursive: true)
+          ..writeAsStringSync(saved);
+      }
+      final runtime = testRuntime();
+      final checks = DoctorEnvironmentChecks(
+        hostPlatform: runtime.host,
+        buildPlatform: const IPhoneBuildPlatform(),
+        appleHostServices: fixture.services,
+        runner: runtime.runner,
+        repository: runtime.sdkRepository,
+        toolchain: runtime.darwinToolchain,
+        deviceDiagnostics: DoctorNamespaceDiagnostics(),
+        sdkMismatch: (_) async => null,
+        sdkToolchainIdentity: () async => {},
+        createAppleHttpClient: () =>
+            throw StateError('No App Store Connect in this test'),
+      );
+      final results = await checks.deployment();
+      expect(results.map((r) => r.name).take(3), [
+        'Device tools',
+        'Authentication',
+        'App Store signing',
+      ]);
+      return results.singleWhere(
+        (r) => r.name == DoctorEnvironmentChecks.appStoreSigningName,
+      );
+    }
+
+    test('no saved key: a warning naming the team key', () async {
+      final check = await appStoreSigning(null);
+      expect(check.status, DoctorStatus.warning);
+      expect(check.message, contains('No App Store Connect team key'));
+      expect(check.message, contains('Admin or App Manager'));
+    });
+
+    test('an individual key: a warning', () async {
+      final check = await appStoreSigning(
+        '{"keyId": "KEY", "privateKeyPath": "/k.p8", '
+        '"keyType": "individual"}',
+      );
+      expect(check.status, DoctorStatus.warning);
+      expect(check.message, contains('individual key'));
+      expect(check.message, contains('Team Keys'));
+      // The key ID is not printed.
+      expect(check.message, isNot(contains('KEY ')));
+    });
+
+    test('a team key: success, without asking Apple', () async {
+      final check = await appStoreSigning(
+        '{"issuerId": "ISSUER", "keyId": "KEY", "privateKeyPath": "/k.p8"}',
+      );
+      expect(check.status, DoctorStatus.success);
+      expect(check.message, contains('team key is saved'));
+    });
+  });
+
   test('doctor is a Flutter and Compose subcommand, not a top-level one', () {
     final runner = XcrossCli.buildRunner(
       testApplication(),

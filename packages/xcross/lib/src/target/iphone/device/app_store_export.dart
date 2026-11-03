@@ -67,18 +67,18 @@ final class AppStoreExport<T extends PlatformHostInterface> {
 
   static const _roleHint =
       'App Store signing needs an App Store Connect team API key with the '
-      'Admin or App Manager role: run `xcross auth --issuer-id <id> --key-id '
-      '<id> --private-key <AuthKey.p8>` (an Apple ID or an individual key '
-      'cannot create distribution certificates).';
+      'Admin or App Manager role (the Account Holder or an Admin creates it '
+      'under Users and Access → Integrations → App Store Connect API → Team '
+      'Keys): run `xcross auth --issuer-id <id> --key-id <id> --private-key '
+      '<AuthKey.p8>` (an Apple ID or an individual key cannot create '
+      'distribution certificates).';
 
   HostFileSystemInterface get _files => runner.host.fileSystem;
 
-  /// Signs [appPath] in place, then writes `<outputRoot>/ipa/<name>.ipa` and
-  /// `<outputRoot>/archive/Runner.xcarchive`.
-  Future<AppStoreExportResult> export({
-    required String appPath,
-    required String outputRoot,
-  }) async {
+  /// The saved team key, or an [XcrossError] naming the key App Store signing
+  /// needs. The build calls this before compiling, so a missing or individual
+  /// key stops it at once rather than after the build.
+  Future<AscCredentials> credentials() async {
     final AscCredentials credentials;
     try {
       credentials = await _loadCredentials();
@@ -90,6 +90,16 @@ final class AppStoreExport<T extends PlatformHostInterface> {
         'The saved App Store Connect key is an individual key. $_roleHint',
       );
     }
+    return credentials;
+  }
+
+  /// Signs [appPath] in place, then writes `<outputRoot>/ipa/<name>.ipa` and
+  /// `<outputRoot>/archive/Runner.xcarchive`.
+  Future<AppStoreExportResult> export({
+    required String appPath,
+    required String outputRoot,
+  }) async {
+    final credentials = await this.credentials();
     final paths = runner.host.paths.context;
     final configDirectory = paths.dirname(
       AscCredentials.defaultConfigPath(hostServices: hostServices),

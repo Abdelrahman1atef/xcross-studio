@@ -16,7 +16,8 @@ commands the app needs (`release gate`, `release ci`) keep the GUI a thin shell 
 
 1. **AC-022-1**: A **Release** destination shows ten numbered steps with a status each: 1 readiness (doctor areas,
    push), 2 version and build (project version; "Use the next App Store Connect build number" → `--build-number
-   auto`), 3 signing (team key needed for the App Store; link to Signing), 4 quality gate, 5 archive and IPA, 6
+   auto`), 3 signing (team key needed for the App Store; its status and note come from the doctor's "App Store
+   signing" check, not from device signing; link to Signing), 4 quality gate, 5 archive and IPA, 6
    release check, 7 upload, 8 processing, 9 TestFlight, 10 submission. Every step runs an `xcross` command and shows
    its job; nothing is done in the GUI itself.
 2. **AC-022-2**: Step 5 runs `xcross flutter build --release --ipa --export-method app-store [--build-number auto]`

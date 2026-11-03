@@ -178,6 +178,9 @@ final class FlutterBuildCommand<T extends PlatformHostInterface>
     );
     final buildRuntime = features.flutterRuntime;
     final projectRoot = runtime.host.paths.context.current;
+    // studio: 018 — a missing or individual key stops the build before it
+    // compiles, not after.
+    if (appStore) await _appStoreExport().credentials();
     // studio: 019 — `--build-number auto`: one past App Store Connect's newest.
     final buildNumber = options.buildNumber?.trim() == 'auto'
         ? await _autoBuildNumber(
@@ -222,15 +225,21 @@ final class FlutterBuildCommand<T extends PlatformHostInterface>
     }
   }
 
+  // studio: 018
+  AppStoreExport<T> _appStoreExport() => AppStoreExport(
+    runner: runtime.runner,
+    hostServices: runtime.appleHostServices,
+    httpClients: runtime.signingHttpClients,
+    environment: runtime.runner.effectiveEnvironment,
+  );
+
   // studio: 018 — sign for distribution, write the IPA and the archive.
   Future<void> _exportForAppStore(String appPath) async {
     final paths = runtime.host.paths.context;
-    final result = await AppStoreExport(
-      runner: runtime.runner,
-      hostServices: runtime.appleHostServices,
-      httpClients: runtime.signingHttpClients,
-      environment: runtime.runner.effectiveEnvironment,
-    ).export(appPath: appPath, outputRoot: paths.dirname(appPath));
+    final result = await _appStoreExport().export(
+      appPath: appPath,
+      outputRoot: paths.dirname(appPath),
+    );
     if (result.missingDsyms.isNotEmpty) {
       runtime.log.logWarn(
         codedWarning(

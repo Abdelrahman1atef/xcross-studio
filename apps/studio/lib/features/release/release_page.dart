@@ -77,6 +77,22 @@ class _ReleasePageState extends State<ReleasePage> {
     _ => XStatus.idle,
   };
 
+  // The doctor's "App Store signing" check: whether a team key is saved. The
+  // Signing area (Apple ID or key) only says the app can be signed for
+  // devices, which is not what the App Store build needs.
+  static DoctorCheckResult? _appStoreSigning(ReadinessController readiness) =>
+      readiness.checks
+          .where((check) => check.name == 'App Store signing')
+          .firstOrNull;
+
+  static XStatus _appStoreSigningStatus(ReadinessController readiness) =>
+      switch (_appStoreSigning(readiness)?.status) {
+        'success' => XStatus.ready,
+        'warning' => XStatus.warning,
+        'failure' => XStatus.failed,
+        _ => readiness.checking ? XStatus.running : XStatus.idle,
+      };
+
   // `1 error, 2 infos`.
   static String _issueCount(List<GateIssue> issues) => [
     for (final severity in const ['error', 'warning', 'info'])
@@ -352,7 +368,7 @@ class _ReleasePageState extends State<ReleasePage> {
       _ReleaseStep(
         number: 3,
         title: 'Signing',
-        status: statusOfHealth(readiness.signing.health),
+        status: _appStoreSigningStatus(readiness),
         description:
             'App Store signing needs an App Store Connect team key with the '
             'Admin or App Manager role (an Apple ID only signs for devices).',
@@ -363,6 +379,10 @@ class _ReleasePageState extends State<ReleasePage> {
             onPressed: () => services.app.go(Destination.signing),
           ),
         ],
+        child: switch (_appStoreSigning(readiness)) {
+          final check? when check.status != 'success' => XNote(check.message),
+          _ => null,
+        },
       ),
       _ReleaseStep(
         number: 4,

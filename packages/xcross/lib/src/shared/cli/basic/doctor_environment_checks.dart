@@ -300,6 +300,7 @@ final class DoctorEnvironmentChecks<T extends PlatformHostInterface> {
       deviceTools,
       ?await _deviceService(), // studio: 002
       await _authentication(),
+      await _appStoreSigning(), // studio: 018
     ];
     try {
       checks.addAll(await devices(await deviceDiagnostics.devices()));
@@ -383,6 +384,55 @@ final class DoctorEnvironmentChecks<T extends PlatformHostInterface> {
       );
     }
     return DoctorCheck.success('Device', '$label runs iOS $osMajor.');
+  }
+
+  // studio: 018 — App Store signing needs a team key, whatever signs for
+  // devices: "Authentication" stops at a valid Apple ID session, so it said
+  // ready while `--export-method app-store` refused the individual key after
+  // the whole build (seen 2026-11-03). Reads the saved key only; Apple checks
+  // its role when the build asks for the certificate.
+  static const appStoreSigningName = 'App Store signing';
+
+  static const _teamKeyHint =
+      'App Store builds need an App Store Connect team key with the Admin or '
+      'App Manager role: the Account Holder or an Admin creates it under '
+      'Users and Access → Integrations → App Store Connect API → Team Keys; '
+      'save it with `xcross auth --issuer-id <id> --key-id <id> '
+      '--private-key <AuthKey.p8>`. Device builds do not need it.';
+
+  Future<DoctorCheck> _appStoreSigning() async {
+    final path = AscCredentials.defaultConfigPath(
+      hostServices: appleHostServices,
+    );
+    if (!appleHostServices.host.fileSystem.file(path).existsSync()) {
+      return const DoctorCheck.warning(
+        appStoreSigningName,
+        'No App Store Connect team key is saved. $_teamKeyHint',
+      );
+    }
+    try {
+      final credentials = await AscCredentialsLoader(
+        hostServices: appleHostServices,
+      ).load(path: path);
+      if (credentials.keyType == AscKeyType.individual) {
+        return const DoctorCheck.warning(
+          appStoreSigningName,
+          'The saved App Store Connect key is an individual key, which cannot '
+          'create distribution certificates or profiles. $_teamKeyHint',
+        );
+      }
+      return const DoctorCheck.success(
+        appStoreSigningName,
+        'A team key is saved; Apple checks its role (Admin or App Manager) '
+        'when the App Store build signs.',
+      );
+    } on Object catch (error) {
+      return DoctorCheck.warning(
+        appStoreSigningName,
+        'The saved App Store Connect key cannot be read: $error\n'
+        '$_teamKeyHint',
+      );
+    }
   }
 
   Future<DoctorCheck> _authentication() async {

@@ -95,6 +95,30 @@ Future<FakeLauncher> _pump(WidgetTester tester, String project) async {
         process.out(_check);
       }
       if (command == XcrossCommands.releaseGate().join(' ')) process.out(_gate);
+      // Signed in with an Apple ID (devices) and an individual key saved:
+      // ready for devices, not for the App Store.
+      if (command == XcrossCommands.doctor().join(' ')) {
+        for (final (name, status, message) in [
+          ('Authentication', 'success', 'Apple ID session is available.'),
+          (
+            'App Store signing',
+            'warning',
+            'The saved App Store Connect key is an individual key, which '
+                'cannot create distribution certificates or profiles.',
+          ),
+        ]) {
+          process.out(
+            jsonEncode({
+              'v': 1,
+              'type': 'check',
+              'section': 'Deployment',
+              'name': name,
+              'status': status,
+              'message': message,
+            }),
+          );
+        }
+      }
       if (command == XcrossCommands.publish().join(' ')) {
         process
           ..out(
@@ -189,6 +213,31 @@ void main() {
     expect(
       commands(launcher),
       contains('project version 1.0.1 --build 20 --json'),
+    );
+  });
+
+  testWidgets('AC-022-1 step 3 follows App Store signing, not device '
+      'signing', (tester) async {
+    await _pump(tester, project.path);
+    await go(tester, 'Release');
+    final step = find.ancestor(
+      of: find.text('3. Signing'),
+      matching: find.byType(XCard),
+    );
+    expect(
+      tester
+          .widget<XStatusBadge>(
+            find.descendant(of: step, matching: find.byType(XStatusBadge)),
+          )
+          .status,
+      XStatus.warning,
+    );
+    expect(
+      find.descendant(
+        of: step,
+        matching: find.textContaining('individual key, which cannot'),
+      ),
+      findsOneWidget,
     );
   });
 
