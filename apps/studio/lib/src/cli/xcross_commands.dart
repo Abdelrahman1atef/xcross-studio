@@ -133,6 +133,10 @@ abstract final class XcrossCommands {
 
   static List<String> devices() => const ['devices', '--json'];
 
+  /// `xcross devices --watch --json` (feature 017): a snapshot at start and
+  /// after every plug, unplug or device service change.
+  static List<String> devicesWatch() => const ['devices', '--watch', '--json'];
+
   /// `xcross project bundle-id [original|prefixed] --json` (feature 016):
   /// read, or save, the App ID the open project is signed under.
   static List<String> projectBundleId({bool? realAppId}) => [

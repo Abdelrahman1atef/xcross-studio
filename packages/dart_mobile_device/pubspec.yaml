@@ -20,5 +20,6 @@ dependencies:
   cli_kit: ^1.0.0
   meta: ^1.19.0
   path: ^1.9.1
+  propertylistserialization: ^1.5.0 # studio: 017 — usbmuxd plist messages
 dev_dependencies:
   test: ^1.33.0

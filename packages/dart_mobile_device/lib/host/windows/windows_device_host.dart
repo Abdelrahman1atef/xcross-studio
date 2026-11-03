@@ -48,6 +48,10 @@ final class WindowsDeviceHost implements DeviceHostPolicy {
   // studio: 002 — Apple Mobile Device Service listens on 127.0.0.1:27015.
   static const defaultUsbmuxAddress = '127.0.0.1:27015';
 
+  // studio: 017
+  @override
+  String get defaultDeviceServiceAddress => defaultUsbmuxAddress;
+
   @override
   Future<String?> deviceServiceProblem(String? usbmuxAddress) async {
     final address = usbmuxAddress ?? defaultUsbmuxAddress;

@@ -546,6 +546,11 @@ final class Pymd {
   }
 
   /// Absolute usbmux address to pass through `sudo env …` (never empty).
+  // studio: 017 — the address the usbmuxd Listen client connects to.
+  /// [resolvedUsbmuxAddress], else the host's default service address.
+  String usbmuxListenAddress() =>
+      resolvedUsbmuxAddress() ?? hostPolicy.defaultDeviceServiceAddress;
+
   String? resolvedUsbmuxAddress() {
     final fromEnv = runner.effectiveEnvironment['USBMUXD_SOCKET_ADDRESS'];
     if (fromEnv != null && fromEnv.isNotEmpty) return fromEnv;

@@ -1,5 +1,11 @@
 ## Unreleased (XCross Studio)
 
+- `xcross devices --watch [--json]` keeps running and reports the connected iPhones again whenever one is plugged in
+  or out (a `devices` snapshot per change), through a pure-Dart usbmuxd `Listen` client (no pymobiledevice3 process
+  per event). A stopped device service is reported once and retried every 2 s. XCross Studio runs it in the
+  background: the top-bar badge, Devices and Build & Run follow the cable within about two seconds, and say when
+  the device service is not reachable. ([specs/017-device-watcher](specs/017-device-watcher/spec.md))
+
 - Push, Firebase and Google Maps work in xcross-built apps (found on an iPhone X with a Firebase/FCM/Maps app):
   - Apps are signed under their **real App ID** by default. The prefixed `XCR-<identity>.<id>` form is now used
     only on request or when another team owns the ID (with a warning that push, Firebase and Sign in with Apple

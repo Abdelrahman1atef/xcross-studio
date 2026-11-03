@@ -84,6 +84,8 @@ class _StudioShellState extends State<StudioShell> {
       if (!mounted || !widget.startupChecks) return;
       final services = Services.of(context);
       services.devices.refresh();
+      // Feature 017: plug/unplug updates the device list live.
+      services.devices.watch();
       services.readiness.readVersion();
       services.readiness.runDoctor().done.then((_) => _maybeOpenWizard());
     });
@@ -275,17 +277,28 @@ class _TopBar extends StatelessWidget {
                         child: Text('Open Devices'),
                       ),
                     ],
+                    // Feature 017: a live badge (green: connected, grey:
+                    // none, warning: the device service is down).
                     child: Chip(
+                      key: const ValueKey('device-badge'),
                       avatar: Icon(
-                        Icons.phone_iphone,
+                        services.devices.serviceDown
+                            ? Icons.usb_off
+                            : Icons.phone_iphone,
                         size: 16,
-                        color: device == null ? c.textMuted : c.success,
+                        color: services.devices.serviceDown
+                            ? c.warning
+                            : device == null
+                            ? c.textMuted
+                            : c.success,
                       ),
                       label: Text(
-                        device == null
+                        services.devices.serviceDown
+                            ? 'Device service not reachable'
+                            : device == null
                             ? (services.devices.refreshing
                                   ? 'iPhone: looking…'
-                                  : 'iPhone: not connected')
+                                  : 'Plug in an iPhone')
                             : 'iPhone: ${device.name}',
                         overflow: TextOverflow.ellipsis,
                       ),

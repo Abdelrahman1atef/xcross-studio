@@ -317,6 +317,10 @@ final class ForbiddenPrivileges implements HostPrivilegesInterface {
 
 @internal
 final class DiagnosticsHostPolicy implements DeviceHostPolicy {
+  // studio: 017
+  @override
+  String get defaultDeviceServiceAddress => '127.0.0.1:27015';
+
   @override
   String get installCommand => 'manual install';
 

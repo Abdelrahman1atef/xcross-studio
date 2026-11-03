@@ -42,6 +42,7 @@ sealed class XcrossEvent {
       'appinfo' => AppInfo.fromJson(json),
       'app' => InstalledApp.fromJson(json),
       'device' => ConnectedDevice.fromJson(json),
+      'devices' => DeviceSnapshot.fromJson(json),
       'crash' => CrashReport.fromJson(json),
       'notice' => Notice('${json['message'] ?? ''}'),
       'step' => BuildStep.fromJson(json),
@@ -504,4 +505,19 @@ class BundleIdStatus extends XcrossEvent {
   final String next;
 
   bool get usesRealAppId => next == 'original';
+}
+
+/// `devices`: the full list of connected iPhones, from
+/// `xcross devices --watch --json` (feature 017), at start and after every
+/// change.
+class DeviceSnapshot extends XcrossEvent {
+  const DeviceSnapshot(this.devices);
+
+  factory DeviceSnapshot.fromJson(Map<String, Object?> json) => DeviceSnapshot([
+    if (json['devices'] case final List<Object?> list)
+      for (final entry in list)
+        if (entry is Map<String, Object?>) ConnectedDevice.fromJson(entry),
+  ]);
+
+  final List<ConnectedDevice> devices;
 }

@@ -7,6 +7,7 @@ import 'package:cli_kit/shared/logging/logging.dart';
 import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:cli_kit/shared/tui/tui.dart';
 import 'package:completion/completion.dart';
+import 'package:dart_mobile_device/host/shared/usbmux_listen.dart'; // studio: 017
 import 'package:dart_mobile_device/shared/device/models/device.dart'; // studio: 005
 import 'package:dart_mobile_device/shared/errors/errors.dart';
 import 'package:dart_mobile_device/target/iphone/device/device_prepare.dart';
@@ -288,6 +289,9 @@ abstract final class XcrossCli {
       DevicesCommand(
         backend: PymdDeviceLogBackend(pymd),
         writeBytes: stdout.add,
+        // studio: 017 — `devices --watch` follows usbmuxd's Listen events.
+        listen: () =>
+            UsbmuxListener(address: pymd.usbmuxListenAddress()).listen(),
       ),
       CrashesCommand(
         backend: PymdDeviceLogBackend(pymd),

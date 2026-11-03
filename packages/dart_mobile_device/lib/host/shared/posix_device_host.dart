@@ -55,6 +55,10 @@ abstract base class PosixDeviceHost implements DeviceHostPolicy {
   // studio: 002 — usbmuxd's default unix socket.
   static const defaultUsbmuxAddress = '/var/run/usbmuxd';
 
+  // studio: 017
+  @override
+  String get defaultDeviceServiceAddress => defaultUsbmuxAddress;
+
   @override
   Future<String?> deviceServiceProblem(String? usbmuxAddress) async {
     final address = usbmuxAddress ?? defaultUsbmuxAddress;

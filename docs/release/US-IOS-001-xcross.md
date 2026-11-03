@@ -242,11 +242,11 @@ links to them.
 - **Device tests** on a real iPhone with xcross: `xcross flutter run --release`, `xcross logs`, `xcross crashes`,
   `xcross app info` (✅ 005, 010). Push notifications, Firebase and Google Maps work in xcross-built apps (✅ 016):
   the real App ID, `aps-environment`, the Maps key from AppDelegate. A plugged/unplugged device updates the desktop
-  app live (🛠 017).
+  app live (✅ 017: `xcross devices --watch`).
 - The rest of the original list (login, deep links, offline, accessibility, …) is unchanged and app-specific.
 
 **Status in xcross:** ✅ device run, logs, crashes (005, 010); ✅ push/Firebase/Maps (016, device check pending);
-🛠 live device watcher (017); 🛠 gate in the desktop app (022).
+✅ live device watcher (017); 🛠 gate in the desktop app (022).
 
 ## AC-09 — Release build
 
@@ -402,7 +402,7 @@ The same steps run unattended in CI with `docs/ci/github-testflight.yml` on `ubu
 | TC-31 | Release evidence | `release.json`; Release → Export | recorded | 🛠 019/022 |
 | TC-32 | Symbols | archive `dSYMs/`, `build/symbols/ios` | retained | 🛠 018 |
 | TC-33 | Push, Firebase, Maps on device (xcross addition) | `app info`, `logs --preset push`; map screen | token, notification, map | ✅ 016 (device ⏳) |
-| TC-34 | Plug/unplug (xcross addition) | Devices page | updates within ~2 s | 🛠 017 |
+| TC-34 | Plug/unplug (xcross addition) | `xcross devices --watch`; top-bar badge | updates within ~2 s | ✅ 017 (device ⏳) |
 
 ### Example detailed case: TC-20, uploaded build identity
 

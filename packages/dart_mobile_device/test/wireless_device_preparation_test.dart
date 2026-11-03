@@ -202,6 +202,10 @@ final class WirelessFixtureFileSystem implements HostFileSystemInterface {
 
 @internal
 final class WirelessHostPolicy implements DeviceHostPolicy {
+  // studio: 017
+  @override
+  String get defaultDeviceServiceAddress => '127.0.0.1:27015';
+
   @override
   String get preparationDeniedMessage => 'selected preparation denial';
 

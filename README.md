@@ -413,7 +413,7 @@ Edit it with `xcross config`, inspect it with `xcross config show`, prove it wit
 | `xcross logs [--app <bundle-id>] [--preset push\|crash\|flutter] [--json]` | <!-- studio: --> Live iPhone log over USB (iOS 16 and 17+), with filters, presets, `--save`, NDJSON. XCross Studio fork addition |
 | `xcross app info <bundle-id>` | <!-- studio: --> Installed app's version, signer type, team and entitlements as installed (push / associated domains ✔/✖) |
 | `xcross crashes list\|pull` | <!-- studio: --> List crash reports on the iPhone and pull one with its exception summary |
-| `xcross devices [--json]` | <!-- studio: --> List the iPhones connected by USB with their iOS version (used by the XCross Studio GUI) |
+| `xcross devices [--json] [--watch]` | <!-- studio: --> List the iPhones connected by USB with their iOS version (used by the XCross Studio GUI); `--watch` keeps running and reports the list again on every plug, unplug or device service restart (studio: 017) |
 | `xcross app list [--json]` | <!-- studio: --> List the apps you installed on the iPhone (used by the GUI's app picker) |
 | `xcross plugin list` / `xcross plugin shim <plugin>` | <!-- studio: --> Show how each iOS plugin is built; draft a `Package.swift` override from a podspec-only plugin's podspec |
 | `xcross inspect <ipa\|app> [--json] [--normalize]` | <!-- studio: --> Read-only report of what is inside an `.ipa` or `.app`: Info.plist, entitlements per Mach-O, provisioning profile summary, icons, launch screen, frameworks and extensions. XCross Studio fork addition |

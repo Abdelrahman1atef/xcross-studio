@@ -313,6 +313,25 @@ class JobCenter extends ChangeNotifier {
     return job;
   }
 
+  /// Starts [command] as a job that is not listed in the console or counted
+  /// as running (feature 017's device watch runs for the whole session).
+  Job background(
+    String title,
+    List<String> command, {
+    void Function(XcrossEvent event)? onEvent,
+  }) {
+    final job = Job(
+      title: title,
+      command: command,
+      invocation: invocation(),
+      launcher: launcher,
+      onEvent: onEvent,
+      maxLines: 200,
+    );
+    unawaited(job.start());
+    return job;
+  }
+
   /// Runs [command] and returns its NDJSON events once it ends.
   Future<(Job, List<XcrossEvent>)> collect(
     String title,
