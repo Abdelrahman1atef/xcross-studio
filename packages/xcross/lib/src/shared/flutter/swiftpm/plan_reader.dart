@@ -47,6 +47,11 @@ final class SwiftPmPlanReader {
         throw const FormatException('Missing Swift command descriptions');
       }
       final includes = <String>{};
+      final buildDir = p.normalize(p.absolute(targetBuildDir));
+      // Host tools a build plugin needs (SwiftProtobuf for Firebase's
+      // protoc plugin, 2026-11-03) are planned in a sibling triple folder,
+      // `scratch/x86_64-unknown-windows-msvc/debug`: not the app's headers.
+      final scratch = p.dirname(p.dirname(buildDir));
       for (final command
           in (decoded['swiftCommands'] as Map<String, dynamic>).values) {
         if (command is! Map<String, dynamic> ||
@@ -63,9 +68,11 @@ final class SwiftPmPlanReader {
             throw const FormatException('Missing generated header path');
           }
           final header = p.normalize(arguments[index]);
-          if (!p.isAbsolute(header) ||
-              !p.isWithin(p.normalize(p.absolute(targetBuildDir)), header) ||
-              !header.endsWith('-Swift.h')) {
+          if (!p.isAbsolute(header) || !header.endsWith('-Swift.h')) {
+            throw const FormatException('Invalid generated header path');
+          }
+          if (!p.isWithin(buildDir, header)) {
+            if (p.isWithin(scratch, header)) continue;
             throw const FormatException('Invalid generated header path');
           }
           includes.add(p.dirname(header));

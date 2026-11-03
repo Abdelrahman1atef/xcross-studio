@@ -4609,6 +4609,53 @@ let package = Package(
       },
     );
 
+    // Firebase's protoc build plugin plans SwiftProtobuf for the host too,
+    // in `scratch/x86_64-unknown-windows-msvc/debug`; that header stopped
+    // every Firebase app with "Invalid generated header path" (2026-11-03).
+    test('skips host-tool headers planned beside the app build; others '
+        'outside the scratch folder are still refused', () {
+      final buildDir = p.join(tmp.path, 'arm64-apple-ios', 'debug');
+      Directory(buildDir).createSync(recursive: true);
+      String plan(String hostHeader) => jsonEncode({
+        'swiftCommands': {
+          'Impl': {
+            'otherArguments': [
+              '-emit-objc-header-path',
+              p.join(buildDir, 'Impl.build', 'include', 'Impl-Swift.h'),
+            ],
+          },
+          'C.SwiftProtobuf-tool': {
+            'otherArguments': ['-emit-objc-header-path', hostHeader],
+          },
+        },
+      });
+      final description = File(p.join(buildDir, 'description.json'))
+        ..writeAsStringSync(
+          plan(
+            p.join(
+              tmp.path,
+              'x86_64-unknown-windows-msvc',
+              'debug',
+              'SwiftProtobuf-tool.build',
+              'include',
+              'SwiftProtobuf-Swift.h',
+            ),
+          ),
+        );
+      expect(
+        _swiftPmRuntime.planReader.plannedSwiftInteropSearchPaths(buildDir),
+        ['-Xcc', '-I', '-Xcc', p.join(buildDir, 'Impl.build', 'include')],
+      );
+      description.writeAsStringSync(
+        plan(p.join(p.dirname(tmp.path), 'elsewhere', 'Other-Swift.h')),
+      );
+      expect(
+        () =>
+            _swiftPmRuntime.planReader.plannedSwiftInteropSearchPaths(buildDir),
+        throwsA(isA<FlutterBuildError>()),
+      );
+    });
+
     test('passes interop include dirs on POSIX hosts', () {
       final buildDir = p.join(tmp.path, 'arm64-apple-ios', 'debug');
       // A Swift target that has been built: interop header emitted.
