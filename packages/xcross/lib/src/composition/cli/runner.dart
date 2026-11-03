@@ -16,6 +16,7 @@ import 'package:dart_mobile_device/target/iphone/diagnostics/pymd_device_diagnos
 import 'package:darwin_sdk_kit/shared/errors/errors.dart';
 import 'package:meta/meta.dart';
 import 'package:studio_ext/shared/appstore/command_exit.dart'; // studio: 019
+import 'package:studio_ext/shared/icons/icons_command.dart'; // studio: 023
 import 'package:studio_ext/shared/inspect/inspect_command.dart'; // studio:
 import 'package:studio_ext/shared/plugins/plugin_command.dart'; // studio: 006
 import 'package:studio_ext/shared/release/release_check_command.dart'; // studio: 018
@@ -193,6 +194,12 @@ abstract final class XcrossCli {
             output: '${result.stdout}\n${result.stderr}',
           );
         },
+      ),
+      // studio: 023 — `xcross icons check|generate`.
+      IconsCommand(
+        fileSystem: runtime.host.fileSystem,
+        currentDirectory: () => runtime.host.paths.context.current,
+        write: runtime.log.output.write,
       ),
       // studio: 019–021 — App Store Connect: upload, TestFlight, App Store.
       ...publishCommands(runtime),

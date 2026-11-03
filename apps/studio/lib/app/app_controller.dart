@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../src/state/job.dart';
 
-/// The seven destinations of the sidebar (design system §4).
+/// The destinations of the sidebar (design system §4).
 enum Destination {
   overview,
   build,
@@ -10,6 +10,9 @@ enum Destination {
   signing,
   logs,
   plugins,
+
+  /// Feature 023: the app icon set, checked and previewed.
+  icons,
 
   /// Feature 022: the App Store release in order.
   release,

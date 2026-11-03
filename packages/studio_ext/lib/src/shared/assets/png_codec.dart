@@ -448,6 +448,36 @@ abstract final class PngEncoder {
     return writer.toBytes();
   }
 
+  // studio: 023 — app icons for the App Store carry no alpha channel
+  // (ITMS-90717); alpha is dropped, so flatten the image first.
+  /// Writes [image] as an 8-bit RGB PNG (colour type 2), without alpha.
+  static Uint8List encodeOpaque(RgbaImage image) {
+    final rowBytes = image.width * 3;
+    final raw = Uint8List(image.height * (rowBytes + 1));
+    for (var y = 0; y < image.height; y++) {
+      var o = y * (rowBytes + 1) + 1;
+      var i = y * image.width * 4;
+      for (var x = 0; x < image.width; x++, i += 4) {
+        raw[o++] = image.rgba[i];
+        raw[o++] = image.rgba[i + 1];
+        raw[o++] = image.rgba[i + 2];
+      }
+    }
+    final header = AssetByteWriter()
+      ..u32be(image.width)
+      ..u32be(image.height)
+      ..byte(8)
+      ..byte(2)
+      ..byte(0)
+      ..byte(0)
+      ..byte(0);
+    final writer = AssetByteWriter()..bytes(PngDecoder.signature);
+    _chunk(writer, 'IHDR', header.toBytes());
+    _chunk(writer, 'IDAT', const ZLibEncoder().encodeBytes(raw));
+    _chunk(writer, 'IEND', Uint8List(0));
+    return writer.toBytes();
+  }
+
   static void _chunk(AssetByteWriter writer, String type, Uint8List body) {
     final typeBytes = ascii.encode(type);
     writer

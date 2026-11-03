@@ -1,5 +1,20 @@
 ## Unreleased (XCross Studio)
 
+- **App icon** in XCross Studio and `xcross icons`: `icons check [--json]` lists every icon size iOS uses
+  (notification, Settings, Spotlight, home screen, iPad, App Store) with its file and status, reports what App Store
+  Connect rejects (an App Store icon with an alpha channel, missing or wrong-size files) and how the logo sits
+  against iOS's rounded corners (cut by the corners, off centre, too small, exported pre-rounded). `icons generate
+  <image.png> [--background auto|#RRGGBB] [--padding <0-30>]` writes the whole set from one image, centred on a
+  solid background without an alpha channel, after backing up the old set to `.xcross/icon-backups/`. The App icon
+  page shows the icon as iOS masks it on the home screen, in a notification, in Settings, Spotlight and the App
+  Store, with a safe-area overlay, and makes the set from a picked image with a live preview.
+  ([specs/023-icon-studio](specs/023-icon-studio/spec.md))
+
+- Builds no longer stop with "Bundle contains an unresolved link" when a plugin's package keeps a resource as a
+  symbolic link (SDWebImage's privacy manifest): SwiftPM resource bundles are embedded with the files the links
+  point at, found in the package checkout when the link does not resolve (`build.resource_link_unresolved` when it
+  is found nowhere). Reading the Darwin SDK's version no longer prints a parser stack trace.
+
 - XCross Studio has a **Release** destination that walks US-IOS-001 in order (readiness, version and build with the
   next App Store Connect build number, signing, quality gate, App Store archive and IPA, release check, upload and
   processing, TestFlight groups and notes, App Store submission with a dry run and a confirmation, the release record

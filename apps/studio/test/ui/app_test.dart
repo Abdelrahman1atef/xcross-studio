@@ -112,8 +112,8 @@ void main() {
     tester,
   ) async {
     await pumpStudio(tester);
-    // Feature 022 added Release and Archives.
-    expect(find.byType(XSidebarItem), findsNWidgets(9));
+    // Feature 022 added Release and Archives; 023 App icon.
+    expect(find.byType(XSidebarItem), findsNWidgets(10));
     expect(find.text('Readiness'), findsOneWidget);
     for (final (label, marker) in [
       ('Build & Run', 'Options'),
@@ -121,6 +121,7 @@ void main() {
       ('Signing', 'Sign in'),
       ('Logs & Debug', 'Device log'),
       ('Plugins', 'Plugins marked "Podspec only"'),
+      ('App icon', 'Open a Flutter project'),
       ('Release', 'Open a Flutter project'),
       ('Archives', 'Open a Flutter project'),
       ('Settings', 'xcross command-line tool'),
@@ -200,7 +201,7 @@ void main() {
   testWidgets('AC-013-3 narrow windows use an icon rail', (tester) async {
     await pumpStudio(tester, size: const Size(900, 900));
     final items = tester.widgetList<XSidebarItem>(find.byType(XSidebarItem));
-    expect(items, hasLength(9));
+    expect(items, hasLength(10));
     expect(items.every((item) => item.compact), isTrue);
     expect(
       find.descendant(

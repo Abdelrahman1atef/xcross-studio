@@ -468,7 +468,7 @@ UDIDs, certificate data, API keys or Info.plist values outside a short allow-lis
 <!-- studio: 008 -->
 ## XCross Studio desktop app (Windows and Linux)
 
-`apps/studio` is a Flutter desktop GUI over this CLI, built on the XCross Studio design system ([docs/XCross_Studio_Design_System.md](docs/XCross_Studio_Design_System.md)). The sidebar has **Overview** (readiness from `xcross flutter doctor`, next step, recent builds), **Build & Run** (mode, iPhone, command preview, reported steps, artifact and install), **Devices** (iPhone readiness, sign & install or sign only, installed apps, iOS 17+ tunnel), **Signing** (Apple ID or API key with risk notes, sign out), **Logs & Debug** (live iPhone log with presets and filters, app info, push checklist, crashes, every tool command), **Plugins** (SwiftPM / podspec-only / override badges, draft overrides) and **Settings** (which `xcross` to use, toolchain readout, IDE setup, theme, shortcuts). A first-run wizard walks through `xcross setup`, `xcross sdk install <Xcode.xip>`, sign-in, the device and the first build. It runs `xcross` as a subprocess and holds no build logic.
+`apps/studio` is a Flutter desktop GUI over this CLI, built on the XCross Studio design system ([docs/XCross_Studio_Design_System.md](docs/XCross_Studio_Design_System.md)). The sidebar has **Overview** (readiness from `xcross flutter doctor`, next step, recent builds), **Build & Run** (mode, iPhone, command preview, reported steps, artifact and install), **Devices** (iPhone readiness, sign & install or sign only, installed apps, iOS 17+ tunnel), **Signing** (Apple ID or API key with risk notes, sign out), **Logs & Debug** (live iPhone log with presets and filters, app info, push checklist, crashes, every tool command), **Plugins** (SwiftPM / podspec-only / override badges, draft overrides), **App icon** (every icon size checked and previewed as iOS masks it, a set made from one image), **Release**, **Archives** and **Settings** (which `xcross` to use, toolchain readout, IDE setup, theme, shortcuts). A first-run wizard walks through `xcross setup`, `xcross sdk install <Xcode.xip>`, sign-in, the device and the first build. It runs `xcross` as a subprocess and holds no build logic.
 
 ```sh
 cd apps/studio
@@ -669,6 +669,13 @@ xcross release ci               # GitHub Actions workflow for ubuntu-latest (doc
 ```
 
 XCross Studio's **Release** page runs these steps in order, and **Archives** lists the archives.
+
+<!-- studio: 023 -->
+**App icon.** `xcross icons check` lists every icon size (notification, Settings, Spotlight, home screen, iPad, App
+Store) and reports an App Store icon with an alpha channel, missing or wrong-size files, and a logo the rounded
+corners cut, off centre or too small. `xcross icons generate logo.png --padding 12 --background "#0A84FF"` writes
+the whole set from one image without an alpha channel (the old set goes to `.xcross/icon-backups/`). The desktop
+app's **App icon** page previews the icon as iOS masks it. See [specs/023-icon-studio](specs/023-icon-studio/spec.md).
 
 The build signs the app and its extensions with an Apple Distribution certificate and App Store profiles, and writes
 `build/xcross-ios/ipa/<name>.ipa` and `build/xcross-ios/archive/Runner.xcarchive` (with dSYMs when `dsymutil` is on

@@ -150,6 +150,26 @@ abstract final class XcrossCommands {
     if (autoBuildNumber) ...['--build-number', 'auto'],
   ];
 
+  /// `xcross icons check --json` (feature 023).
+  static List<String> iconsCheck() => const ['icons', 'check', '--json'];
+
+  /// `xcross icons generate` with the image, background (`auto` or
+  /// `#RRGGBB`) and margin in percent, as JSON (feature 023).
+  static List<String> iconsGenerate(
+    String image, {
+    String background = 'auto',
+    int padding = 0,
+  }) => [
+    'icons',
+    'generate',
+    image,
+    '--background',
+    background,
+    '--padding',
+    '$padding',
+    '--json',
+  ];
+
   /// `xcross release check --json`.
   static List<String> releaseCheck() => const ['release', 'check', '--json'];
 

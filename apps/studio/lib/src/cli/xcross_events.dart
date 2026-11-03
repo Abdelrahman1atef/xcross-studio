@@ -59,6 +59,9 @@ sealed class XcrossEvent {
       'publish' => PublishEvent.fromJson(json),
       'testflight_status' => TestFlightStatus.fromJson(json),
       'appstore_status' => AppStoreStatus.fromJson(json),
+      // Feature 023: the app icon set.
+      'icons_check' => IconsCheckReport.fromJson(json),
+      'icons_generate' => IconsGenerateResult.fromJson(json),
       'done' => BuildDone(
         json['exitCode'] is int ? json['exitCode']! as int : 1,
       ),
@@ -656,4 +659,176 @@ class AppStoreStatus extends XcrossEvent {
   final String? state;
   final String? build;
   final List<Map<String, Object?>> submissions;
+}
+
+double? _double(Object? value) => value is num ? value.toDouble() : null;
+
+/// One slot of `icons_check` (feature 023).
+class IconSlotStatus {
+  const IconSlotStatus({
+    required this.role,
+    required this.label,
+    required this.idiom,
+    required this.points,
+    required this.scale,
+    required this.pixels,
+    required this.status,
+    required this.required,
+    this.file,
+    this.actual,
+  });
+
+  factory IconSlotStatus.fromJson(Map<String, Object?> json) => IconSlotStatus(
+    role: _string(json['role']) ?? '',
+    label: _string(json['label']) ?? '',
+    idiom: _string(json['idiom']) ?? '',
+    points: _double(json['points']) ?? 0,
+    scale: json['scale'] is int ? json['scale']! as int : 1,
+    pixels: json['pixels'] is int ? json['pixels']! as int : 0,
+    status: _string(json['status']) ?? 'missing',
+    required: json['required'] == true,
+    file: _string(json['file']),
+    actual: _string(json['actual']),
+  );
+
+  /// `notification`, `settings`, `spotlight`, `home`, `ipadHome`,
+  /// `ipadProHome`, `appStore`.
+  final String role;
+  final String label;
+
+  /// `iphone`, `ipad`, `ios-marketing`, `universal`.
+  final String idiom;
+  final double points;
+  final int scale;
+  final int pixels;
+
+  /// `ok`, `missing`, `wrong_size`, `unreadable`.
+  final String status;
+  final bool required;
+  final String? file;
+  final String? actual;
+
+  String get pointsText =>
+      points == points.roundToDouble() ? '${points.round()}' : '$points';
+}
+
+/// `placement` of `icons_check`: fractions of the icon's side.
+class IconPlacementInfo {
+  const IconPlacementInfo({
+    required this.offset,
+    required this.outsideMask,
+    required this.prerounded,
+    required this.transparent,
+    required this.fullBleed,
+    this.background,
+    this.box,
+  });
+
+  factory IconPlacementInfo.fromJson(Map<String, Object?> json) {
+    List<double>? numbers(Object? value) =>
+        value is List ? [for (final item in value) _double(item) ?? 0] : null;
+    final offset = numbers(json['offset']) ?? const [0, 0];
+    final box = numbers(json['box']);
+    return IconPlacementInfo(
+      background: _string(json['background']),
+      box: box != null && box.length == 4
+          ? (left: box[0], top: box[1], width: box[2], height: box[3])
+          : null,
+      offset: (
+        dx: offset.isNotEmpty ? offset[0] : 0,
+        dy: offset.length > 1 ? offset[1] : 0,
+      ),
+      outsideMask: _double(json['outsideMask']) ?? 0,
+      prerounded: json['prerounded'] == true,
+      transparent: json['transparent'] == true,
+      fullBleed: json['fullBleed'] == true,
+    );
+  }
+
+  /// `#RRGGBB`, or null for full-bleed artwork.
+  final String? background;
+  final ({double left, double top, double width, double height})? box;
+  final ({double dx, double dy}) offset;
+  final double outsideMask;
+  final bool prerounded;
+  final bool transparent;
+  final bool fullBleed;
+}
+
+/// `icons_check`: `xcross icons check --json` (feature 023).
+class IconsCheckReport extends XcrossEvent {
+  const IconsCheckReport({
+    required this.slots,
+    required this.issues,
+    this.path,
+    this.style,
+    this.source,
+    this.placement,
+  });
+
+  factory IconsCheckReport.fromJson(Map<String, Object?> json) =>
+      IconsCheckReport(
+        path: _string(json['path']),
+        style: _string(json['style']),
+        source: _string(json['source']),
+        slots: [
+          for (final slot in _maps(json['slots']))
+            IconSlotStatus.fromJson(slot),
+        ],
+        placement: json['placement'] is Map
+            ? IconPlacementInfo.fromJson(_map(json['placement']))
+            : null,
+        issues: [
+          for (final issue in _maps(json['issues']))
+            ReleaseIssue.fromJson({...issue, 'path': issue['file']}),
+        ],
+      );
+
+  /// The `.appiconset` folder; null when the project has none.
+  final String? path;
+
+  /// `all-sizes` or `single-size`.
+  final String? style;
+
+  /// The file placement was measured on (the App Store icon).
+  final String? source;
+  final List<IconSlotStatus> slots;
+  final IconPlacementInfo? placement;
+  final List<ReleaseIssue> issues;
+
+  int get errors => issues.where((i) => i.severity == 'error').length;
+  int get warnings => issues.where((i) => i.severity == 'warning').length;
+}
+
+/// `icons_generate`: `xcross icons generate … --json` (feature 023).
+class IconsGenerateResult extends XcrossEvent {
+  const IconsGenerateResult({
+    required this.written,
+    this.path,
+    this.backup,
+    this.background,
+    this.check,
+  });
+
+  factory IconsGenerateResult.fromJson(Map<String, Object?> json) =>
+      IconsGenerateResult(
+        path: _string(json['path']),
+        written: [
+          if (json['written'] case final List<Object?> names)
+            for (final name in names) '$name',
+        ],
+        backup: _string(json['backup']),
+        background: _string(json['background']),
+        check: json['check'] is Map
+            ? IconsCheckReport.fromJson(_map(json['check']))
+            : null,
+      );
+
+  final String? path;
+  final List<String> written;
+
+  /// Where the old set was copied, if there was one.
+  final String? backup;
+  final String? background;
+  final IconsCheckReport? check;
 }

@@ -6,6 +6,7 @@ import '../features/build/build_run_page.dart';
 import '../features/common/job_views.dart';
 import '../features/common/readiness_views.dart';
 import '../features/devices/devices_page.dart';
+import '../features/icons/icons_page.dart';
 import '../features/logs/logs_debug_page.dart';
 import '../features/onboarding/setup_wizard.dart';
 import '../features/overview/overview_page.dart';
@@ -29,6 +30,7 @@ extension DestinationLook on Destination {
     Destination.signing => 'Signing',
     Destination.logs => 'Logs & Debug',
     Destination.plugins => 'Plugins',
+    Destination.icons => 'App icon',
     Destination.release => 'Release',
     Destination.archives => 'Archives',
     Destination.settings => 'Settings',
@@ -41,6 +43,7 @@ extension DestinationLook on Destination {
     Destination.signing => Icons.verified_user_outlined,
     Destination.logs => Icons.receipt_long_outlined,
     Destination.plugins => Icons.extension_outlined,
+    Destination.icons => Icons.apps,
     Destination.release => Icons.rocket_launch_outlined,
     Destination.archives => Icons.archive_outlined,
     Destination.settings => Icons.settings_outlined,
@@ -156,6 +159,7 @@ class _StudioShellState extends State<StudioShell> {
           LogicalKeyboardKey.digit6,
           LogicalKeyboardKey.digit7,
           LogicalKeyboardKey.digit8,
+          LogicalKeyboardKey.digit9,
         ].indexed)
           SingleActivator(key, control: true): () => _go(Destination.values[i]),
       },
@@ -194,6 +198,7 @@ class _StudioShellState extends State<StudioShell> {
                       const SigningPage(),
                       const LogsDebugPage(),
                       const PluginsPage(),
+                      const IconsPage(),
                       const ReleasePage(),
                       const ArchivesPage(),
                       const SettingsPage(),
