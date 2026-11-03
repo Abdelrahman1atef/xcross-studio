@@ -282,6 +282,20 @@ final class AuthCommand extends ParsedCommand<AuthArgs, void> {
       throw XcrossError('No file found at "$privateKeyPath".');
     }
 
+    // studio: 015 — Apple names the file after its key: AuthKey_<KEY ID>.p8.
+    // A Key ID copied from another row of the key list (seen 2026-11-03)
+    // can never be accepted with this file.
+    final fileKeyId = RegExp(r'^AuthKey_([A-Za-z0-9]+)\.p8$')
+        .firstMatch(hostServices.host.paths.context.basename(logicalKeyPath))
+        ?.group(1);
+    final mismatch =
+        fileKeyId != null && fileKeyId.toUpperCase() != keyId!.toUpperCase()
+        ? 'The file is AuthKey_$fileKeyId.p8 but the Key ID is $keyId: Apple '
+              'names the file after its key, so use --key-id $fileKeyId or '
+              'pick AuthKey_$keyId.p8. '
+        : '';
+    if (mismatch.isNotEmpty) log.logWarn(mismatch.trim());
+
     final configPath = AscCredentials.defaultConfigPath(
       hostServices: hostServices,
     );
@@ -292,7 +306,10 @@ final class AuthCommand extends ParsedCommand<AuthArgs, void> {
       hostServices: hostServices,
       keyType: _present(issuerId) ? AscKeyType.team : AscKeyType.individual,
     );
-    final (detected, canProvision) = await _detectKeyType(credentials);
+    final (detected, canProvision) = await _detectKeyType(
+      credentials,
+      mismatch: mismatch,
+    );
     credentials = detected;
     await credentials.save(path: configPath);
     final sessions = GrandSlamSessionStore(hostServices: hostServices);
@@ -340,10 +357,13 @@ final class AuthCommand extends ParsedCommand<AuthArgs, void> {
   /// a team key but accepted as an individual key is saved as individual
   /// (the Issuer ID is then unused). For an individual key, warns when Apple
   /// refuses the provisioning reads signing needs. Offline: unchanged.
-  /// The flag is false only when Apple refused those reads.
+  /// The flag is false only when Apple refused those reads. A key Apple
+  /// refuses both ways is not saved: saving it replaced a working sign-in
+  /// and cleared the Apple ID session (seen 2026-11-03).
   Future<(AscCredentials, bool)> _detectKeyType(
-    AscCredentials credentials,
-  ) async {
+    AscCredentials credentials, {
+    String mismatch = '',
+  }) async {
     var result = credentials;
     var canProvision = true;
     if (credentials.keyType == AscKeyType.team &&
@@ -355,13 +375,25 @@ final class AuthCommand extends ParsedCommand<AuthArgs, void> {
         privateKeyPath: credentials.privateKeyPath,
         keyType: AscKeyType.individual,
       );
-      if (await _accepted(individual) == true) {
+      final asIndividual = await _accepted(individual);
+      if (asIndividual == true) {
         log.logInfo(
           'Key type',
           'individual API key (Apple refused it as a team key; the Issuer ID '
               'is not needed)',
         );
         result = individual;
+      } else if (asIndividual == false) {
+        throw XcrossError(
+          'Apple refused this key (HTTP 401) as a team key and as an '
+          'individual key, so it was not saved and your current sign-in is '
+          'unchanged. ${mismatch}In App Store Connect, open Users and Access '
+          '→ Integrations → App Store Connect API and check that '
+          '${credentials.keyId} is listed and active and that the Issuer ID '
+          'shown there is the one you entered. A push (APNs), Sign in with '
+          'Apple or Maps key from developer.apple.com is also an '
+          'AuthKey_….p8 file but does not work here.',
+        );
       }
     }
     if (result.keyType == AscKeyType.individual) {

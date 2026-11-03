@@ -227,9 +227,10 @@ class _SigningFormState extends State<SigningForm> {
     return card(XStatus.failed, 'Apple did not accept these credentials', [
       if (rejectedKey) ...[
         const Text(
-          'Your details are saved, but Apple refused the API key (HTTP 401). '
-          'The key is probably not an App Store Connect API key, was revoked, '
-          'or belongs to another team.',
+          'Apple refused the API key (HTTP 401), so it was not saved and your '
+          'current sign-in is unchanged. The Key ID may not match the file '
+          '(AuthKey_<Key ID>.p8), or the key is not an App Store Connect API '
+          'key, was revoked, or belongs to another team.',
         ),
         const SizedBox(height: XSpace.s2),
         Text(
@@ -243,10 +244,7 @@ class _SigningFormState extends State<SigningForm> {
           'work.',
         ),
       ] else
-        const Text(
-          'Your details are saved, but the check with Apple failed. The '
-          'details below say why.',
-        ),
+        const Text('The check with Apple failed. The details below say why.'),
       const SizedBox(height: XSpace.s3),
       Wrap(
         spacing: XSpace.s2,

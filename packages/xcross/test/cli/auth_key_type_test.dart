@@ -10,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
+import 'package:xcross/src/shared/errors/errors.dart';
 
 import 'auth_fixture.dart';
 
@@ -121,6 +122,71 @@ void main() {
       'ApiKey_KEY123.p8',
     ], []);
     expect(saved.keyType, AscKeyType.individual);
+    expect((await sessions.load())?.username, 'fixture@example.invalid');
+  });
+
+  // Seen 2026-11-03: a Key ID copied from another row with an AuthKey file
+  // Apple refused both ways was saved as a team key and cleared the Apple ID
+  // session, so device signing stopped working too.
+  test('AC-015-9 a key Apple refuses both ways is not saved and keeps the '
+      'Apple ID session; the error names a file and Key ID mismatch', () async {
+    final sessions = GrandSlamSessionStore(hostServices: fixture.services);
+    await sessions.save(
+      GrandSlamSession(
+        username: 'fixture@example.invalid',
+        token: DeveloperServicesLoginToken(
+          adsid: 'fixture',
+          token: 'not-a-real-token',
+          expiry: DateTime.utc(2099),
+        ),
+        teamId: 'FIXTURE',
+      ),
+    );
+    final otherKey = fixture.path('AuthKey_OTHER99.p8');
+    fixture.fileSystem
+        .file(otherKey)
+        .writeAsStringSync(fixture.fileSystem.file(keyPath).readAsStringSync());
+    final seen = <String>[];
+    final runner = CommandRunner<void>('fixture', 'fixture')
+      ..addCommand(
+        authFixture(
+          services: fixture.services,
+          createHttpClient: () => MockClient((request) async {
+            seen.add(request.url.path);
+            return http.Response('{"errors":[{"status":"401"}]}', 401);
+          }),
+        ),
+      );
+    await expectLater(
+      runner.run([
+        'auth',
+        '--issuer-id',
+        'issuer-uuid',
+        '--key-id',
+        'KEY123',
+        '--private-key',
+        'AuthKey_OTHER99.p8',
+      ]),
+      throwsA(
+        isA<XcrossError>().having(
+          (e) => e.message,
+          'message',
+          allOf(
+            contains('was not saved'),
+            contains('AuthKey_OTHER99.p8 but the Key ID is KEY123'),
+          ),
+        ),
+      ),
+    );
+    expect(seen, ['/v1/apps', '/v1/apps']);
+    expect(
+      fixture.fileSystem
+          .file(
+            AscCredentials.defaultConfigPath(hostServices: fixture.services),
+          )
+          .existsSync(),
+      isFalse,
+    );
     expect((await sessions.load())?.username, 'fixture@example.invalid');
   });
 
