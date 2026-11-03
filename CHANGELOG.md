@@ -1,5 +1,15 @@
 ## Unreleased (XCross Studio)
 
+- `xcross publish [<ipa>] [--wait]` uploads an App Store IPA to App Store Connect without a Mac or Transporter,
+  through the Build Upload API: the upload is created, the file reserved, every part sent to Apple's presigned URLs
+  (three tries each, resumed by running the command again after an interruption) and committed with its MD5. A
+  build number App Store Connect already has stops it first (`publish.duplicate_build`). `--wait` follows the upload
+  and the build's processing to `VALID` (Apple's ITMS codes printed; exit 2 on `--timeout`); `--json` streams
+  progress and states. Each publish fills `build/xcross-ios/release.json` (app, team, version, build, SDK, git commit,
+  IPA SHA-256, upload and processing results). `--transporter` and `--validate` use Apple's Transporter when you
+  installed it. `xcross flutter build --build-number auto` picks one past App Store Connect's newest build
+  (`APP_STORE_APP_ID` or the bundle ID). ([specs/019-upload-processing](specs/019-upload-processing/spec.md))
+
 - App Store builds without a Mac:
   - `xcross flutter build --release --ipa --export-method app-store` signs the app and its extensions for App Store
     distribution with an App Store Connect team key (Admin or App Manager): an Apple Distribution certificate reused

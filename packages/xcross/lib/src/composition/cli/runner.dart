@@ -15,6 +15,7 @@ import 'package:dart_mobile_device/target/iphone/device/pymd/pymd_devices.dart';
 import 'package:dart_mobile_device/target/iphone/diagnostics/pymd_device_diagnostics.dart';
 import 'package:darwin_sdk_kit/shared/errors/errors.dart';
 import 'package:meta/meta.dart';
+import 'package:studio_ext/shared/appstore/command_exit.dart'; // studio: 019
 import 'package:studio_ext/shared/inspect/inspect_command.dart'; // studio:
 import 'package:studio_ext/shared/plugins/plugin_command.dart'; // studio: 006
 import 'package:studio_ext/shared/release/release_check_command.dart'; // studio: 018
@@ -360,6 +361,11 @@ abstract final class XcrossCli {
       reportFailure(runtime.log, '$e');
       status = 64;
       return 64;
+    } on CommandExit catch (e) {
+      // studio: 019 — a failure that sets its own exit code.
+      reportFailure(runtime.log, e.message);
+      status = e.exitCode;
+      return e.exitCode;
     } on Object catch (error, stackTrace) {
       reportFailure(runtime.log, formatFailure(error, stackTrace));
       return 1;

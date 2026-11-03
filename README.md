@@ -661,6 +661,7 @@ With an App Store Connect **team** key (Admin or App Manager role):
 ```sh
 xcross flutter build --release --ipa --export-method app-store
 xcross release check            # what App Store Connect would reject, before you upload
+xcross publish --wait           # upload (Build Upload API) and wait for Apple's processing
 ```
 
 The build signs the app and its extensions with an Apple Distribution certificate and App Store profiles, and writes
@@ -668,7 +669,10 @@ The build signs the app and its extensions with an Apple Distribution certificat
 PATH). The certificate is reused across runs; in CI pass its private key (PEM) in `XCROSS_CERTIFICATE_PRIVATE_KEY`.
 Answer the export compliance question once with `uses_non_exempt_encryption: false` (or `true`) under `xcross:` in
 `pubspec.yaml`. `xcross release check [--json]` lists signing, SDK, Info.plist, permission, privacy-manifest, icon and
-iPad issues with `release.*` codes. See [specs/018-app-store-build](specs/018-app-store-build/spec.md).
+iPad issues with `release.*` codes. `xcross publish` resumes an interrupted upload, refuses a build number App Store
+Connect already has, and writes `build/xcross-ios/release.json`; `--build-number auto` on the build picks the next
+number. See [specs/018-app-store-build](specs/018-app-store-build/spec.md) and
+[specs/019-upload-processing](specs/019-upload-processing/spec.md).
 
 ## IDE integration
 

@@ -1,9 +1,12 @@
 @internal
 library;
 
+import 'package:apple_developer_kit/shared/appstoreconnect/asc_api.dart'; // studio: 019
 import 'package:build_cli_annotations/build_cli_annotations.dart';
 import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:meta/meta.dart';
+import 'package:studio_ext/shared/appstore/build_numbers.dart'; // studio: 019
+import 'package:xcross/src/composition/cli/asc_commands.dart'; // studio: 019
 import 'package:xcross/src/composition/ios_target.dart';
 import 'package:xcross/src/shared/cli/internal/parsed_command.dart';
 import 'package:xcross/src/shared/cli/shared/ipa_packager.dart';
@@ -175,13 +178,20 @@ final class FlutterBuildCommand<T extends PlatformHostInterface>
     );
     final buildRuntime = features.flutterRuntime;
     final projectRoot = runtime.host.paths.context.current;
+    // studio: 019 — `--build-number auto`: one past App Store Connect's newest.
+    final buildNumber = options.buildNumber?.trim() == 'auto'
+        ? await _autoBuildNumber(
+            projectRoot,
+            buildRuntime.bundleIds.resolve(projectRoot),
+          )
+        : options.buildNumber;
     final buildOptions = await buildRuntime.options.resolve(
       target: options.target,
       dartDefine: options.dartDefine,
       dartDefineFromFile: options.dartDefineFromFile,
       pub: options.pub,
       buildName: options.buildName,
-      buildNumber: options.buildNumber,
+      buildNumber: buildNumber,
       flavor: options.flavor,
       buildMode: mode,
       treeShakeIcons: options.treeShakeIcons,
@@ -235,5 +245,55 @@ final class FlutterBuildCommand<T extends PlatformHostInterface>
     runtime.log.events
       ?..event('artifact', {'kind': 'ipa', 'path': result.ipaPath})
       ..event('artifact', {'kind': 'xcarchive', 'path': result.archivePath});
+  }
+
+  // studio: 019 — max(pubspec build, newest App Store Connect build + 1);
+  // the pubspec number when App Store Connect cannot be asked.
+  Future<String> _autoBuildNumber(String projectRoot, String bundleId) async {
+    final pubspec = runtime.host.fileSystem.file(
+      runtime.host.paths.context.join(projectRoot, 'pubspec.yaml'),
+    );
+    final local =
+        int.tryParse(
+          RegExp(r'^version:\s*[^+\s]+\+(\d+)', multiLine: true)
+                  .firstMatch(
+                    pubspec.existsSync() ? pubspec.readAsStringSync() : '',
+                  )
+                  ?.group(1) ??
+              '',
+        ) ??
+        1;
+    try {
+      final api = await openAscApi(runtime);
+      try {
+        final appId = runtime.runner.effectiveEnvironment['APP_STORE_APP_ID']
+            ?.trim();
+        final app = appId == null || appId.isEmpty
+            ? await AscApps.findByBundleId(api, bundleId)
+            : AscApi.data(await api.get('/v1/apps/$appId'));
+        if (app == null) {
+          runtime.log.logWarn(
+            'Build number: App Store Connect has no app $bundleId yet; using '
+            '$local from pubspec.yaml.',
+          );
+          return '$local';
+        }
+        final latest = await latestBuildNumber(api, app.id);
+        final next = nextBuildNumber(local: local, latest: latest);
+        runtime.log.logInfo(
+          'Build number',
+          '$next${latest == null ? '' : ' (App Store Connect has $latest)'}',
+        );
+        return '$next';
+      } finally {
+        api.close();
+      }
+    } on Object catch (error) {
+      runtime.log.logWarn(
+        'Build number: could not ask App Store Connect ($error); using '
+        '$local from pubspec.yaml.',
+      );
+      return '$local';
+    }
   }
 }

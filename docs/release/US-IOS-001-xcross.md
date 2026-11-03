@@ -160,12 +160,12 @@ version from `--build-name`/`--build-number`, then `pubspec.yaml`, then the xcco
 and writes the result into every bundle (app and extensions) (✅ 002).
 
 - `xcross flutter build --release --ipa --build-number auto` uses `max(pubspec build, latest App Store Connect
-  build + 1)` for the app (🛠 019).
+  build + 1)` for the app (✅ 019).
 - `xcross publish` refuses a build number App Store Connect already has for that version, before uploading
-  (TC-29, 🛠 019).
-- `build/xcross-ios/release.json` records version, build number and the git commit (🛠 019).
+  (TC-29, ✅ 019).
+- `build/xcross-ios/release.json` records version, build number and the git commit (✅ 019).
 
-**Status in xcross:** ✅ version mapping (002); 🛠 `--build-number auto`, duplicate check, release record (019).
+**Status in xcross:** ✅ version mapping (002); ✅ `--build-number auto`, duplicate check, release record (019).
 
 ## AC-03 — Project and target configuration (replaces "open Runner.xcworkspace")
 
@@ -282,13 +282,13 @@ signing (team, certificate, profile type) and the IPA next to it, and opens the 
 - `xcross release check [--json] [<ipa>]` runs every local check from AC-01…AC-09 and returns coded issues
   (`release.*`), errors before warnings (✅ 018).
 - When Apple's Transporter is installed by the user, `xcross release check --apple` also runs its `-m verify`
-  (🛠 019).
+  (✅ 019, `xcross publish --validate`).
 
 **Failure examples:** invalid or development profile, expired certificate, SDK below 26, deployment target too low,
 missing privacy manifest data, wrong bundle ID, entitlement mismatch, missing icons, invalid embedded frameworks,
 duplicate build number, missing usage descriptions.
 
-**Status in xcross:** ✅ release check (018); 🛠 Transporter verify (019).
+**Status in xcross:** ✅ release check (018); ✅ Transporter verify (019).
 
 ## AC-12 — Upload (replaces Organizer "Distribute App")
 
@@ -298,21 +298,21 @@ xcross publish build/xcross-ios/ipa/<name>.ipa [--app-id <Apple ID>] [--wait]
 
 - Uploads through the App Store Connect **Build Upload API** (`buildUploads`, `buildUploadFiles`, the reserved
   upload operations, then commit), with retry of failed parts and resume of an interrupted upload (TC-30)
-  (🛠 019).
+  (✅ 019).
 - Falls back to the user's installed Transporter (`--transporter`) when the API is unavailable to the sign-in.
 - Records the upload ID, version and build number in `build/xcross-ios/release.json`.
 - XCross Studio → **Release → Upload** shows progress.
 
-**Status in xcross:** 🛠 publish (019).
+**Status in xcross:** ✅ publish (019; store evidence pending a team key).
 
 ## AC-13 — Processing
 
 `xcross publish --wait` and `xcross testflight status [--build <n>]` follow the upload state and the build's
 `processingState` (`PROCESSING`, `VALID`, `FAILED`, `INVALID`) and its beta states (`MISSING_EXPORT_COMPLIANCE`,
 `READY_FOR_BETA_TESTING`, `IN_BETA_TESTING`, `WAITING_FOR_BETA_REVIEW`, `IN_BETA_REVIEW`, `BETA_REJECTED`,
-`EXPIRED`), with Apple's messages (🛠 019). The original states table maps one-to-one.
+`EXPIRED`), with Apple's messages (✅ 019 `publish --wait`; ✅ 020 `testflight status`). The original states table maps one-to-one.
 
-**Status in xcross:** 🛠 processing status (019).
+**Status in xcross:** ✅ processing status (019, 020).
 
 ## AC-14 — Internal TestFlight
 
@@ -378,7 +378,7 @@ The same steps run unattended in CI with `docs/ci/github-testflight.yml` on `ubu
 | TC-03 | App Store Connect record | `xcross appstore app` | record exists | 🛠 021 |
 | TC-04 | Registered App ID equals project | `xcross project bundle-id`; `release check` | exact match | ✅ 016, 018 |
 | TC-05 | Version in pubspec and app | `xcross inspect <ipa>` | right marketing version | ✅ |
-| TC-06 | Build number | `inspect`; `--build-number auto` | unique build | ✅ / 🛠 019 |
+| TC-06 | Build number | `inspect`; `--build-number auto` | unique build | ✅ 002, 019 |
 | TC-07 | Distribution signing | `release check` | App Store profile, distribution cert | ✅ 018 (store ⏳) |
 | TC-08 | Capabilities and entitlements | `inspect`; build log | entitlements match profile; refused ones named | ✅ 016 |
 | TC-09 | Usage descriptions | `release check` | all present | ✅ 018 |
@@ -391,9 +391,9 @@ The same steps run unattended in CI with `docs/ci/github-testflight.yml` on `ubu
 | TC-16 | App Store IPA | same | App Store IPA | ✅ 018 (store ⏳) |
 | TC-17 | Archive through the GUI | Archives page | archive listed | 🛠 022 |
 | TC-18 | Validation | `release check` | no errors | ✅ 018 |
-| TC-19 | Upload | `xcross publish` | accepted | 🛠 019 |
-| TC-20 | Uploaded build identity | `testflight status` | version, build, app match | 🛠 019 |
-| TC-21 | Processing | `publish --wait` | `VALID` | 🛠 019 |
+| TC-19 | Upload | `xcross publish` | accepted | ✅ 019 (store ⏳) |
+| TC-20 | Uploaded build identity | `testflight status` | version, build, app match | ✅ 019, 020 (store ⏳) |
+| TC-21 | Processing | `publish --wait` | `VALID` | ✅ 019 (store ⏳) |
 | TC-22 | Export compliance | `testflight status`; build key | declared | ✅ 018 key / 🛠 020 |
 | TC-23 | Internal group | `testflight add --group` | group has build | 🛠 020 |
 | TC-24 | Install from TestFlight | device | installs, launches | manual |
@@ -401,9 +401,9 @@ The same steps run unattended in CI with `docs/ci/github-testflight.yml` on `ubu
 | TC-26 | Critical journeys | device | no blockers | manual |
 | TC-27 | External beta review | `testflight submit` | review handled | 🛠 020 |
 | TC-28 | Submission metadata | `appstore metadata push`; `appstore status` | complete | 🛠 021 |
-| TC-29 | Duplicate build number | `publish` | refused before upload | 🛠 019 |
-| TC-30 | Interrupted upload | kill `publish`, run again | resumes or restarts safely | 🛠 019 |
-| TC-31 | Release evidence | `release.json`; Release → Export | recorded | 🛠 019/022 |
+| TC-29 | Duplicate build number | `publish` | refused before upload | ✅ 019 |
+| TC-30 | Interrupted upload | kill `publish`, run again | resumes or restarts safely | ✅ 019 |
+| TC-31 | Release evidence | `release.json`; Release → Export | recorded | ✅ 019 / 🛠 022 |
 | TC-32 | Symbols | archive `dSYMs/`, `build/symbols/ios` | retained | ✅ 018 |
 | TC-33 | Push, Firebase, Maps on device (xcross addition) | `app info`, `logs --preset push`; map screen | token, notification, map | ✅ 016 (device ⏳) |
 | TC-34 | Plug/unplug (xcross addition) | `xcross devices --watch`; top-bar badge | updates within ~2 s | ✅ 017 (device ⏳) |
@@ -512,7 +512,7 @@ external milestones.
 
 # 11. Release evidence
 
-`build/xcross-ios/release.json` (🛠 019; exported from the Release page, 🛠 022):
+`build/xcross-ios/release.json` (✅ 019; exported from the Release page, 🛠 022):
 
 | Field | Source |
 |---|---|
