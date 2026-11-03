@@ -37,7 +37,34 @@ class XcrossInvocation {
     return (exists ?? (_) => false)(candidate) ? candidate : null;
   }
 
-  /// True for the default `xcross`-on-PATH choice.
+  /// Whether [executable] is the CLI inside an XCross Studio bundle
+  /// (`<app folder>/xcross/bin/xcross[.exe]` next to `xcross_studio[.exe]`).
+  /// Older versions saved that absolute path as the user's choice, which
+  /// pinned every later copy of the app to one folder's CLI.
+  static bool isStudioBundled(
+    String executable, {
+    required bool windows,
+    required bool Function(String path) exists,
+  }) {
+    final context = windows ? p.windows : p.posix;
+    final bin = context.dirname(executable);
+    final cli = context.dirname(bin);
+    if (context.basename(executable).toLowerCase() !=
+            (windows ? 'xcross.exe' : 'xcross') ||
+        context.basename(bin) != 'bin' ||
+        context.basename(cli) != 'xcross') {
+      return false;
+    }
+    return exists(
+      context.join(
+        context.dirname(cli),
+        windows ? 'xcross_studio.exe' : 'xcross_studio',
+      ),
+    );
+  }
+
+  /// True for the default choice: the CLI bundled with the app, else
+  /// `xcross` on PATH.
   bool get isDefault => executable == 'xcross' && prefixArguments.isEmpty;
 
   final String executable;

@@ -16,7 +16,20 @@ class Settings extends ChangeNotifier {
   /// `null` keeps settings in memory only (tests).
   final File? file;
 
+  /// The user's choice, saved: the default means "the CLI bundled with the
+  /// app, else `xcross` on PATH". Never a path the app found by itself.
   XcrossInvocation invocation = const XcrossInvocation.binary();
+
+  /// The CLI shipped next to this copy of the app, found at start-up; not
+  /// saved, so a moved or reinstalled app uses its own.
+  String? bundledXcross;
+
+  /// What jobs run: [invocation], with the default resolved to
+  /// [bundledXcross] when this copy has one.
+  XcrossInvocation get effectiveInvocation =>
+      invocation.isDefault && bundledXcross != null
+      ? XcrossInvocation.binary(bundledXcross!)
+      : invocation;
 
   /// The source checkout used by "Run from source", when chosen.
   String? sourceRepository;

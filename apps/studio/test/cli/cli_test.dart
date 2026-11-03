@@ -4,6 +4,7 @@ import 'package:xcross_studio/src/cli/output_line.dart';
 import 'package:xcross_studio/src/cli/xcross_commands.dart';
 import 'package:xcross_studio/src/cli/xcross_events.dart';
 import 'package:xcross_studio/src/host/host_platform.dart';
+import 'package:xcross_studio/src/state/settings.dart';
 import 'package:xcross_studio/features/plugins/plugins_page.dart';
 
 void main() {
@@ -191,6 +192,56 @@ void main() {
       );
       expect(const XcrossInvocation.binary().isDefault, isTrue);
       expect(const XcrossInvocation.binary('/x/xcross').isDefault, isFalse);
+    });
+
+    test('FR-001 the bundled CLI is resolved per copy of the app, never '
+        'saved as a path', () {
+      final settings = Settings();
+      expect(settings.effectiveInvocation.executable, 'xcross');
+      settings.bundledXcross = r'D:\new\xcross\bin\xcross.exe';
+      expect(
+        settings.effectiveInvocation.executable,
+        r'D:\new\xcross\bin\xcross.exe',
+      );
+      expect(settings.toJson()['invocation'], {
+        'executable': 'xcross',
+        'prefixArguments': <String>[],
+      });
+      // A CLI the user picked wins over the bundled one.
+      settings.invocation = const XcrossInvocation.binary(
+        r'C:\tools\xcross.exe',
+      );
+      expect(settings.effectiveInvocation.executable, r'C:\tools\xcross.exe');
+    });
+
+    test('FR-001 a bundle path saved by an older version is recognised', () {
+      bool studio(String path) =>
+          path == r'D:\old\xcross-studio-windows-x64\xcross_studio.exe';
+      expect(
+        XcrossInvocation.isStudioBundled(
+          r'D:\old\xcross-studio-windows-x64\xcross\bin\xcross.exe',
+          windows: true,
+          exists: studio,
+        ),
+        isTrue,
+      );
+      // An xcross the user installed elsewhere is their choice.
+      expect(
+        XcrossInvocation.isStudioBundled(
+          r'C:\Users\me\AppData\Local\xcross\bin\xcross.exe',
+          windows: true,
+          exists: studio,
+        ),
+        isFalse,
+      );
+      expect(
+        XcrossInvocation.isStudioBundled(
+          '/opt/xcross-studio/xcross/bin/xcross',
+          windows: false,
+          exists: (path) => path == '/opt/xcross-studio/xcross_studio',
+        ),
+        isTrue,
+      );
     });
 
     test('invocations: binary and from source', () {

@@ -97,7 +97,9 @@ class _SettingsPageState extends State<SettingsPage> {
                   else
                     XFilePickerField(
                       label: 'xcross executable',
-                      hint: 'Leave as "xcross" to use the one on PATH.',
+                      hint:
+                          'Leave as "xcross" to use the one bundled with the '
+                          'app, else the one on PATH.',
                       directory: false,
                       extensions: Platform.isWindows
                           ? const ['exe', 'bat']
@@ -111,7 +113,8 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   const SizedBox(height: XSpace.s2),
                   Text(
-                    'Using: ${settings.invocation}',
+                    'Using: ${settings.effectiveInvocation}'
+                    '${settings.invocation.isDefault && settings.bundledXcross != null ? '  (bundled with the app)' : ''}',
                     style: XType.mono.copyWith(
                       color: XTheme.of(context).colors.textSecondary,
                     ),

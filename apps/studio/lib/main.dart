@@ -16,20 +16,26 @@ Future<void> main() async {
   final settings = await Settings.load(
     host.configDirectory(Platform.environment),
   );
-  // A release bundle ships xcross next to the GUI; use it unless the user
-  // chose another one.
-  final bundled = XcrossInvocation.bundledNextTo(
+  // A release bundle ships xcross next to the GUI; the default choice uses
+  // it, resolved for each job and never saved as a path.
+  bool exists(String path) => File(path).existsSync();
+  settings.bundledXcross = XcrossInvocation.bundledNextTo(
     Platform.resolvedExecutable,
     windows: Platform.isWindows,
-    exists: (path) => File(path).existsSync(),
+    exists: exists,
   );
-  if (bundled != null && settings.invocation.isDefault) {
-    settings.invocation = XcrossInvocation.binary(bundled);
+  // Older versions saved the bundled CLI's absolute path as the choice.
+  if (XcrossInvocation.isStudioBundled(
+    settings.invocation.executable,
+    windows: Platform.isWindows,
+    exists: exists,
+  )) {
+    settings.invocation = const XcrossInvocation.binary();
   }
   final launcher = IoProcessLauncher(host);
   final jobs = JobCenter(
     launcher: launcher,
-    invocation: () => settings.invocation,
+    invocation: () => settings.effectiveInvocation,
   );
   runApp(
     StudioApp(
