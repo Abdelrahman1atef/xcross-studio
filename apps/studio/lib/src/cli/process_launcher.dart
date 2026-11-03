@@ -80,6 +80,7 @@ class IoProcessLauncher implements ProcessLauncher {
 
   @override
   Future<void> openFolder(String path) async {
+    if (await host.openOutsideApp(path)) return;
     final command = host.openFolderCommand(path);
     await Process.start(
       command.first,

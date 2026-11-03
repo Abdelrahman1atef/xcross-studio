@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 
 /// The few things that differ between a Windows and a Linux host. Everything
@@ -22,6 +23,11 @@ abstract class HostPlatform {
 
   /// The command that opens [path] in the file manager.
   List<String> openFolderCommand(String path);
+
+  /// Opens [target] (folder or URL) through the app's own runner so that what
+  /// it opens is not ended with the app; `false` when the runner cannot, and
+  /// [openFolderCommand] is used instead.
+  Future<bool> openOutsideApp(String target);
 
   /// [executable] + [arguments], wrapped so the child leads its own process
   /// group when the OS needs that for [killTreeCommand] to reach the whole
@@ -61,6 +67,21 @@ class WindowsHost extends HostPlatform {
 
   @override
   List<String> openFolderCommand(String path) => ['explorer', path];
+
+  /// The runner (windows/runner/child_processes.h) ends every child with the
+  /// app, so Explorer, and a browser it starts, run outside that job.
+  static const shellChannel = MethodChannel('xcross_studio/shell');
+
+  @override
+  Future<bool> openOutsideApp(String target) async {
+    try {
+      return await shellChannel.invokeMethod<bool>('open', target) ?? false;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException {
+      return false;
+    }
+  }
 
   @override
   (String, List<String>) groupLeader(
@@ -182,6 +203,10 @@ class LinuxHost extends HostPlatform {
 
   @override
   List<String> openFolderCommand(String path) => ['xdg-open', path];
+
+  /// `xdg-open` already hands off to the desktop.
+  @override
+  Future<bool> openOutsideApp(String target) async => false;
 
   @override
   (String, List<String>) groupLeader(

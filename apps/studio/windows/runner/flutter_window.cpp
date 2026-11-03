@@ -1,7 +1,11 @@
 #include "flutter_window.h"
 
-#include <optional>
+#include <flutter/standard_method_codec.h>
 
+#include <optional>
+#include <string>
+
+#include "child_processes.h"
 #include "flutter/generated_plugin_registrant.h"
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
@@ -25,6 +29,25 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+  shell_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(), "xcross_studio/shell",
+          &flutter::StandardMethodCodec::GetInstance());
+  shell_channel_->SetMethodCallHandler(
+      [](const flutter::MethodCall<flutter::EncodableValue>& call,
+         std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+             result) {
+        if (call.method_name() != "open") {
+          result->NotImplemented();
+          return;
+        }
+        const auto* target = std::get_if<std::string>(call.arguments());
+        if (target == nullptr) {
+          result->Error("bad_arguments", "open takes a path or URL.");
+          return;
+        }
+        result->Success(flutter::EncodableValue(OpenOutsideApp(*target)));
+      });
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
@@ -40,6 +63,7 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  shell_channel_ = nullptr;
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }

@@ -3,6 +3,7 @@
 // decide which Flutter and Swift xcross finds.
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xcross_studio/src/host/host_platform.dart';
 
@@ -72,6 +73,38 @@ void main() {
 
   test('Linux children inherit the session environment', () async {
     expect(await const LinuxHost().currentEnvironment(const {}), isEmpty);
+  });
+
+  // Every child ends with the app on Windows (the runner's job), so folders
+  // and links open through the runner, outside that job.
+  group('opening outside the app', () {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    tearDown(
+      () => messenger.setMockMethodCallHandler(WindowsHost.shellChannel, null),
+    );
+
+    test('Windows asks the runner to open the target', () async {
+      final calls = <MethodCall>[];
+      messenger.setMockMethodCallHandler(WindowsHost.shellChannel, (
+        call,
+      ) async {
+        calls.add(call);
+        return true;
+      });
+      expect(await const WindowsHost().openOutsideApp(r'C:\build\ipa'), isTrue);
+      expect(calls.single.method, 'open');
+      expect(calls.single.arguments, r'C:\build\ipa');
+    });
+
+    test('without the runner channel Explorer is started directly', () async {
+      expect(
+        await const WindowsHost().openOutsideApp('https://example.com'),
+        isFalse,
+      );
+      expect(await const LinuxHost().openOutsideApp('/tmp'), isFalse);
+    });
   });
 
   test(

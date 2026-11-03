@@ -1,5 +1,11 @@
 ## Unreleased (XCross Studio)
 
+- XCross Studio on Windows: commands the app started (the device watch, log streams, builds) no longer keep running
+  after it closes, crashes or is ended in Task Manager. They locked the app's CLI files. The app runs in a Windows
+  job that ends its processes with it; folders and links open outside that job, so the window or browser stays open.
+  Every command also gets the environment saved in Windows (PATH, `SDKROOT`) when it starts, not the one the app
+  started with, and the bundled CLI is found next to the app on each run instead of from a saved path.
+
 - Change the version quickly: `xcross project version [<x.y.z>[+<n>]] [--build <n>] [--bump
   major|minor|patch|build]` edits the `version:` line of `pubspec.yaml` (quotes, comments and other lines kept; a new
   version also raises the build number). Step 2 of the Release page has Version and Build fields with Save and
