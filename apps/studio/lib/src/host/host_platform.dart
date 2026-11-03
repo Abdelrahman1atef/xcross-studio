@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
@@ -26,6 +27,12 @@ abstract class HostPlatform {
   /// group when the OS needs that for [killTreeCommand] to reach the whole
   /// tree.
   (String, List<String>) groupLeader(String executable, List<String> arguments);
+
+  /// Variables to give every child on top of [inherited]: the OS's saved
+  /// environment as it is now. A running app keeps the environment it was
+  /// started with, so without this a stale parent, or a PATH edited after the
+  /// app started, decides which Flutter and Swift `xcross` finds.
+  Future<Map<String, String>> currentEnvironment(Map<String, String> inherited);
 }
 
 /// Windows: `taskkill /T` follows the parent chain; Explorer opens folders.
@@ -60,6 +67,97 @@ class WindowsHost extends HostPlatform {
     String executable,
     List<String> arguments,
   ) => (executable, arguments);
+
+  static const _machineKey =
+      r'HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment';
+  static const _userKey = r'HKCU\Environment';
+
+  /// The variables saved in System settings (machine, then user), read from
+  /// the registry for each child.
+  @override
+  Future<Map<String, String>> currentEnvironment(
+    Map<String, String> inherited,
+  ) async {
+    Future<String> query(String key) async {
+      try {
+        final result = await Process.run('reg', ['query', key]);
+        return result.exitCode == 0 ? '${result.stdout}' : '';
+      } on ProcessException {
+        return '';
+      }
+    }
+
+    return mergeSaved(
+      machine: await query(_machineKey),
+      user: await query(_userKey),
+      inherited: inherited,
+    );
+  }
+
+  /// Windows composes a new process's environment from the machine variables,
+  /// then the user variables (user wins), with `Path` as machine `Path`
+  /// followed by user `Path`; `%NAME%` references are expanded. [machine]
+  /// and [user] are `reg query` outputs. Keys keep [inherited]'s spelling
+  /// (`Path`), since names are case-insensitive.
+  static Map<String, String> mergeSaved({
+    required String machine,
+    required String user,
+    required Map<String, String> inherited,
+  }) {
+    final machineValues = _parseRegQuery(machine);
+    final userValues = _parseRegQuery(user);
+    if (machineValues.isEmpty && userValues.isEmpty) return const {};
+    String upper(String name) => name.toUpperCase();
+    final saved = <String, String>{
+      for (final MapEntry(:key, :value) in machineValues.entries)
+        upper(key): value,
+      for (final MapEntry(:key, :value) in userValues.entries)
+        upper(key): value,
+    };
+    final machinePath = _valueOf(machineValues, 'PATH');
+    final userPath = _valueOf(userValues, 'PATH');
+    if (machinePath != null || userPath != null) {
+      saved['PATH'] = [
+        ?machinePath,
+        ?userPath,
+      ].where((part) => part.isNotEmpty).join(';');
+    }
+    final lookup = <String, String>{
+      for (final MapEntry(:key, :value) in inherited.entries) upper(key): value,
+      ...saved,
+    };
+    String expand(String value) => value.replaceAllMapped(
+      RegExp('%([^%]+)%'),
+      (match) => lookup[upper(match.group(1)!)] ?? match.group(0)!,
+    );
+    final spelling = {for (final key in inherited.keys) upper(key): key};
+    final namesOf = {
+      for (final key in [...machineValues.keys, ...userValues.keys])
+        upper(key): key,
+    };
+    return {
+      for (final MapEntry(:key, :value) in saved.entries)
+        spelling[key] ?? namesOf[key] ?? key: expand(value),
+    };
+  }
+
+  static String? _valueOf(Map<String, String> values, String name) {
+    for (final MapEntry(:key, :value) in values.entries) {
+      if (key.toUpperCase() == name) return value;
+    }
+    return null;
+  }
+
+  /// `    Name    REG_SZ    value` lines of a `reg query` output.
+  static Map<String, String> _parseRegQuery(String output) {
+    final values = <String, String>{};
+    for (final line in const LineSplitter().convert(output)) {
+      final match = RegExp(r'^\s{4}(.+?)\s{4}REG_(?:EXPAND_)?SZ(?:\s{4}(.*))?$')
+          .firstMatch(line);
+      if (match != null) values[match.group(1)!] = match.group(2) ?? '';
+    }
+    return values;
+  }
 }
 
 /// Linux: the child is started through `setsid` (same pid, new process
@@ -90,4 +188,10 @@ class LinuxHost extends HostPlatform {
     String executable,
     List<String> arguments,
   ) => ('setsid', [executable, ...arguments]);
+
+  /// The login session's environment is the saved one: nothing to add.
+  @override
+  Future<Map<String, String>> currentEnvironment(
+    Map<String, String> inherited,
+  ) async => const {};
 }

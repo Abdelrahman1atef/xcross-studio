@@ -48,11 +48,14 @@ class IoProcessLauncher implements ProcessLauncher {
     Map<String, String> environment = const {},
   }) async {
     final (command, args) = host.groupLeader(executable, arguments);
+    // Every child gets the variables saved in the OS now (PATH, SDKROOT, …),
+    // not the snapshot this app was started with.
+    final saved = await host.currentEnvironment(Platform.environment);
     final process = await Process.start(
       command,
       args,
       workingDirectory: workingDirectory,
-      environment: environment,
+      environment: {...saved, ...environment},
       // Windows: lets `xcross` resolve `xcross.exe`/`.bat` on PATH and run
       // `dart`/`flutter` (.bat) shims.
       runInShell: Platform.isWindows,
