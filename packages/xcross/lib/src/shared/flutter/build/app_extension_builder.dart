@@ -11,6 +11,7 @@ import 'package:xcross/src/shared/flutter/errors.dart';
 import 'package:xcross/src/shared/flutter/extensions/app_extension_plist.dart';
 import 'package:xcross/src/shared/flutter/extensions/app_extension_resources.dart';
 import 'package:xcross/src/shared/flutter/flutter_build_runtime.dart';
+import 'package:xcross/src/shared/sdk/xcode_build_info.dart'; // studio: 018
 
 /// A built `.appex` bundle staged outside the host app.
 @internal
@@ -360,6 +361,18 @@ final class AppExtensionBuilder<T extends PlatformHostInterface> {
     // Record the target's App Groups so the sign/install stage can provision
     // them without re-reading the Xcode project.
     xml = runtime.policy.transformPlist(xml, sdkName: sdkName);
+    // studio: 018 — the same toolchain identity as the app.
+    if (runtime.sdkRepository.current() case final sdk?) {
+      xml = XcodeBuildInfo.read(
+        fileSystem: runtime.host.fileSystem,
+        paths: runtime.host.paths.context,
+        iosSdk: runtime.sdkRepository.iosSdk(
+          sdk,
+          target: runtime.target.buildPlatform,
+        ),
+        bundleRoot: sdk.bundle,
+      ).applyTo(xml);
+    }
     xml = AppExtensionPlist.setAppGroups(xml, extension.appGroups);
 
     await runtime.host.fileSystem

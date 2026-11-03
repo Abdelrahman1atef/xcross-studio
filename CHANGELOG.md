@@ -1,5 +1,25 @@
 ## Unreleased (XCross Studio)
 
+- App Store builds without a Mac:
+  - `xcross flutter build --release --ipa --export-method app-store` signs the app and its extensions for App Store
+    distribution with an App Store Connect team key (Admin or App Manager): an Apple Distribution certificate reused
+    across runs (`XCROSS_CERTIFICATE_PRIVATE_KEY` in CI, never revoked), a fresh `IOS_APP_STORE` profile per bundle
+    (only xcross's own are replaced), production entitlements. It writes `build/xcross-ios/ipa/<name>.ipa` and
+    `build/xcross-ios/archive/Runner.xcarchive` with dSYMs (`release.dsym_unavailable` without `dsymutil`).
+  - `xcross release check [<ipa|app>] [--json]` reports the app's configuration and what App Store Connect would
+    reject, with `release.*` codes: signing and profile type, SDK below 26, DT keys, version format, bundle ID,
+    usage descriptions per plugin, ATS, privacy manifests and required-reason APIs, export compliance, secrets in the
+    bundle, the 1024 px icon (alpha channel), launch screen and iPad multitasking.
+  - Every build writes Apple's toolchain keys (`DTXcode`, `DTXcodeBuild`, `DTSDKBuild`, `DTPlatformBuild`,
+    `DTCompiler`) from the installed SDK; `xcross sdk install` now records the Xcode version the SDK came from.
+    `uses_non_exempt_encryption: true|false` under `xcross:` writes `ITSAppUsesNonExemptEncryption`. The doctor
+    fails an iOS SDK older than 26.
+  - Fixed: SwiftPM resource bundles (`<Package>_<Target>.bundle`) were never copied into the app, so plugins' and
+    Firebase's privacy manifests and Google Maps' resources were missing. They are now embedded at the app root,
+    where `Bundle.module` and App Store Connect look.
+
+  ([specs/018-app-store-build](specs/018-app-store-build/spec.md))
+
 - `xcross devices --watch [--json]` keeps running and reports the connected iPhones again whenever one is plugged in
   or out (a `devices` snapshot per change), through a pure-Dart usbmuxd `Listen` client (no pymobiledevice3 process
   per event). A stopped device service is reported once and retried every 2 s. XCross Studio runs it in the

@@ -17,6 +17,7 @@ import 'package:xcross/src/shared/errors/errors.dart';
 import 'package:xcross/src/shared/sdk/sdk_archive_links.dart';
 import 'package:xcross/src/shared/sdk/sdk_archive_paths.dart';
 import 'package:xcross/src/shared/sdk/sdk_install_constants.dart';
+import 'package:xcross/src/shared/sdk/xcode_build_info.dart'; // studio: 018
 
 @internal
 final class SdkArchiveExtraction<T extends PlatformHostInterface> {
@@ -113,6 +114,11 @@ final class SdkArchiveExtraction<T extends PlatformHostInterface> {
     }
   }
 
+  // studio: 018
+  static final _xcodeVersionPlist = RegExp(
+    r'(^|/)Xcode[^/]*\.app/Contents/version\.plist$',
+  );
+
   Future<int> writeSdkEntries(
     Stream<CpioEntry> entries,
     String destDir, {
@@ -136,6 +142,13 @@ final class SdkArchiveExtraction<T extends PlatformHostInterface> {
         entry,
         isRegular: fileType == sdkRegularFileType || fileType == 0,
       );
+      // studio: 018 — keep the Xcode version the SDK came from (DTXcode,
+      // DTXcodeBuild in every built app); the rest of Xcode.app is skipped.
+      if (_xcodeVersionPlist.hasMatch(entry.name) && data.isNotEmpty) {
+        await host.fileSystem
+            .file(ioPath(_paths.join(root, XcodeBuildInfo.recordFileName)))
+            .writeAsBytes(data);
+      }
       final destPath = pathPolicy.destinationPath(root, entry);
       if (destPath == null) continue;
       if (fileType == sdkDirectoryFileType ||

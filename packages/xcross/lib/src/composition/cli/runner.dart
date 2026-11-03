@@ -17,6 +17,7 @@ import 'package:darwin_sdk_kit/shared/errors/errors.dart';
 import 'package:meta/meta.dart';
 import 'package:studio_ext/shared/inspect/inspect_command.dart'; // studio:
 import 'package:studio_ext/shared/plugins/plugin_command.dart'; // studio: 006
+import 'package:studio_ext/shared/release/release_check_command.dart'; // studio: 018
 import 'package:studio_ext/target/iphone/device/app_command.dart'; // studio: 010
 import 'package:studio_ext/target/iphone/device/crashes_command.dart'; // studio: 010
 import 'package:studio_ext/target/iphone/device/device_log_backend.dart'; // studio: 010
@@ -161,6 +162,13 @@ abstract final class XcrossCli {
       // studio: XCross Studio feature 001 (specs/001-inspect).
       InspectCommand(
         fileSystem: runtime.host.fileSystem,
+        write: runtime.log.output.write,
+      ),
+      // studio: 018 — `xcross release check`.
+      ReleaseCommand(
+        fileSystem: runtime.host.fileSystem,
+        paths: runtime.host.paths.context,
+        currentDirectory: () => runtime.host.paths.context.current,
         write: runtime.log.output.write,
       ),
       // studio: 016 — `xcross project bundle-id`.
@@ -433,6 +441,10 @@ abstract final class XcrossCli {
           // studio: 016 — `project bundle-id --json` prints one object.
           command?.name == 'project' &&
               command?.command?.name == 'bundle-id' &&
+              command?.command?.flag('json') == true ||
+          // studio: 018 — `release check --json` prints one object.
+          command?.name == 'release' &&
+              command?.command?.name == 'check' &&
               command?.command?.flag('json') == true;
     } on FormatException {
       return false;

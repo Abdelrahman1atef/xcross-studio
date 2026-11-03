@@ -66,6 +66,23 @@ abstract final class InfoPlist {
     return xml;
   }
 
+  // studio: 018 — export compliance from the project settings.
+  /// [plistXml] with the boolean [key] set to [value], unless the app's own
+  /// Info.plist already sets it.
+  static String withBoolIfMissing(
+    String plistXml,
+    String key, {
+    required bool value,
+  }) {
+    final document = XmlDocument.parse(plistXml);
+    final root = document.rootElement.getElement('dict');
+    if (root == null || PlistXml.valueFor(root, key) != null) return plistXml;
+    root.children
+      ..add(PlistXml.element('key', key))
+      ..add(PlistXml.element(value ? 'true' : 'false'));
+    return document.toXmlString();
+  }
+
   /// Add the Debug-only local-network declarations Flutter's Xcode backend
   /// writes into the produced app bundle for the Dart VM Service.
   ///

@@ -196,6 +196,12 @@ abstract final class XcrossCodes {
     'Pass a string literal, or an Info.plist key read with '
         'Bundle.main.object(forInfoDictionaryKey:), to GMSServices.provideAPIKey.',
   );
+  // studio: 018
+  static const releaseDsymUnavailable = DiagnosticCode(
+    'release.dsym_unavailable',
+    'Put dsymutil on PATH (it ships with the Swift toolchain and with the full '
+        'LLVM release), then build again.',
+  );
   static const signCapabilityNotEnabled = DiagnosticCode(
     'sign.capability_not_enabled',
     'Sign in with `xcross auth --apple-id` (or an Admin team key), or switch '
@@ -237,6 +243,7 @@ abstract final class XcrossCodes {
     buildPushEntitlementInferred, // studio: 016
     buildMapsKeyUnresolved,
     signCapabilityNotEnabled,
+    releaseDsymUnavailable, // studio: 018
   ];
 }
 

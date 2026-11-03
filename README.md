@@ -653,6 +653,23 @@ CI, IDE debug sessions and XCross Studio cannot be asked, so they use the saved 
 
 Push needs `aps-environment`: when the app uses `firebase_messaging` or the `remote-notification` background mode and declares no entitlements, xcross adds it (`build.push_entitlement_inferred`). `xcross flutter doctor` shows a "Push notifications" section (entitlement, App ID, and the bundle id in `GoogleService-Info.plist` / `firebase_options.dart`).
 
+<!-- studio: 018 -->
+## App Store builds
+
+With an App Store Connect **team** key (Admin or App Manager role):
+
+```sh
+xcross flutter build --release --ipa --export-method app-store
+xcross release check            # what App Store Connect would reject, before you upload
+```
+
+The build signs the app and its extensions with an Apple Distribution certificate and App Store profiles, and writes
+`build/xcross-ios/ipa/<name>.ipa` and `build/xcross-ios/archive/Runner.xcarchive` (with dSYMs when `dsymutil` is on
+PATH). The certificate is reused across runs; in CI pass its private key (PEM) in `XCROSS_CERTIFICATE_PRIVATE_KEY`.
+Answer the export compliance question once with `uses_non_exempt_encryption: false` (or `true`) under `xcross:` in
+`pubspec.yaml`. `xcross release check [--json]` lists signing, SDK, Info.plist, permission, privacy-manifest, icon and
+iPad issues with `release.*` codes. See [specs/018-app-store-build](specs/018-app-store-build/spec.md).
+
 ## IDE integration
 
 ### VS Code

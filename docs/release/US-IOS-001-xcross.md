@@ -59,7 +59,7 @@ group. Once metadata and compliance are complete, the build can be attached to a
   their Apple ID): `xcross sdk install <Xcode.xip>`. XCross Studio never downloads or redistributes Apple
   material.
 - As of November 2026 App Store Connect requires **Xcode 26 / iOS SDK 26 or later**: use an Xcode 26+ `.xip`.
-  The doctor shows the installed SDK version and fails when it is below 26 (🛠 feature 018).
+  The doctor fails when the installed iOS SDK is below 26 (✅ 018).
 - The app's deployment target is at least iOS 13 (higher when plugins require it).
 - The Flutter SDK has a published iOS AOT compiler for this host. When it does not, `xcross flutter sdk auto`
   installs a matching Flutter just for iOS builds (✅ 014).
@@ -85,7 +85,7 @@ Device, Push notifications).
 
 **Expected result:** every readiness area is ✓; nothing blocks a production build.
 
-**Status in xcross:** ✅ setup, SDK install and doctor (001–014); 🛠 SDK ≥ 26 check (018).
+**Status in xcross:** ✅ setup, SDK install and doctor (001–014); ✅ SDK ≥ 26 check (018).
 
 ## 2.2 Apple Developer Program and App Store Connect access
 
@@ -119,7 +119,7 @@ reviewed, generated configuration (for example `lib/firebase_options.dart`) avai
 recorded revision.
 
 XCross Studio runs `flutter analyze` and `flutter test` as the release gate on the **Release** page (🛠 022).
-`xcross release check` scans the built IPA for private keys and API secrets (🛠 018).
+`xcross release check` scans the built IPA for private keys and API secrets (✅ 018).
 
 ---
 
@@ -142,7 +142,8 @@ XCross Studio runs `flutter analyze` and `flutter test` as the release gate on t
 3. The App Store Connect **app record** (name, platform, primary language, bundle ID, SKU) exists:
    `xcross appstore app` checks it and, if it is missing, opens App Store Connect's **New App** page with the
    bundle ID to pick (Apple's public API cannot create apps) (🛠 021).
-4. The record's bundle ID equals the bundle ID in the signed app: `xcross release check` compares them.
+4. The record's bundle ID equals the bundle ID in the signed app: `xcross release check` compares the signed ID with
+   the project's (✅ 018); the comparison with the record comes with `xcross appstore app` (🛠 021).
 5. Extensions (notification service, widgets, share) get their own App IDs under the app's ID (✅ 003, 007).
 
 **Failure conditions:** ID owned by another team (prefixed fallback, warning); project ID differs from the record
@@ -172,31 +173,32 @@ There is no Xcode to open. xcross reads `ios/Runner.xcodeproj/project.pbxproj`, 
 `ios/Runner/Info.plist` directly:
 
 1. Display name, bundle ID, deployment target, device family and orientations are shown by `xcross release check`
-   and on the **Release** page (🛠 018, 022).
+   (✅ 018) and on the **Release** page (🛠 022).
 2. The Release configuration is used for `--release` builds.
 3. Swift and Objective-C code in the app target (AppDelegate) is compiled when it has code beyond Flutter's
    template (`XCROSS_RUNNER=auto`, ✅ 016); plugins and frameworks link through SwiftPM (✅ 006).
 4. App icons and the launch screen come from the asset catalog and `LaunchScreen.storyboard` approximation
    (✅ 004).
 
-**Status in xcross:** ✅ project reading, native code, plugins, icons (002–016); 🛠 configuration report (018).
+**Status in xcross:** ✅ project reading, native code, plugins, icons (002–016); ✅ configuration report (018).
 
 ## AC-04 — Distribution signing and provisioning
 
 - `xcross flutter build --release --ipa --export-method app-store` signs for App Store distribution: an
   **Apple Distribution** certificate (reused across runs; in CI from `XCROSS_CERTIFICATE_PRIVATE_KEY`), an
   **App Store** profile for the app and each extension, production entitlements (`aps-environment: production`,
-  no `get-task-allow`) (🛠 018).
+  no `get-task-allow`) (✅ 018).
 - Signing requires a team API key with Admin/App Manager role, or an Apple ID for development signing only.
 - The profile's App ID, team and entitlements are checked against the app; expired or revoked certificates and
-  profiles are reported before signing (🛠 018).
+  profiles are reported by `release check` (✅ 018).
 - Development profiles are never used for an `app-store` export.
 
-**Status in xcross:** ✅ development signing and entitlements (003, 011); 🛠 distribution signing (018).
+**Status in xcross:** ✅ development signing and entitlements (003, 011); ✅ distribution signing (018, team key;
+store evidence pending).
 
 ## AC-05 — Permissions and Info.plist
 
-`xcross release check` runs a permission audit (🛠 018):
+`xcross release check` runs a permission audit (✅ 018):
 
 1. Each plugin that needs a protected resource (camera, photos, location, microphone, contacts, Bluetooth, …)
    requires its `NS…UsageDescription`; a missing one is an error (an App Review and runtime crash).
@@ -207,13 +209,13 @@ There is no Xcode to open. xcross reads `ios/Runner.xcodeproj/project.pbxproj`, 
 
 Runtime behaviour (granted, denied, restricted) stays a QA test on the device (TC-10).
 
-**Status in xcross:** 🛠 permission audit (018).
+**Status in xcross:** ✅ permission audit (018).
 
 ## AC-06 — Privacy manifests, SDKs and compliance
 
-`xcross release check` (🛠 018):
+`xcross release check` (✅ 018):
 
-1. Copies `ios/Runner/PrivacyInfo.xcprivacy` into the app and checks each plugin's and SDK's privacy manifest is
+1. Embeds plugin and SDK resource bundles (and their privacy manifests) in the app, and copies `ios/Runner/PrivacyInfo.xcprivacy` into the app and checks each plugin's and SDK's privacy manifest is
    present for the SDKs on Apple's list.
 2. Scans the binaries for required-reason API symbols (file timestamp, system boot time, disk space, active
    keyboards, user defaults) and compares them with the declared reasons.
@@ -224,15 +226,15 @@ Runtime behaviour (granted, denied, restricted) stays a QA test on the device (T
 Data collection review, the privacy policy URL, App Privacy answers and ATT are 🍎 App Store Connect pages; xcross
 links to them.
 
-**Status in xcross:** 🛠 manifests, required-reason scan, export compliance key, secret scan (018); 🍎 App Privacy.
+**Status in xcross:** ✅ manifests, required-reason scan, export compliance key, secret scan (018); 🍎 App Privacy.
 
 ## AC-07 — Icons, launch screen and devices
 
 - The asset catalog is compiled (`Assets.car`, icons, alternate icons) and the launch screen approximated (✅ 004).
 - `xcross release check` requires the 1024 px marketing icon without alpha, a launch screen, and for iPad support the
-  multitasking rules (all four orientations or `UIRequiresFullScreen`) (🛠 018).
+  multitasking rules (all four orientations or `UIRequiresFullScreen`) (✅ 018).
 
-**Status in xcross:** ✅ icons and launch screen (004); 🛠 store checks (018).
+**Status in xcross:** ✅ icons and launch screen (004); ✅ store checks (018).
 
 ## AC-08 — Quality gate and device tests
 
@@ -255,16 +257,18 @@ xcross flutter build --release --ipa --export-method app-store \
   [--build-name 1.0.0] [--build-number 1|auto] [--obfuscate --split-debug-info=build/symbols/ios]
 ```
 
-1–6. Dart AOT for arm64, native code and plugins compiled and linked, signed for distribution (🛠 018).
+1–6. Dart AOT for arm64, native code and plugins compiled and linked, signed for distribution (✅ 018).
 7. `build/xcross-ios/archive/Runner.xcarchive` with `Products/Applications/Runner.app`, `dSYMs/` and the archive
-   `Info.plist` (🛠 018).
-8. `build/xcross-ios/ipa/<name>.ipa` (✅ 002, App Store export 🛠 018).
+   `Info.plist` (✅ 018).
+8. `build/xcross-ios/ipa/<name>.ipa` (✅ 002, App Store export ✅ 018).
 9–11. Version, production configuration and release mode are checked by `release check`.
 
-dSYMs need a non-assert `dsymutil`, which `xcross setup` installs from the LLVM release archive (🛠 018). Dart
-symbols from `--split-debug-info` are kept next to the archive.
+dSYMs are made with `dsymutil` from PATH (the Swift toolchain ships one; a non-assert build from the full LLVM
+release is preferred), else `release.dsym_unavailable` (✅ 018). Dart symbols from `--split-debug-info` stay where
+Flutter writes them.
 
-**Status in xcross:** ✅ release IPA (002–014); 🛠 App Store export, `.xcarchive`, dSYMs (018).
+**Status in xcross:** ✅ release IPA (002–014); ✅ App Store export, `.xcarchive`, dSYMs (018, store evidence
+pending a team key).
 
 ## AC-10 — Archive through a GUI (replaces Xcode Organizer archives)
 
@@ -276,7 +280,7 @@ signing (team, certificate, profile type) and the IPA next to it, and opens the 
 ## AC-11 — Validation before distribution (replaces Organizer "Validate App")
 
 - `xcross release check [--json] [<ipa>]` runs every local check from AC-01…AC-09 and returns coded issues
-  (`release.*`), errors before warnings (🛠 018).
+  (`release.*`), errors before warnings (✅ 018).
 - When Apple's Transporter is installed by the user, `xcross release check --apple` also runs its `-m verify`
   (🛠 019).
 
@@ -284,7 +288,7 @@ signing (team, certificate, profile type) and the IPA next to it, and opens the 
 missing privacy manifest data, wrong bundle ID, entitlement mismatch, missing icons, invalid embedded frameworks,
 duplicate build number, missing usage descriptions.
 
-**Status in xcross:** 🛠 release check (018); 🛠 Transporter verify (019).
+**Status in xcross:** ✅ release check (018); 🛠 Transporter verify (019).
 
 ## AC-12 — Upload (replaces Organizer "Distribute App")
 
@@ -369,28 +373,28 @@ The same steps run unattended in CI with `docs/ci/github-testflight.yml` on `ubu
 
 | ID | Scenario | xcross / XCross Studio | Expected | Status |
 |---|---|---|---|---|
-| TC-01 | Host, toolchain, SDK ≥ 26, Flutter | `xcross flutter doctor`; Overview | all ✓ | ✅ (SDK ≥ 26: 🛠 018) |
+| TC-01 | Host, toolchain, SDK ≥ 26, Flutter | `xcross flutter doctor`; Overview | all ✓ | ✅ |
 | TC-02 | Account and team | `xcross auth`; Signing | right team, role shown | ✅ |
 | TC-03 | App Store Connect record | `xcross appstore app` | record exists | 🛠 021 |
-| TC-04 | Registered App ID equals project | `xcross project bundle-id`; `release check` | exact match | ✅ 016 / 🛠 018 |
+| TC-04 | Registered App ID equals project | `xcross project bundle-id`; `release check` | exact match | ✅ 016, 018 |
 | TC-05 | Version in pubspec and app | `xcross inspect <ipa>` | right marketing version | ✅ |
 | TC-06 | Build number | `inspect`; `--build-number auto` | unique build | ✅ / 🛠 019 |
-| TC-07 | Distribution signing | `release check` | App Store profile, distribution cert | 🛠 018 |
+| TC-07 | Distribution signing | `release check` | App Store profile, distribution cert | ✅ 018 (store ⏳) |
 | TC-08 | Capabilities and entitlements | `inspect`; build log | entitlements match profile; refused ones named | ✅ 016 |
-| TC-09 | Usage descriptions | `release check` | all present | 🛠 018 |
+| TC-09 | Usage descriptions | `release check` | all present | ✅ 018 |
 | TC-10 | Denied permissions | device test | app stable | manual |
-| TC-11 | Privacy manifests and SDKs | `release check` | requirements met | 🛠 018 |
-| TC-12 | Icon and launch screen | `release check`; device | production branding | ✅ 004 / 🛠 018 |
+| TC-11 | Privacy manifests and SDKs | `release check` | requirements met | ✅ 018 |
+| TC-12 | Icon and launch screen | `release check`; device | production branding | ✅ 004, 018 |
 | TC-13 | Static analysis | Release → Quality gate | passes | 🛠 022 |
 | TC-14 | Automated tests | Release → Quality gate | pass | 🛠 022 |
-| TC-15 | Release archive | `flutter build … --export-method app-store` | `.xcarchive` created | 🛠 018 |
-| TC-16 | App Store IPA | same | App Store IPA | 🛠 018 |
+| TC-15 | Release archive | `flutter build … --export-method app-store` | `.xcarchive` created | ✅ 018 (store ⏳) |
+| TC-16 | App Store IPA | same | App Store IPA | ✅ 018 (store ⏳) |
 | TC-17 | Archive through the GUI | Archives page | archive listed | 🛠 022 |
-| TC-18 | Validation | `release check` | no errors | 🛠 018 |
+| TC-18 | Validation | `release check` | no errors | ✅ 018 |
 | TC-19 | Upload | `xcross publish` | accepted | 🛠 019 |
 | TC-20 | Uploaded build identity | `testflight status` | version, build, app match | 🛠 019 |
 | TC-21 | Processing | `publish --wait` | `VALID` | 🛠 019 |
-| TC-22 | Export compliance | `testflight status`; build key | declared | 🛠 018/020 |
+| TC-22 | Export compliance | `testflight status`; build key | declared | ✅ 018 key / 🛠 020 |
 | TC-23 | Internal group | `testflight add --group` | group has build | 🛠 020 |
 | TC-24 | Install from TestFlight | device | installs, launches | manual |
 | TC-25 | Production backend | device | production | manual |
@@ -400,7 +404,7 @@ The same steps run unattended in CI with `docs/ci/github-testflight.yml` on `ubu
 | TC-29 | Duplicate build number | `publish` | refused before upload | 🛠 019 |
 | TC-30 | Interrupted upload | kill `publish`, run again | resumes or restarts safely | 🛠 019 |
 | TC-31 | Release evidence | `release.json`; Release → Export | recorded | 🛠 019/022 |
-| TC-32 | Symbols | archive `dSYMs/`, `build/symbols/ios` | retained | 🛠 018 |
+| TC-32 | Symbols | archive `dSYMs/`, `build/symbols/ios` | retained | ✅ 018 |
 | TC-33 | Push, Firebase, Maps on device (xcross addition) | `app info`, `logs --preset push`; map screen | token, notification, map | ✅ 016 (device ⏳) |
 | TC-34 | Plug/unplug (xcross addition) | `xcross devices --watch`; top-bar badge | updates within ~2 s | ✅ 017 (device ⏳) |
 

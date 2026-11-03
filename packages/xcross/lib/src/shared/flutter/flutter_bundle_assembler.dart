@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:meta/meta.dart';
 import 'package:xcross/src/shared/artifact/plist_mutations.dart';
+import 'package:xcross/src/shared/config/project_settings.dart'; // studio: 018
 import 'package:xcross/src/shared/diagnostics/xcross_diagnostics.dart'; // studio: 002
 import 'package:xcross/src/shared/flutter/build/app_extension_builder.dart';
 import 'package:xcross/src/shared/flutter/build/flutter_app_entitlements.dart'; // studio: 003
@@ -17,6 +20,7 @@ import 'package:xcross/src/shared/flutter/flutter_build_runtime.dart';
 import 'package:xcross/src/shared/flutter/flutter_build_steps.dart';
 import 'package:xcross/src/shared/flutter/models/flutter/flutter_build_mode.dart';
 import 'package:xcross/src/shared/flutter/models/flutter/flutter_build_options.dart';
+import 'package:xcross/src/shared/sdk/xcode_build_info.dart'; // studio: 018
 
 @internal
 final class FlutterBundleAssembler<T extends PlatformHostInterface>
@@ -186,6 +190,7 @@ final class FlutterBundleAssembler<T extends PlatformHostInterface>
       embedded,
       lipo: () => runtime.nativeTools.locateLlvmTool('llvm-lipo'),
     );
+    await _copyResourceBundles(pluginLibraries, bundleDir); // studio: 018
 
     await _embedAppExtensions(bundleDir, extensions);
     final skipped = await runtime.resources.stage(
@@ -337,6 +342,7 @@ final class FlutterBundleAssembler<T extends PlatformHostInterface>
       deploymentTarget: deploymentTarget,
     );
     plistXml = runtime.policy.transformPlist(plistXml, sdkName: sdkName);
+    plistXml = _withReleaseKeys(plistXml); // studio: 018
     if (options.buildMode != FlutterBuildMode.release) {
       plistXml = InfoPlist.applyDebugVmServiceDiscovery(plistXml);
     }
@@ -425,6 +431,77 @@ final class FlutterBundleAssembler<T extends PlatformHostInterface>
       return plistXml;
     }
   }
+
+  // studio: 018 — SwiftPM resource bundles (`<Package>_<Target>.bundle`:
+  // privacy manifests, Google Maps and Firebase resources) go to the app's
+  // root, where Xcode puts them and `Bundle.module` looks. Without them App
+  // Store Connect reports missing privacy manifests and SDKs cannot find
+  // their resources.
+  Future<void> _copyResourceBundles(
+    List<String> pluginLibraries,
+    String bundleDir,
+  ) async {
+    if (pluginLibraries.isEmpty) return;
+    final paths = runtime.host.paths.context;
+    final products = runtime.host.fileSystem.directory(
+      paths.dirname(pluginLibraries.first),
+    );
+    if (!products.existsSync()) return;
+    final names = [
+      for (final entity in products.listSync())
+        if (entity is Directory && entity.path.endsWith('.bundle'))
+          paths.basename(entity.path),
+    ]..sort();
+    for (final name in names) {
+      final target = paths.join(bundleDir, name);
+      if (runtime.host.fileSystem.directory(target).existsSync()) continue;
+      await runtime.directoryCopier.copy(
+        paths.join(products.path, name),
+        target,
+      );
+    }
+    if (names.isNotEmpty) {
+      runtime.runner.log.logTrace(
+        'Embedded ${names.length} SwiftPM resource bundles',
+      );
+    }
+  }
+
+  // studio: 018 — the toolchain identity App Store Connect reads (DT keys)
+  // and the export compliance answer saved with the project.
+  String _withReleaseKeys(String plistXml) {
+    var xml = plistXml;
+    final sdk = runtime.sdkRepository.current();
+    if (sdk != null) {
+      xml = XcodeBuildInfo.read(
+        fileSystem: runtime.host.fileSystem,
+        paths: runtime.host.paths.context,
+        iosSdk: runtime.sdkRepository.iosSdk(
+          sdk,
+          target: runtime.target.buildPlatform,
+        ),
+        bundleRoot: sdk.bundle,
+      ).applyTo(xml);
+    }
+    final String? encryption;
+    try {
+      encryption = ProjectSettings(
+        fileSystem: runtime.host.fileSystem,
+        projectRoot: projectRoot,
+      ).read(encryptionSettingKey)?.trim().toLowerCase();
+    } on Object {
+      return xml;
+    }
+    if (encryption != 'true' && encryption != 'false') return xml;
+    return InfoPlist.withBoolIfMissing(
+      xml,
+      'ITSAppUsesNonExemptEncryption',
+      value: encryption == 'true',
+    );
+  }
+
+  /// Project setting answering the export compliance question.
+  static const encryptionSettingKey = 'uses_non_exempt_encryption';
 
   // studio: 016 — `firebase_messaging` or the remote-notification background
   // mode without `aps-environment` (no entitlements file) left the profile

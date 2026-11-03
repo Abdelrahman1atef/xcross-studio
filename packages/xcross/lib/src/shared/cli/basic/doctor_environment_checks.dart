@@ -15,6 +15,7 @@ import 'package:meta/meta.dart';
 import 'package:xcross/src/shared/cli/basic/auth_command.dart'; // studio: 015
 import 'package:xcross/src/shared/cli/basic/doctor_models.dart';
 import 'package:xcross/src/shared/diagnostics/xcross_diagnostics.dart'; // studio: 002
+import 'package:xcross/src/shared/sdk/xcode_build_info.dart'; // studio: 018
 import 'package:xcross/src/shared/sdk/xcode_swift_requirement.dart';
 import 'package:xcross/src/shared/toolchain/path_linker_guard.dart'; // studio: 002
 
@@ -188,6 +189,11 @@ final class DoctorEnvironmentChecks<T extends PlatformHostInterface> {
     }
     final tooOld = await swiftTooOldForSdk(path);
     if (tooOld != null) return DoctorCheck.failure('Darwin SDK', tooOld);
+    // studio: 018 — App Store Connect takes builds from the iOS 26 SDK on.
+    final storeProblem = belowStoreMinimum(path);
+    if (storeProblem != null) {
+      return DoctorCheck.failure('Darwin SDK', storeProblem);
+    }
     // Repairs a bundle installed before xcross rewrote text stubs, so
     // `doctor` reports the SDK the build will actually get rather than the
     // one on disk a moment ago.
@@ -199,6 +205,30 @@ final class DoctorEnvironmentChecks<T extends PlatformHostInterface> {
           : 'Installed (rewrote $patched text stubs for this linker)',
       path: path,
     );
+  }
+
+  // studio: 018
+  /// The minimum iOS SDK major version App Store Connect accepts.
+  static const storeMinimumSdk = 26;
+
+  /// Why the SDK in [bundle] is too old for App Store uploads, or null.
+  String? belowStoreMinimum(String bundle) {
+    final String iosSdk;
+    try {
+      iosSdk = repository.iosSdk(DarwinSdk(bundle), target: buildPlatform);
+    } on Object {
+      return null;
+    }
+    final version = XcodeBuildInfo.read(
+      fileSystem: hostPlatform.fileSystem,
+      paths: hostPlatform.paths.context,
+      iosSdk: iosSdk,
+    ).sdkVersion;
+    final major = int.tryParse((version ?? '').split('.').first);
+    if (major == null || major >= storeMinimumSdk) return null;
+    return 'The iOS $version SDK is older than App Store Connect accepts '
+        '(iOS $storeMinimumSdk or later). Install an Xcode $storeMinimumSdk+ '
+        '.xip with `xcross sdk install <Xcode.xip>`.';
   }
 
   /// Why the installed SDK's Xcode generation outruns the host Swift, or null

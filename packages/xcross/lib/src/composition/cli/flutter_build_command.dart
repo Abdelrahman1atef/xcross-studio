@@ -7,9 +7,11 @@ import 'package:meta/meta.dart';
 import 'package:xcross/src/composition/ios_target.dart';
 import 'package:xcross/src/shared/cli/internal/parsed_command.dart';
 import 'package:xcross/src/shared/cli/shared/ipa_packager.dart';
+import 'package:xcross/src/shared/diagnostics/xcross_diagnostics.dart'; // studio: 018
 import 'package:xcross/src/shared/flutter/build/flutter_pack_operation.dart';
 import 'package:xcross/src/shared/flutter/models/flutter/flutter_build_mode.dart';
 import 'package:xcross/src/shared/runtime/xcross_runtime.dart';
+import 'package:xcross/src/target/iphone/device/app_store_export.dart'; // studio: 018
 
 part 'flutter_build_command.g.dart';
 
@@ -128,7 +130,20 @@ final class FlutterBuildCommand<T extends PlatformHostInterface>
   FlutterBuildCommand(this.runtime);
   @override
   ArgParser populateOptions(ArgParser parser) =>
-      _$populateFlutterBuildArgsParser(parser);
+      _$populateFlutterBuildArgsParser(parser)
+        // studio: 018 — App Store distribution signing and the archive.
+        ..addOption(
+          exportMethodOption,
+          allowed: const ['development', 'app-store'],
+          defaultsTo: 'development',
+          help:
+              'app-store: sign for App Store distribution (team API key with '
+              'the Admin or App Manager role) and write build/xcross-ios/ipa '
+              'and build/xcross-ios/archive/Runner.xcarchive. Needs --release.',
+        );
+
+  // studio: 018
+  static const exportMethodOption = 'export-method';
   @override
   FlutterBuildArgs parseOptions(ArgResults results) =>
       _$parseFlutterBuildArgsResult(results);
@@ -142,6 +157,11 @@ final class FlutterBuildCommand<T extends PlatformHostInterface>
 
   @override
   Future<void> run() async {
+    // studio: 018
+    final appStore = argResults?[exportMethodOption] == 'app-store';
+    if (appStore && !options.release) {
+      usageException('--export-method app-store needs --release.');
+    }
     final mode = flutterBuildModeOf(
       debug: options.debug,
       profile: options.profile,
@@ -176,6 +196,11 @@ final class FlutterBuildCommand<T extends PlatformHostInterface>
       options: buildOptions,
     );
 
+    // studio: 018
+    if (appStore) {
+      await _exportForAppStore(result.appPath);
+      return;
+    }
     final finalPath = options.ipa
         ? await IpaPackager(host: runtime.host).package(result.appPath)
         : result.appPath;
@@ -185,5 +210,30 @@ final class FlutterBuildCommand<T extends PlatformHostInterface>
     if (options.ipa) {
       runtime.log.events?.event('artifact', {'kind': 'ipa', 'path': finalPath});
     }
+  }
+
+  // studio: 018 — sign for distribution, write the IPA and the archive.
+  Future<void> _exportForAppStore(String appPath) async {
+    final paths = runtime.host.paths.context;
+    final result = await AppStoreExport(
+      runner: runtime.runner,
+      hostServices: runtime.appleHostServices,
+      httpClients: runtime.signingHttpClients,
+      environment: runtime.runner.effectiveEnvironment,
+    ).export(appPath: appPath, outputRoot: paths.dirname(appPath));
+    if (result.missingDsyms.isNotEmpty) {
+      runtime.log.logWarn(
+        codedWarning(
+          XcrossCodes.releaseDsymUnavailable,
+          'No dSYM for ${result.missingDsyms.join(', ')}; crash reports from '
+          'this build cannot be symbolicated for those binaries.',
+        ),
+      );
+    }
+    runtime.log.logDone('Wrote ${result.ipaPath}');
+    runtime.log.logInfo('Archive', result.archivePath);
+    runtime.log.events
+      ?..event('artifact', {'kind': 'ipa', 'path': result.ipaPath})
+      ..event('artifact', {'kind': 'xcarchive', 'path': result.archivePath});
   }
 }

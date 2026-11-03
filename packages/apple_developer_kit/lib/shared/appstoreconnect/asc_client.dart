@@ -101,11 +101,32 @@ abstract interface class DevelopmentProvisioningClient {
   void close();
 }
 
+// studio: 018 — App Store signing, offered by the API-key client only.
+/// The extra operations App Store distribution signing needs.
+abstract interface class DistributionProvisioningClient
+    implements DevelopmentProvisioningClient {
+  /// Apple Distribution (`DISTRIBUTION`) and older iOS Distribution
+  /// (`IOS_DISTRIBUTION`) certificates on the team, with their content.
+  Future<List<AscCertificate>> listDistributionCertificates();
+
+  /// Creates an Apple Distribution certificate for [csrPem].
+  Future<AscCertificate> createDistributionCertificate({
+    required String csrPem,
+  });
+
+  /// Creates an `IOS_APP_STORE` profile (no devices).
+  Future<AscProfile> createAppStoreProfile({
+    required String name,
+    required String bundleIdResourceId,
+    required List<String> certificateResourceIds,
+  });
+}
+
 /// Thin client for the subset of the App Store Connect API needed to
 /// provision iOS Development signing (certificates, devices, bundle ids,
 /// profiles) using only a Team-scoped API key - no interactive Apple ID
 /// login.
-final class AscClient implements DevelopmentProvisioningClient {
+final class AscClient implements DistributionProvisioningClient {
   AscClient(this.credentials, {required http.Client httpClient})
     : _http = httpClient;
 
@@ -317,6 +338,53 @@ final class AscClient implements DevelopmentProvisioningClient {
           bundleIdResourceId: bundleIdResourceId,
           certificateResourceIds: certificateResourceIds,
           deviceResourceIds: deviceResourceIds,
+        ),
+      ),
+    ),
+  );
+
+  // studio: 018
+  @override
+  Future<List<AscCertificate>> listDistributionCertificates() async => [
+    for (final entry in _collection(
+      await _get(
+        '/certificates?filter[certificateType]=DISTRIBUTION,IOS_DISTRIBUTION'
+        '&limit=200',
+      ),
+    ))
+      AscCertificate.fromJson(entry),
+  ];
+
+  @override
+  Future<AscCertificate> createDistributionCertificate({
+    required String csrPem,
+  }) async => AscCertificate.fromJson(
+    _data(
+      await _post(
+        '/certificates',
+        AscPayloads.certificate(
+          certificateType: 'DISTRIBUTION',
+          csrPem: csrPem,
+        ),
+      ),
+    ),
+  );
+
+  @override
+  Future<AscProfile> createAppStoreProfile({
+    required String name,
+    required String bundleIdResourceId,
+    required List<String> certificateResourceIds,
+  }) async => AscProfile.fromJson(
+    _data(
+      await _post(
+        '/profiles',
+        AscPayloads.profile(
+          name: name,
+          bundleIdResourceId: bundleIdResourceId,
+          certificateResourceIds: certificateResourceIds,
+          deviceResourceIds: const [],
+          profileType: 'IOS_APP_STORE',
         ),
       ),
     ),

@@ -15,6 +15,7 @@ import 'package:apple_developer_kit/shared/appstoreconnect/provisioning_identifi
 import 'package:apple_developer_kit/shared/errors/errors.dart';
 import 'package:apple_developer_kit/src/shared/appstoreconnect/asc_csr.dart';
 import 'package:apple_developer_kit/src/shared/signing/provisioning_profile.dart'; // studio: 016
+import 'package:apple_developer_kit/src/shared/signing/x509.dart'; // studio: 018
 import 'package:basic_utils/basic_utils.dart';
 import 'package:meta/meta.dart';
 
@@ -150,6 +151,143 @@ final class AscProvisioning {
       onRefused: onCapabilityRefused,
     );
 
+    return DevelopmentIdentityPaths(
+      certificatePemPath: certPath,
+      privateKeyPemPath: keyPath,
+      profilePath: profilePath,
+    );
+  }
+
+  // studio: 018 — App Store distribution signing (specs/018-app-store-build).
+
+  /// Prefix of every App Store profile xcross creates; only those are ever
+  /// deleted again.
+  static const appStoreProfilePrefix = 'xcross App Store ';
+
+  /// Provisions App Store distribution signing for [bundleId]:
+  ///
+  /// 1. The distribution key: [privateKeyPem] when given (CI passes
+  ///    `XCROSS_CERTIFICATE_PRIVATE_KEY`), else the one saved under
+  ///    [identityDir]/distribution, else a new RSA key saved there.
+  /// 2. A team Apple Distribution certificate whose public key matches it,
+  ///    else a new one from a CSR of that key. Certificates are never
+  ///    revoked: Apple's limit is reported instead.
+  /// 3. The App ID (registered when missing) and the capabilities its
+  ///    entitlements need, reported as for development.
+  /// 4. A new `IOS_APP_STORE` profile; only earlier profiles named with
+  ///    [appStoreProfilePrefix] are deleted.
+  Future<DevelopmentIdentityPaths> provisionDistributionIdentity({
+    required String bundleId,
+    required String outputDir,
+    required String identityDir,
+    String? privateKeyPem,
+    Set<String> capabilities = const {},
+    ProvisioningProgress? onProgress,
+    CapabilityRefused? onCapabilityRefused,
+  }) async {
+    final distribution = client;
+    if (distribution is! DistributionProvisioningClient) {
+      throw const AppleError(
+        'App Store signing needs an App Store Connect team API key with the '
+        'Admin or App Manager role: run `xcross auth --issuer-id <id> '
+        '--key-id <id> --private-key <AuthKey.p8>`.',
+      );
+    }
+    final fileSystem = hostServices.host.fileSystem;
+    final paths = hostServices.host.paths.context;
+    final keyDir = paths.join(identityDir, 'distribution');
+    await fileSystem.directory(keyDir).create(recursive: true);
+    await fileSystem.directory(outputDir).create(recursive: true);
+    final keyPath = paths.join(keyDir, 'key.pem');
+    final certPath = paths.join(keyDir, 'cert.pem');
+    final profilePath = paths.join(outputDir, 'profile.mobileprovision');
+
+    final String keyPem;
+    if (privateKeyPem != null && privateKeyPem.trim().isNotEmpty) {
+      keyPem = privateKeyPem.trim();
+    } else if (fileSystem.file(keyPath).existsSync()) {
+      keyPem = await fileSystem.file(keyPath).readAsString();
+    } else {
+      final generated = AscCsr.generate(commonName: 'xcross Distribution');
+      keyPem = AscCsr.privateKeyToPem(generated.privateKey);
+    }
+    final privateKey = parsePrivateKey(keyPem, keyPath);
+    await AscCsr.writePrivateKeyPem(
+      keyPath,
+      keyPem,
+      hostServices: hostServices,
+    );
+
+    AscCertificate? certificate;
+    for (final candidate in await distribution.listDistributionCertificates()) {
+      final pem = wrapDerAsPem(candidate.certificateContentBase64);
+      final ParsedCertificate parsed;
+      try {
+        parsed = parseCertificatePem(pem, candidate.id);
+      } on Object {
+        continue;
+      }
+      if (parsed.publicKey?.modulus == privateKey.modulus) {
+        certificate = candidate;
+        break;
+      }
+    }
+    if (certificate == null) {
+      final csr = X509Utils.generateRsaCsrPem(
+        {'CN': 'xcross Distribution'},
+        privateKey,
+        RSAPublicKey(privateKey.modulus!, privateKey.publicExponent!),
+      );
+      try {
+        certificate = await distribution.createDistributionCertificate(
+          csrPem: csr,
+        );
+      } on AppleApiError catch (error) {
+        if (error.statusCode != 409) rethrow;
+        throw AppleError(
+          'Apple did not issue an Apple Distribution certificate: '
+          '${error.message}\nThe team may have reached its limit. Pass the '
+          'private key of an existing distribution certificate in '
+          'XCROSS_CERTIFICATE_PRIVATE_KEY, or revoke one you no longer use at '
+          'developer.apple.com (xcross never revokes them).',
+        );
+      }
+      onProgress?.call('Created an Apple Distribution certificate');
+    }
+    await fileSystem
+        .file(certPath)
+        .writeAsString(wrapDerAsPem(certificate.certificateContentBase64));
+
+    final bundleIdResource = await _findOrRegisterBundleId(bundleId);
+    final unverified = await _ensureCapabilities(
+      bundleId: bundleId,
+      bundleIdResource: bundleIdResource,
+      capabilities: capabilities,
+      onProgress: onProgress,
+      onRefused: onCapabilityRefused,
+    );
+    for (final profile in await client.listProfilesForBundle(
+      bundleIdResource.id,
+    )) {
+      if (profile.name.startsWith(appStoreProfilePrefix)) {
+        await client.deleteProfile(profile.id);
+      }
+    }
+    final profile = await distribution.createAppStoreProfile(
+      name: '$appStoreProfilePrefix${DateTime.now().microsecondsSinceEpoch}',
+      bundleIdResourceId: bundleIdResource.id,
+      certificateResourceIds: [certificate.id],
+    );
+    final profileBytes = base64.decode(profile.profileContentBase64);
+    await fileSystem.file(profilePath).writeAsBytes(profileBytes);
+    _reportFromProfile(
+      bundleId: bundleId,
+      profileBytes: profileBytes,
+      profilePath: profilePath,
+      unverified: unverified,
+      onProgress: onProgress,
+      onRefused: onCapabilityRefused,
+    );
     return DevelopmentIdentityPaths(
       certificatePemPath: certPath,
       privateKeyPemPath: keyPath,
