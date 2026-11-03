@@ -7,6 +7,7 @@ import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
 import 'package:xcross/src/shared/flutter/swiftpm/artifact_filesystem.dart';
 import 'package:xcross/src/shared/flutter/swiftpm/checkout_manifest_normalizer.dart';
+import 'package:xcross/src/shared/flutter/swiftpm/filesystem.dart';
 import 'package:xcross/src/shared/flutter/swiftpm/host_source_normalizer.dart';
 
 @internal
@@ -141,14 +142,47 @@ final class SwiftPmManifestCompiler {
     return code;
   }
 
+  // studio: FlutterFire manifests (firebase_core 3.x, firebase_analytics
+  // 11.x, …) find their own folder with
+  // `URL(string: #file)!.deletingLastPathComponent().absoluteString`, then
+  // read `../../pubspec.yaml`. On Windows `#file` starts with `C:`, which
+  // `URL(string:)` takes for a URL scheme, so the folder came out as "C" and
+  // the manifest crashed ("NSFilePath=C/../../pubspec.yaml", 2026-11-03).
+  static final _fileDirectory = RegExp(
+    r'URL\(\s*string\s*:\s*#file\s*\)\s*!\s*'
+    r'\.deletingLastPathComponent\(\)\s*\.absoluteString',
+  );
+
+  /// [manifest] with that expression replaced by what it gives on macOS: the
+  /// manifest's real folder (through any link), with forward slashes and a
+  /// trailing `/`.
+  String locateManifestFolder(String manifest, String directory) {
+    if (!_fileDirectory.hasMatch(manifest)) return manifest;
+    var real = directory;
+    try {
+      real = fileSystem.directory(directory).resolveSymbolicLinksSync();
+    } on FileSystemException {
+      // The folder as given.
+    }
+    if (real.startsWith(r'\\?\') && !real.startsWith(r'\\?\UNC\')) {
+      real = real.substring(4);
+    }
+    final folder = SwiftPmFilesystem.jsonPath(real);
+    return manifest.replaceAll(
+      _fileDirectory,
+      '"${folder.endsWith('/') ? folder : '$folder/'}"',
+    );
+  }
+
   Future<String> rewrite(
-    String manifest, {
+    String original, {
     required String manifestPath,
     required String? identity,
     required SwiftPmManifestCompilerConfiguration configuration,
   }) async {
     final products = {...?configuration.consumedProducts[identity]};
     final directory = p.dirname(manifestPath);
+    final manifest = locateManifestFolder(original, directory);
     if (directory == manifestPath ||
         fileSystem.typeSync(p.join(directory, 'Package.swift')) !=
             FileSystemEntityType.file) {

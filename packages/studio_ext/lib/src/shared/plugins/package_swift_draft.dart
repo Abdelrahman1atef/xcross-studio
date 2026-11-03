@@ -10,6 +10,7 @@ final class KnownPackage {
     this.package,
     this.product, {
     this.objectiveCModules = const {},
+    this.defaultVersion,
   });
 
   final String url;
@@ -23,6 +24,12 @@ final class KnownPackage {
   /// `@import GoogleMapsUtilsObjC;`: the SwiftPM `GoogleMapsUtils` module is
   /// the Swift layer).
   final Map<String, String> objectiveCModules;
+
+  /// The lowest version to ask for when the podspec names none: CocoaPods
+  /// then takes the newest release, and a placeholder `from: "1.0.0"` asked
+  /// SDWebImage for 1.x, which conflicts with every other user of it
+  /// (doctory, 2026-11-03).
+  final String? defaultVersion;
 }
 
 /// Swift packages for pods that plugins commonly depend on.
@@ -62,11 +69,25 @@ KnownPackage? knownPackageFor(String pod) {
       'https://github.com/Alamofire/Alamofire',
       'Alamofire',
       'Alamofire',
+      defaultVersion: '5.0.0',
     ),
     'SDWebImage' => const KnownPackage(
       'https://github.com/SDWebImage/SDWebImage',
       'SDWebImage',
       'SDWebImage',
+      defaultVersion: '5.0.0',
+    ),
+    'SDWebImageWebPCoder' => const KnownPackage(
+      'https://github.com/SDWebImage/SDWebImageWebPCoder',
+      'SDWebImageWebPCoder',
+      'SDWebImageWebPCoder',
+      defaultVersion: '0.14.0',
+    ),
+    'Mantle' => const KnownPackage(
+      'https://github.com/Mantle/Mantle',
+      'Mantle',
+      'Mantle',
+      defaultVersion: '2.2.0',
     ),
     'Kingfisher' => const KnownPackage(
       'https://github.com/onevcat/Kingfisher',
@@ -80,8 +101,10 @@ KnownPackage? knownPackageFor(String pod) {
 /// The SwiftPM version requirement for a CocoaPods [requirement]:
 /// `~> 8.4` → up to next major from 8.4.0, `~> 8.4.1` → up to next minor,
 /// `>= 2.0` / `2.0` → from / exact.
+/// Without a requirement, [defaultVersion] (newest release with that major
+/// version) or a placeholder to review.
 @internal
-String swiftRequirement(String? requirement) {
+String swiftRequirement(String? requirement, {String? defaultVersion}) {
   final raw = requirement?.trim() ?? '';
   String full(String v) {
     final parts = v.split('.');
@@ -102,6 +125,7 @@ String swiftRequirement(String? requirement) {
   if (atLeast != null) return 'from: "${full(atLeast.group(1)!)}"';
   final exact = RegExp(r'^=?\s*([\d.]+)$').firstMatch(raw);
   if (exact != null) return 'exact: "${full(exact.group(1)!)}"';
+  if (defaultVersion != null) return 'from: "${full(defaultVersion)}"';
   return 'from: "1.0.0" /* TODO: pick a version */';
 }
 
@@ -231,7 +255,7 @@ PackageSwiftDraft draftPackageSwift({
     if (seenPackages.add(known.package)) {
       dependencyLines.add(
         '.package(url: "${known.url}", '
-        '${swiftRequirement(dependency.requirement)})',
+        '${swiftRequirement(dependency.requirement, defaultVersion: known.defaultVersion)})',
       );
     }
     productLines.add(

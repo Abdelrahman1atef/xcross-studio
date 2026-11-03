@@ -73,6 +73,9 @@ final class SwiftPmPluginOverlay<T extends PlatformHostInterface> {
     bool packageLocalArtifactJunctionCapability = false,
   }) async {
     var stagedPackage = alias;
+    final manifest = await filesystem.artifactFileSystem
+        .file(p.join(target, 'Package.swift'))
+        .readAsString();
     if (copySources) {
       await filesystem.deleteUnless(alias, FileSystemEntityType.directory);
       final packageRoot = p.dirname(p.dirname(target));
@@ -81,6 +84,11 @@ final class SwiftPmPluginOverlay<T extends PlatformHostInterface> {
         destinationRoot: alias,
         packageName: p.basename(target),
         platformDir: platformDir,
+        // studio: FlutterFire manifests read the plugin's own pubspec.yaml
+        // (`../../pubspec.yaml`) for its version.
+        keep: manifest.contains('pubspec.yaml')
+            ? const {'pubspec.yaml'}
+            : const {},
       );
       await filesystem.createDirectoryAlias(
         p.join(alias, platformDir, flutterFrameworkPackageName),
@@ -89,9 +97,6 @@ final class SwiftPmPluginOverlay<T extends PlatformHostInterface> {
       stagedPackage = p.join(alias, platformDir, p.basename(target));
     }
 
-    final manifest = await filesystem.artifactFileSystem
-        .file(p.join(target, 'Package.swift'))
-        .readAsString();
     var normalizedManifest = sourceNormalizer.removeMissingResources(
       manifestPolicy.normalizeHostManifest(manifest),
       target,
@@ -227,6 +232,8 @@ final class SwiftPmPluginOverlay<T extends PlatformHostInterface> {
     required String destinationRoot,
     required String packageName,
     String platformDir = 'ios',
+    // Entries of [iosUnreachableEntries] the manifest needs after all.
+    Set<String> keep = const {},
   }) async {
     await filesystem.artifactFileSystem
         .directory(p.join(destinationRoot, platformDir))
@@ -238,7 +245,8 @@ final class SwiftPmPluginOverlay<T extends PlatformHostInterface> {
             .list(followLinks: false)) {
       final name = p.basename(entity.path);
       if (name == platformDir ||
-          iosUnreachableEntries.contains(name.toLowerCase())) {
+          (iosUnreachableEntries.contains(name.toLowerCase()) &&
+              !keep.contains(name.toLowerCase()))) {
         continue;
       }
       staged.add(name);

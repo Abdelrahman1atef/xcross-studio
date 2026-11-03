@@ -1,5 +1,11 @@
 ## Unreleased (XCross Studio)
 
+- Apps using FlutterFire plugins whose `Package.swift` reads the plugin's own `pubspec.yaml` (firebase_core 3.x,
+  firebase_analytics 11.x, firebase_messaging 15.x, firebase_crashlytics 4.x, firebase_remote_config 5.x) build on
+  Windows again. Their manifest found its folder with `URL(string: #file)`, which reads `C:` as a URL scheme, and
+  crashed with "Failed to load configuration … pubspec.yaml". xcross now gives that expression the manifest's real
+  folder and stages the plugin's `pubspec.yaml` with it.
+
 - XCross Studio on Windows: commands the app started (the device watch, log streams, builds) no longer keep running
   after it closes, crashes or is ended in Task Manager. They locked the app's CLI files. The app runs in a Windows
   job that ends its processes with it; folders and links open outside that job, so the window or browser stays open.

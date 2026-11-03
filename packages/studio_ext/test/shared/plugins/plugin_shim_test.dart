@@ -82,6 +82,26 @@ void main() {
       expect(swiftRequirement('>= 10.1'), 'from: "10.1.0"');
       expect(swiftRequirement('2.3'), 'exact: "2.3.0"');
       expect(swiftRequirement(null), contains('TODO'));
+      // No version in the podspec: the known package's own (doctory's
+      // `from: "1.0.0"` SDWebImage clashed with file_picker's 5.x).
+      expect(
+        swiftRequirement(
+          null,
+          defaultVersion: knownPackageFor('SDWebImage')!.defaultVersion,
+        ),
+        'from: "5.0.0"',
+      );
+      expect(
+        swiftRequirement('~> 5.1', defaultVersion: '9.0'),
+        contains('5.1'),
+      );
+      for (final (pod, product) in [
+        ('Mantle', 'Mantle'),
+        ('SDWebImageWebPCoder', 'SDWebImageWebPCoder'),
+      ]) {
+        expect(knownPackageFor(pod)?.product, product);
+        expect(knownPackageFor(pod)?.defaultVersion, isNotNull);
+      }
       expect(
         knownPackageFor('Firebase/Messaging')?.product,
         'FirebaseMessaging',

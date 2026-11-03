@@ -453,6 +453,87 @@ let other: [SwiftSetting] = [.unsafeFlags(["-a"])]
     );
   });
 
+  // FlutterFire 3.x/11.x manifests: `URL(string: #file)` on a `C:\…` path
+  // took `C:` for a URL scheme and read "C/../../pubspec.yaml" (2026-11-03).
+  group('FlutterFire manifests find their folder on every host', () {
+    const flutterFire = '''
+let analyticsDirectory = String(URL(string: #file)!.deletingLastPathComponent().absoluteString
+  .dropLast())
+let pubspecPath = NSString.path(withComponents: [analyticsDirectory, "..", "..", "pubspec.yaml"])
+''';
+
+    test('the expression becomes the real folder with a trailing slash', () {
+      final folder = Directory(
+        p.join(root.path, 'firebase_analytics', 'ios', 'firebase_analytics'),
+      )..createSync(recursive: true);
+      final located = manifestCompiler.locateManifestFolder(
+        flutterFire,
+        folder.path,
+      );
+      final expected =
+          '${folder.resolveSymbolicLinksSync().replaceAll(r'\', '/')}/';
+      expect(located, isNot(contains('#file')));
+      expect(located, contains('String("$expected"\n  .dropLast())'));
+      expect(located, contains('"..", "..", "pubspec.yaml"'));
+    });
+
+    test('a staged link points at the plugin itself, not the link', () {
+      final real = Directory(p.join(root.path, 'pub', 'ios', 'plugin'))
+        ..createSync(recursive: true);
+      final link = Link(p.join(root.path, 'staged'));
+      try {
+        link.createSync(real.path);
+      } on FileSystemException {
+        markTestSkipped('This host cannot create directory links.');
+        return;
+      }
+      final located = manifestCompiler.locateManifestFolder(
+        flutterFire,
+        link.path,
+      );
+      expect(
+        located,
+        contains('"${real.resolveSymbolicLinksSync().replaceAll(r'\', '/')}/"'),
+      );
+    });
+
+    test('other manifests are unchanged', () {
+      const plain = 'let here = URL(fileURLWithPath: #filePath)\n';
+      expect(manifestCompiler.locateManifestFolder(plain, root.path), plain);
+    });
+
+    test('the plugin pubspec.yaml is staged only when its manifest reads '
+        'it', () async {
+      Future<Set<String>> staged(String manifest) async {
+        final plugin = Directory(p.join(root.path, 'src-${manifest.length}'));
+        Directory(
+          p.join(plugin.path, 'ios', 'plugin'),
+        ).createSync(recursive: true);
+        Directory(p.join(plugin.path, 'lib')).createSync();
+        File(
+          p.join(plugin.path, 'pubspec.yaml'),
+        ).writeAsStringSync('version: 1.0.0\n');
+        File(p.join(plugin.path, 'LICENSE')).writeAsStringSync('license');
+        final destination = p.join(root.path, 'dst-${manifest.length}');
+        await _runtime.pluginOverlay.stageAncestorOverlay(
+          sourceRoot: plugin.path,
+          destinationRoot: destination,
+          packageName: 'plugin',
+          keep: manifest.contains('pubspec.yaml')
+              ? const {'pubspec.yaml'}
+              : const {},
+        );
+        return {
+          for (final entity in Directory(destination).listSync())
+            p.basename(entity.path),
+        };
+      }
+
+      expect(await staged(flutterFire), {'ios', 'LICENSE', 'pubspec.yaml'});
+      expect(await staged('let package = 1\n'), {'ios', 'LICENSE'});
+    });
+  });
+
   test('runs an overlay scan without an output uncached', () async {
     final arguments = invocation(
       'let package = 1\n',
