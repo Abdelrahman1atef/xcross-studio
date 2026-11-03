@@ -5,13 +5,16 @@ library;
 
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data'; // studio: 016
 
 import 'package:apple_developer_kit/host/shared/apple_host_services.dart';
+import 'package:apple_developer_kit/shared/appstoreconnect/asc_capabilities.dart'; // studio: 016
 import 'package:apple_developer_kit/shared/appstoreconnect/asc_client.dart';
 import 'package:apple_developer_kit/shared/appstoreconnect/asc_models.dart';
 import 'package:apple_developer_kit/shared/appstoreconnect/provisioning_identifiers.dart';
 import 'package:apple_developer_kit/shared/errors/errors.dart';
 import 'package:apple_developer_kit/src/shared/appstoreconnect/asc_csr.dart';
+import 'package:apple_developer_kit/src/shared/signing/provisioning_profile.dart'; // studio: 016
 import 'package:basic_utils/basic_utils.dart';
 import 'package:meta/meta.dart';
 
@@ -33,6 +36,11 @@ final class DevelopmentIdentityPaths {
 /// Progress notes for actions the user should know about, such as revoking a
 /// certificate whose private key is gone.
 typedef ProvisioningProgress = void Function(String message);
+
+// studio: 016 — a capability that is still off after provisioning.
+/// Called once per capability Apple did not switch on for an App ID, with
+/// Apple's reason (or why it is unknown). The profile then lacks it.
+typedef CapabilityRefused = void Function(String capability, String reason);
 
 /// Development identity provisioning against App Store Connect.
 final class AscProvisioning {
@@ -81,6 +89,7 @@ final class AscProvisioning {
     List<String> appGroups = const [],
     Set<String> capabilities = const {},
     ProvisioningProgress? onProgress,
+    CapabilityRefused? onCapabilityRefused, // studio: 016
   }) async {
     final signingIdentityDir = identityDir ?? outputDir;
     await Future.wait([
@@ -103,11 +112,12 @@ final class AscProvisioning {
     );
 
     final bundleIdResource = await _findOrRegisterBundleId(bundleId);
-    await _ensureCapabilities(
+    final unverified = await _ensureCapabilities(
       bundleId: bundleId,
       bundleIdResource: bundleIdResource,
       capabilities: capabilities,
       onProgress: onProgress,
+      onRefused: onCapabilityRefused,
     );
     await _assignAppGroups(
       bundleIdResource: bundleIdResource,
@@ -131,6 +141,14 @@ final class AscProvisioning {
     await hostServices.host.fileSystem
         .file(profilePath)
         .writeAsBytes(profileBytes);
+    _reportFromProfile(
+      bundleId: bundleId,
+      profileBytes: profileBytes,
+      profilePath: profilePath,
+      unverified: unverified,
+      onProgress: onProgress,
+      onRefused: onCapabilityRefused,
+    );
 
     return DevelopmentIdentityPaths(
       certificatePemPath: certPath,
@@ -253,31 +271,114 @@ final class AscProvisioning {
   ///
   /// Additive and idempotent: an App ID that already has them - a shipping one
   /// usually does - costs a single lookup.
-  Future<void> _ensureCapabilities({
+  ///
+  /// studio: 016 — truthful: Apple answers 409 for conflicts, the Apple ID
+  /// backend answers 403/404 when the session may not read the list, and its
+  /// JSON list does not show features switched on through Xcode's plist
+  /// protocol. So nothing is reported here unless the list confirms it; the
+  /// rest is returned (capability → Apple's reason, or `null` when the call
+  /// succeeded) and checked against the issued profile by
+  /// [_reportFromProfile]. None of it stops the build; 401 still fails.
+  Future<Map<String, String?>> _ensureCapabilities({
     required String bundleId,
     required AscBundleId bundleIdResource,
     required Set<String> capabilities,
     ProvisioningProgress? onProgress,
+    CapabilityRefused? onRefused,
   }) async {
-    if (capabilities.isEmpty) return;
-    final Set<String> enabled;
+    if (capabilities.isEmpty) return const {};
+    Set<String>? enabled;
     try {
       enabled = await client.listEnabledCapabilities(bundleIdResource.id);
     } on CapabilitiesUnsupported {
-      onProgress?.call(
-        'This backend cannot switch App ID capabilities on, so any the app '
-        'declares (Sign in with Apple, Associated Domains, push) will be '
-        'missing from its profile. Use an App Store Connect API key for those.',
-      );
-      return;
+      enabled = null;
     }
-    for (final type in capabilities.toList()..sort()) {
-      if (enabled.contains(type)) continue;
-      await client.enableCapability(
-        bundleIdResourceId: bundleIdResource.id,
-        capabilityType: type,
+    final missing = [
+      for (final type in capabilities.toList()..sort())
+        if (!(enabled?.contains(type) ?? false)) type,
+    ];
+    if (missing.isEmpty) return const {};
+    final unverified = <String, String?>{};
+    for (final type in missing) {
+      try {
+        await client.enableCapability(
+          bundleIdResourceId: bundleIdResource.id,
+          capabilityType: type,
+        );
+        unverified[type] = null;
+      } on CapabilitiesUnsupported {
+        unverified[type] = 'this sign-in cannot switch App ID capabilities on';
+      } on AppleError catch (error) {
+        if (error is AppleApiError && error.statusCode == 401) rethrow;
+        unverified[type] = error.message;
+      }
+    }
+    Set<String> now;
+    try {
+      now = await client.listEnabledCapabilities(bundleIdResource.id);
+    } on Object {
+      now = const {};
+    }
+    for (final type in missing) {
+      if (now.contains(type)) {
+        unverified.remove(type);
+        onProgress?.call('Enabled the $type capability on $bundleId');
+      }
+    }
+    return unverified;
+  }
+
+  // studio: 016 — the issued profile is the authority on what was granted.
+  /// Reports each capability of [unverified] as enabled when the profile's
+  /// entitlements carry it, and as refused otherwise.
+  void _reportFromProfile({
+    required String bundleId,
+    required List<int> profileBytes,
+    required String profilePath,
+    required Map<String, String?> unverified,
+    ProvisioningProgress? onProgress,
+    CapabilityRefused? onRefused,
+  }) {
+    if (unverified.isEmpty) return;
+    Map<Object?, Object?>? granted;
+    try {
+      final content = parseProfileCms(
+        Uint8List.fromList(profileBytes),
+        profilePath,
       );
-      onProgress?.call('Enabled the $type capability on $bundleId');
+      final entitlements = parsePlist(
+        content.plist,
+        profilePath,
+      )['Entitlements'];
+      if (entitlements is Map) granted = entitlements;
+    } on Object {
+      granted = null;
+    }
+    for (final MapEntry(key: type, value: reason) in unverified.entries) {
+      final keys = [
+        for (final MapEntry(:key, :value)
+            in AscCapabilities.byEntitlementKey.entries)
+          if (value == type) key,
+      ];
+      final inProfile = granted != null && keys.any(granted.containsKey);
+      if (inProfile) {
+        if (reason == null) {
+          onProgress?.call('Enabled the $type capability on $bundleId');
+        }
+        continue;
+      }
+      if (granted == null && reason == null) continue;
+      final message =
+          reason ??
+          'Apple accepted the request, but the issued profile does not grant '
+              'it';
+      if (onRefused != null) {
+        onRefused(type, message);
+      } else {
+        onProgress?.call(
+          'The $type capability is not enabled on $bundleId: $message',
+        );
+      }
     }
   }
 

@@ -142,8 +142,10 @@ abstract final class XcrossCodes {
   // studio: 007
   static const buildRunnerProjectFailed = DiagnosticCode(
     'build.runner_project_failed',
-    'Fix the error in ios/Runner, or unset XCROSS_RUNNER to build with the '
-        'generic runner on purpose; until then AppDelegate code does not run.',
+    // studio: 016 — `auto` is the default now; `shim` opts out.
+    'Fix the error in ios/Runner, or set XCROSS_RUNNER=shim to build with the '
+        'generic runner on purpose; until then AppDelegate code does not run '
+        '(a Google Maps key it passes is still applied).',
   );
   static const buildRunnerLegacyRegistration = DiagnosticCode(
     'build.runner_legacy_registration',
@@ -183,6 +185,23 @@ abstract final class XcrossCodes {
     'Install Git from https://git-scm.com, open a new terminal, and retry.',
   );
 
+  // studio: 016 — push, Maps and capabilities on the device.
+  static const buildPushEntitlementInferred = DiagnosticCode(
+    'build.push_entitlement_inferred',
+    'Add aps-environment to ios/Runner/Runner.entitlements to make it '
+        'explicit.',
+  );
+  static const buildMapsKeyUnresolved = DiagnosticCode(
+    'build.maps_key_unresolved',
+    'Pass a string literal, or an Info.plist key read with '
+        'Bundle.main.object(forInfoDictionaryKey:), to GMSServices.provideAPIKey.',
+  );
+  static const signCapabilityNotEnabled = DiagnosticCode(
+    'sign.capability_not_enabled',
+    'Sign in with `xcross auth --apple-id` (or an Admin team key), or switch '
+        'it on at developer.apple.com, then build again.',
+  );
+
   static const all = [
     deviceIosUnsupported,
     deviceNotFound,
@@ -215,6 +234,9 @@ abstract final class XcrossCodes {
     toolchainFlutterSdkInstallFailed,
     toolchainFlutterSdkVersionUnavailable,
     toolchainGitMissing,
+    buildPushEntitlementInferred, // studio: 016
+    buildMapsKeyUnresolved,
+    signCapabilityNotEnabled,
   ];
 }
 

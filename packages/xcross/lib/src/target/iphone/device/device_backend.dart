@@ -19,6 +19,7 @@ import 'package:xcross/src/shared/auth/signing_session.dart';
 import 'package:xcross/src/shared/cli/command_prompt.dart';
 import 'package:xcross/src/shared/config/project_settings.dart';
 import 'package:xcross/src/shared/device/signing_http_client_factory.dart';
+import 'package:xcross/src/shared/diagnostics/xcross_diagnostics.dart'; // studio: 016
 import 'package:xcross/src/shared/errors/errors.dart';
 import 'package:xcross/src/target/iphone/device/internal/bundle_identity_resolver.dart';
 import 'package:xcross/src/target/iphone/device/internal/signed_bundle_identity.dart';
@@ -123,6 +124,16 @@ final class NativeBackend implements DeviceBackend {
   void _warnOnce(String message) {
     if (_warned.add(message)) pymd.runner.log.logWarn(message);
   }
+
+  // studio: 016 — a capability the profile will lack, named with the fix.
+  void _capabilityRefused(String type, String reason, String bundleId) =>
+      _warnOnce(
+        codedWarning(
+          XcrossCodes.signCapabilityNotEnabled,
+          'The $type capability is not enabled on $bundleId, so the profile '
+          'does not grant it: $reason',
+        ),
+      );
 
   @override
   Future<Device> resolveDevice({
@@ -611,6 +622,8 @@ final class NativeBackend implements DeviceBackend {
           // only grants what the App ID has switched on.
           capabilities: _capabilities.of(appOrIpaPath).toSet(),
           onProgress: _warnOnce,
+          onCapabilityRefused: (type, reason) =>
+              _capabilityRefused(type, reason, bundleId), // studio: 016
         );
     final asset = await SigningAssetLoader(hostServices: hostServices).load(
       privateKeyPemPath: identity.privateKeyPemPath,
@@ -724,6 +737,11 @@ final class NativeBackend implements DeviceBackend {
                   ..._capabilities.of(path),
               },
               onProgress: _warnOnce,
+              onCapabilityRefused: (type, reason) => _capabilityRefused(
+                type,
+                reason,
+                extensionBundleId,
+              ), // studio: 016
             );
         assets[extensionBundleId] =
             await SigningAssetLoader(hostServices: hostServices).load(

@@ -133,6 +133,15 @@ abstract final class XcrossCommands {
 
   static List<String> devices() => const ['devices', '--json'];
 
+  /// `xcross project bundle-id [original|prefixed] --json` (feature 016):
+  /// read, or save, the App ID the open project is signed under.
+  static List<String> projectBundleId({bool? realAppId}) => [
+    'project',
+    'bundle-id',
+    if (realAppId != null) realAppId ? 'original' : 'prefixed',
+    '--json',
+  ];
+
   static List<String> appList({String? udid}) => [
     'app',
     'list',

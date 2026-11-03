@@ -86,6 +86,35 @@ Future<SigningAsset> createTestSigningAsset(
   );
 }
 
+// studio: 016 — a parseable profile whose entitlements a test controls.
+/// An unsigned `.mobileprovision` (CMS SignedData around the plist) granting
+/// [entitlements].
+@internal
+Uint8List testProfileCms(Map<String, Object> entitlements) {
+  final plist = Uint8List.fromList(
+    utf8.encode(
+      PropertyListSerialization.stringWithPropertyList(<String, Object>{
+        'Entitlements': entitlements,
+      }),
+    ),
+  );
+  return _sequence([
+    _oid('1.2.840.113549.1.7.2'),
+    _tlv(
+      0xa0,
+      _sequence([
+        _integer(1),
+        _set([_algorithmIdentifier('2.16.840.1.101.3.4.2.1')]),
+        _sequence([
+          _oid('1.2.840.113549.1.7.1'),
+          _tlv(0xa0, _tlv(0x04, plist)),
+        ]),
+        _set(const []),
+      ]),
+    ),
+  ]);
+}
+
 Uint8List _algorithmIdentifier(String oid) =>
     _sequence([_oid(oid), _tlv(0x05, const [])]);
 

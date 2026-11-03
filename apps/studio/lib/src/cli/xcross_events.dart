@@ -51,6 +51,7 @@ sealed class XcrossEvent {
       'artifact' => BuildArtifact.fromJson(json),
       'check' => DoctorCheckResult.fromJson(json),
       'flutter_sdks' => FlutterSdkStatus.fromJson(json),
+      'bundle_id' => BundleIdStatus.fromJson(json),
       'done' => BuildDone(
         json['exitCode'] is int ? json['exitCode']! as int : 1,
       ),
@@ -469,4 +470,38 @@ class FlutterSdkStatus extends XcrossEvent {
 
   /// The version `xcross flutter sdk auto` would install, when needed.
   final String? suggested;
+}
+
+/// `bundle_id`: the App ID the open project is signed under (from
+/// `xcross project bundle-id --json`, feature 016).
+class BundleIdStatus extends XcrossEvent {
+  const BundleIdStatus({
+    required this.next,
+    this.bundleId,
+    this.saved,
+    this.override,
+    this.settingsPath,
+  });
+
+  factory BundleIdStatus.fromJson(Map<String, Object?> json) => BundleIdStatus(
+    bundleId: _string(json['bundleId']),
+    saved: _string(json['saved']),
+    override: _string(json['override']),
+    settingsPath: _string(json['settingsPath']),
+    next: _string(json['next']) ?? 'original',
+  );
+
+  final String? bundleId;
+
+  /// `original`, `prefixed`, or `null` when nothing is saved.
+  final String? saved;
+
+  /// `XCROSS_BUNDLE_ID`, when set.
+  final String? override;
+  final String? settingsPath;
+
+  /// What the next build uses: `original` or `prefixed`.
+  final String next;
+
+  bool get usesRealAppId => next == 'original';
 }

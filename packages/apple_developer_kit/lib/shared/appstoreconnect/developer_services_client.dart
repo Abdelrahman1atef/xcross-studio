@@ -221,16 +221,26 @@ final class DeveloperServicesClient implements DevelopmentProvisioningClient {
     required String bundleIdResourceId,
     required String capabilityType,
   }) async {
+    // studio: 016 — the JSON route answers an Apple ID session's change with
+    // a 409; Xcode's plist protocol switches the common ones on.
+    if (LegacyAppGroups.featureKeys[capabilityType] case final feature?) {
+      await _appGroups.enableFeature(
+        appIdResourceId: bundleIdResourceId,
+        feature: feature,
+      );
+      return;
+    }
     try {
       await _post(
         '/v1/bundleIdCapabilities',
         AscPayloads.capability(
           bundleIdResourceId: bundleIdResourceId,
           capabilityType: capabilityType,
+          withCapabilityRelationship: true,
         ),
       );
     } on AppleApiError catch (error) {
-      if (error.statusCode == 409) return;
+      // studio: 016 — a 409 carries the reason; provisioning reports it.
       if (_unsupported(error)) throw const CapabilitiesUnsupported();
       rethrow;
     }

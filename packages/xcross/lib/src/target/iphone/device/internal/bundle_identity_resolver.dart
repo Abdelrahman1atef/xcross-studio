@@ -34,10 +34,15 @@ enum BundleIdMode {
 ///    project.
 /// 3. An App ID the team already owns, in either form: the choice an earlier
 ///    build made before it was recorded. Switching would orphan the app's
-///    data and every capability bound to that App ID.
+///    data and every capability bound to that App ID. The real ID wins when
+///    the team owns both.
 /// 4. Otherwise this is the app's first build, the one moment the choice is
-///    free, so the user is asked and the answer is saved to the project.
-///    Without a terminal the prefixed form is used and nothing is saved.
+///    free. studio: 016 — the real App ID is the default, because push,
+///    Firebase, Sign in with Apple and the App Store record are all bound to
+///    it: on a terminal the user is asked (default `[1]`, the real ID) and the
+///    answer is saved; without one (XCross Studio, CI) the real ID is
+///    registered and nothing is saved. Either way an ID another team owns
+///    falls back to the prefixed form, with a warning.
 @internal
 final class BundleIdentityResolver {
   BundleIdentityResolver({
@@ -86,18 +91,27 @@ final class BundleIdentityResolver {
     }
 
     if (await client.findBundleId(requested) != null) return original;
-    if (await client.findBundleId(prefixed.exact) != null) return prefixed;
+    if (await client.findBundleId(prefixed.exact) != null) {
+      // studio: 016 — kept, but say how to move to the real ID.
+      log.logInfo(
+        'App ID',
+        '${prefixed.exact} (registered by an earlier build). Push, Firebase '
+            'and Sign in with Apple need $requested: run '
+            '`xcross project bundle-id original`.',
+      );
+      return prefixed;
+    }
 
     final asked = _ask(requested: requested, prefixed: prefixed.exact);
-    if (asked == null) return prefixed;
     // Save what was actually registered: an original id another team owns
     // falls back to prefixed, and retrying it on every build would only
-    // repeat the same failure.
+    // repeat the same failure. Nothing is saved when nobody was asked.
     final effective =
-        asked == BundleIdMode.original && await _registerOriginal(requested)
+        (asked ?? BundleIdMode.original) == BundleIdMode.original &&
+            await _registerOriginal(requested)
         ? BundleIdMode.original
         : BundleIdMode.prefixed;
-    await _save(effective);
+    if (asked != null) await _save(effective);
     return effective == BundleIdMode.original ? original : prefixed;
   }
 
@@ -139,18 +153,19 @@ final class BundleIdentityResolver {
     prompt.write(
       'First build of $requested on this team. Which App ID should xcross '
       'register?$saveNote\n'
-      '  [1] $prefixed  (prefixed, never collides with another team)\n'
-      '  [2] $requested  (original, needed for Sign in with Apple, push, '
-      'passkeys and associated domains)\n',
+      // studio: 016 — the real App ID is the default answer.
+      '  [1] $requested  (original, needed for push, Firebase, Sign in with '
+      'Apple, passkeys, associated domains and the App Store)\n'
+      '  [2] $prefixed  (prefixed, never collides with another team)\n',
     );
     while (true) {
       final raw = prompt.readLine('Choose 1 or 2 [1]: ');
       if (raw == null) return null;
       switch (raw.trim().toLowerCase()) {
-        case '' || '1' || 'prefixed':
-          return BundleIdMode.prefixed;
-        case '2' || 'original':
+        case '' || '1' || 'original':
           return BundleIdMode.original;
+        case '2' || 'prefixed':
+          return BundleIdMode.prefixed;
       }
       prompt.write('Invalid choice "${raw.trim()}".\n');
     }
@@ -190,7 +205,9 @@ final class BundleIdentityResolver {
       if (error.statusCode == 401 || error.statusCode == 403) rethrow;
       log.logWarn(
         'Could not register $requested (${error.message}); it is likely '
-        'owned by another team. Using the prefixed App ID instead.',
+        'owned by another team. Using the prefixed App ID instead: push, '
+        'Firebase, Sign in with Apple and associated domains will not work '
+        'under it.',
       );
       return false;
     }

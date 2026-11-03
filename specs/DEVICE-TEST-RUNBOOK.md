@@ -84,7 +84,7 @@ Details: `specs/004-icon-launch-screen/device-check.md`.
 ## 4b. Feature 007: the project's own AppDelegate (opt-in)
 
 Use a project whose `ios/Runner/AppDelegate.swift` does something visible, such as registering a method channel.
-Run `$env:XCROSS_RUNNER = "project"; & $X flutter run --release`, then `Remove-Item Env:XCROSS_RUNNER`.
+Run `& $X flutter run --release` (since 016 `XCROSS_RUNNER=auto` compiles an AppDelegate with custom code; `$env:XCROSS_RUNNER = "project"` forces it, `"shim"` forces the generic runner).
 Expect no `build.runner_project_failed`; the app starts and the channel answers. Without the variable, the default
 runner is unchanged. Rows: `specs/007-native-runner-code/device-check.md`.
 

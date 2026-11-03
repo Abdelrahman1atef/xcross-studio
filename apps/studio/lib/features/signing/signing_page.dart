@@ -9,6 +9,7 @@ import '../../src/state/job.dart';
 import '../../src/state/readiness.dart';
 import '../common/job_views.dart';
 import '../common/readiness_views.dart';
+import 'app_id_card.dart';
 
 /// Signing (§6.4): authenticate securely and understand the trade-offs.
 class SigningPage extends StatelessWidget {
@@ -63,17 +64,7 @@ class SigningPage extends StatelessWidget {
               ),
             ),
             const SigningForm(),
-            const XCard(
-              title: 'Bundle identity',
-              child: XNote(
-                'xcross reads the bundle id from your Flutter project and, '
-                'with a free team, may qualify it with your team id so the '
-                'App ID is unique; capabilities such as push need a paid '
-                'team. App Groups are registered for you with an Apple ID '
-                '(set XCROSS_APP_GROUP with an API key). See the README '
-                'sections "Bundle identity" and "App extensions".',
-              ),
-            ),
+            const AppIdCard(), // feature 016
             const _SignOutCard(),
           ],
         );

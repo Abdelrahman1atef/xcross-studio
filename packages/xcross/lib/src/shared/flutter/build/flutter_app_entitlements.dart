@@ -53,6 +53,11 @@ final class FlutterAppEntitlements {
     return PropertyListSerialization.stringWithPropertyList(updated);
   }
 
+  // studio: 016 — shared with the push signals and doctor.
+  /// The top-level dictionary of the XML plist [xml]; throws
+  /// [FormatException] when it is not one.
+  static Map<String, Object> parseDictionary(String xml) => _dictionary(xml);
+
   static const _doctype =
       '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
       '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">';

@@ -20,6 +20,10 @@ enum ReadinessArea {
   iosCompiler,
   auth,
   device,
+
+  /// Push notifications of the open project (feature 016); only shown when
+  /// the doctor reports push checks.
+  push,
 }
 
 /// One area's health and the message of its worst check.
@@ -85,6 +89,11 @@ class ReadinessController extends ChangeNotifier {
   /// are not about host readiness (the project itself, the host OS).
   static ReadinessArea? areaOf(DoctorCheckResult check) {
     final name = check.name.toLowerCase();
+    if (check.section == 'Push notifications' ||
+        name.startsWith('push ') ||
+        name == 'firebase config') {
+      return ReadinessArea.push;
+    }
     if (name.contains('darwin sdk')) return ReadinessArea.darwinSdk;
     // "AOT compiler (release)": only the release compiler decides readiness.
     if (name.contains('aot compiler')) {
@@ -159,7 +168,10 @@ class ReadinessController extends ChangeNotifier {
   /// Whether a doctor run finished with at least one failing area.
   bool get needsSetup =>
       !checking &&
-      ReadinessArea.values.any((a) => area(a).health == Health.failed);
+      ReadinessArea.values.any(
+        // Push is about the project, not the computer.
+        (a) => a != ReadinessArea.push && area(a).health == Health.failed,
+      );
 
   AreaHealth _combine(List<ReadinessArea> areas) {
     final all = [for (final a in areas) area(a)];

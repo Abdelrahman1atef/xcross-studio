@@ -10,6 +10,7 @@ import 'package:xcross/src/shared/compose/toolchain/compose_toolchain_resolver.d
 import 'package:xcross/src/shared/flutter/gen_snapshot/ios_gen_snapshot_mode.dart';
 import 'package:xcross/src/shared/flutter/gen_snapshot/ios_gen_snapshot_resolver.dart';
 import 'package:xcross/src/shared/flutter/models/flutter/flutter_build_mode.dart';
+import 'package:xcross/src/shared/flutter/project/push_readiness.dart'; // studio: 016
 import 'package:xcross/src/shared/flutter/sdk/ios_compiler_catalog.dart'; // studio: 014
 import 'package:xcross/src/shared/packages/package_config_resolver.dart';
 import 'package:xcross/src/shared/runtime/xcross_runtime.dart';
@@ -36,9 +37,20 @@ final class DoctorSections<T extends PlatformHostInterface> {
 
   List<DoctorSection> get flutter => [
     DoctorSection('Flutter project', flutterProject),
+    // studio: 016 — only for a project that wants push.
+    if (_push case final push when push.applies)
+      DoctorSection(PushReadiness.section, () async => push.checks()),
     DoctorSection('iOS toolchain', environment.flutterToolchain),
     DoctorSection('Deployment', environment.deployment),
   ];
+
+  // studio: 016
+  late final PushReadiness _push = PushReadiness(
+    fileSystem: runtime.host.fileSystem,
+    paths: runtime.host.paths.context,
+    projectRoot: projectRoot,
+    environment: runtime.runner.effectiveEnvironment,
+  );
 
   List<DoctorSection> get compose => [
     DoctorSection('Compose project', composeProject),

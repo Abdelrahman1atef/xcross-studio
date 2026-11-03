@@ -43,11 +43,15 @@ import 'package:xcross/src/shared/cli/internal/xcross_runner.dart';
 import 'package:xcross/src/shared/config/config.dart';
 import 'package:xcross/src/shared/config/config_store.dart';
 import 'package:xcross/src/shared/errors/errors.dart';
+import 'package:xcross/src/shared/flutter/build/ios_bundle_id.dart'; // studio: 016
 import 'package:xcross/src/shared/flutter/errors.dart';
+import 'package:xcross/src/shared/flutter/project/pbx_project_reader.dart'; // studio: 016
 import 'package:xcross/src/shared/models/pack_result.dart'; // studio: 005
+import 'package:xcross/src/shared/runtime/xcross_runtime.dart'; // studio: 016
 import 'package:xcross/src/shared/update/install_layout.dart';
 import 'package:xcross/src/shared/update/self_update.dart';
 import 'package:xcross/src/shared/update/update_check.dart';
+import 'package:xcross/src/target/iphone/cli/basic/project_command.dart'; // studio: 016
 import 'package:xcross/src/target/iphone/cli/basic/tunnel_command.dart';
 import 'package:xcross/src/target/iphone/device/core_device_launch_profile.dart'; // studio: 005
 import 'package:xcross/src/target/iphone/device/device_backend.dart'; // studio: 011
@@ -158,6 +162,14 @@ abstract final class XcrossCli {
         fileSystem: runtime.host.fileSystem,
         write: runtime.log.output.write,
       ),
+      // studio: 016 — `xcross project bundle-id`.
+      ProjectCommand(
+        fileSystem: runtime.host.fileSystem,
+        paths: runtime.host.paths.context,
+        projectRoot: () => runtime.host.paths.context.current,
+        environment: runtime.runner.effectiveEnvironment,
+        write: runtime.log.output.write,
+      ),
       // studio: 006 — `xcross plugin list|shim`.
       PluginCommand(
         fileSystem: runtime.host.fileSystem,
@@ -195,7 +207,14 @@ abstract final class XcrossCli {
                 selector: udid,
                 mode: DeviceSearchMode.usb,
               );
-              final pack = PackResult(outputPath: appPath, bundleId: bundleId);
+              // studio: 016 — run inside the project, the App ID choice saved
+              // with it applies to its own IPA (XCross Studio's Install).
+              final projectRoot = _projectRootFor(runtime, bundleId);
+              final pack = PackResult(
+                outputPath: appPath,
+                bundleId: bundleId,
+                projectRoot: projectRoot,
+              );
               // studio: 011 — install as signed (an IPA from `xcross sign`).
               if (!resign) {
                 final device = prechecked.device;
@@ -215,6 +234,7 @@ abstract final class XcrossCli {
                   appPath,
                   device: prechecked.device,
                   bundleId: bundleId,
+                  projectRoot: projectRoot,
                 );
                 return;
               }
@@ -372,6 +392,27 @@ abstract final class XcrossCli {
     }
   }
 
+  // studio: 016
+  /// The current folder when it is the project [bundleId] was built from
+  /// (same bundle ID), so its saved App ID choice applies; otherwise `null`.
+  static String? _projectRootFor<T extends PlatformHostInterface>(
+    XcrossRuntime<T> runtime,
+    String bundleId,
+  ) {
+    final paths = runtime.host.paths.context;
+    final root = paths.current;
+    try {
+      final projectId = IosBundleId(
+        runtime.host.fileSystem,
+        paths,
+        PbxProjectReader(runtime.host.fileSystem, paths),
+      ).resolve(root);
+      return projectId == bundleId ? root : null;
+    } on Object {
+      return null;
+    }
+  }
+
   /// Both completion and DAP own stdout as a machine protocol; a credits line
   /// corrupts either stream.
   static bool ownsMachineStdout(List<String> args, CommandRunner<void> runner) {
@@ -384,7 +425,11 @@ abstract final class XcrossCli {
           // studio: 010 — NDJSON from the device commands.
           _deviceJson(command) ||
           // studio: 014 — `flutter sdk list --json` prints one document.
-          _flutterSdkJson(command);
+          _flutterSdkJson(command) ||
+          // studio: 016 — `project bundle-id --json` prints one object.
+          command?.name == 'project' &&
+              command?.command?.name == 'bundle-id' &&
+              command?.command?.flag('json') == true;
     } on FormatException {
       return false;
     }

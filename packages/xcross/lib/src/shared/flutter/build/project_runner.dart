@@ -9,9 +9,11 @@ import 'package:xcross/src/shared/diagnostics/build_warnings.dart';
 import 'package:xcross/src/shared/diagnostics/xcross_diagnostics.dart';
 import 'package:xcross/src/shared/flutter/build/ios_deployment_target.dart';
 import 'package:xcross/src/shared/flutter/build/project_runner_sources.dart';
+import 'package:xcross/src/shared/flutter/build/swiftpm_module_map.dart'; // studio: 016
 import 'package:xcross/src/shared/flutter/constants.dart';
 import 'package:xcross/src/shared/flutter/errors.dart';
 import 'package:xcross/src/shared/flutter/flutter_build_runtime.dart';
+import 'package:xcross/src/shared/flutter/swiftpm/shared_search_paths.dart';
 
 /// Builds the Runner from [ProjectRunnerSources] and returns its path.
 @internal
@@ -60,16 +62,20 @@ final class ProjectRunner {
   /// The Runner linked from the project's sources, or null when the generic
   /// runner should be used (the default, or after a coded warning).
   Future<String?> build() async {
-    if (RunnerMode.fromEnvironment(environment) != RunnerMode.project) {
-      return null;
-    }
+    final mode = RunnerMode.fromEnvironment(environment);
+    if (mode == RunnerMode.shim) return null;
+    // studio: 016 — `auto` (the default) uses the project's sources only when
+    // they hold code of their own, and stays silent otherwise.
+    final auto = mode == RunnerMode.auto;
     final ProjectRunnerSources sources;
     try {
       sources = discover();
     } on Exception catch (error) {
+      if (auto) return null;
       _failed('its sources could not be read ($error)');
       return null;
     }
+    if (auto && (sources.isEmpty || !sources.hasCustomCode)) return null;
     if (sources.isEmpty) {
       _failed('the app target has no Swift or Objective-C sources');
       return null;
@@ -95,7 +101,8 @@ final class ProjectRunner {
       );
     }
     log.logStatus(
-      'Runner: compiling the project sources '
+      'Runner: ${auto ? 'AppDelegate has its own code; ' : ''}compiling the '
+      'project sources '
       '(${sources.swift.length} Swift, ${sources.objc.length} Objective-C)',
     );
     try {
@@ -186,6 +193,37 @@ final class ProjectRunnerBuilder<T extends PlatformHostInterface> {
         .file(supportSourcePath)
         .writeAsString(supportSource(hasPlugins: pluginsLibrary != null));
     final includeDirectories = [...sources.headerDirectories, supportDir];
+    // Binary plugin modules are not in SwiftPM's Modules directory. Runner
+    // needs the same xcframework header/framework paths as the plugins.
+    final pluginSearchArguments = pluginsLibrary == null
+        ? <String>[]
+        : SwiftPmSharedSearchPaths(
+            fileSystem: runtime.plugins.runtime.artifactFileSystem,
+            targetPolicy: runtime.policy,
+          ).arguments(p.dirname(p.dirname(p.dirname(pluginsLibrary))));
+    // studio: 016 — C-family SwiftPM targets (FirebaseCore, …) are clang
+    // modules: Swift sees them only through their module maps, as SwiftPM
+    // passes them to its own Swift targets.
+    final moduleMaps = pluginsLibrary == null
+        ? const <SwiftPmModuleMap>[]
+        : SwiftPmModuleMap.discover(
+            runtime.plugins.runtime.artifactFileSystem,
+            p.dirname(pluginsLibrary),
+          );
+    final swiftSearchArguments = [
+      for (final argument in pluginSearchArguments)
+        if (argument != '-Xswiftc') argument,
+      for (final map in moduleMaps) ...map.swiftArguments,
+    ];
+    final clangSearchArguments = <String>[];
+    for (var index = 0; index + 1 < pluginSearchArguments.length; index++) {
+      if (pluginSearchArguments[index] == '-Xcc') {
+        clangSearchArguments.add(pluginSearchArguments[++index]);
+      }
+    }
+    for (final map in moduleMaps) {
+      clangSearchArguments.addAll(map.clangArguments);
+    }
 
     final clang = await runtime.toolchain.resolveDarwinClang(iosSdk);
     final objects = <String>[];
@@ -205,6 +243,7 @@ final class ProjectRunnerBuilder<T extends PlatformHostInterface> {
           flutterSlice: flutterSlice,
           deploymentTarget: deploymentTarget,
           includeDirectories: includeDirectories,
+          pluginSearchArguments: clangSearchArguments,
         ),
         label: 'clang',
       );
@@ -241,6 +280,7 @@ final class ProjectRunnerBuilder<T extends PlatformHostInterface> {
           parseAsLibrary: !sources.hasMainFile,
           pluginsLibrary: pluginsLibrary,
           pluginModulesDir: pluginModulesDir,
+          pluginSearchArguments: swiftSearchArguments,
           nativeAssetFrameworks: nativeAssetFrameworks,
         ),
         label: 'swiftc',
@@ -304,6 +344,7 @@ final class ProjectRunnerBuilder<T extends PlatformHostInterface> {
     required String flutterSlice,
     required IosDeploymentTarget deploymentTarget,
     required List<String> includeDirectories,
+    List<String> pluginSearchArguments = const [],
   }) => [
     '-target',
     deploymentTarget.buildTriple,
@@ -316,6 +357,7 @@ final class ProjectRunnerBuilder<T extends PlatformHostInterface> {
     '-I',
     p.join(flutterSlice, 'Flutter.framework', 'Headers'),
     for (final directory in includeDirectories) ...['-I', directory],
+    ...pluginSearchArguments,
     '-fobjc-arc',
     deploymentTarget.minimumVersionFlag,
     '-c',
@@ -346,6 +388,7 @@ final class ProjectRunnerBuilder<T extends PlatformHostInterface> {
     String? compilerRtIos,
     String? pluginsLibrary,
     String? pluginModulesDir,
+    List<String> pluginSearchArguments = const [],
     List<String> nativeAssetFrameworks = const [],
   }) => [
     '-sdk',
@@ -371,6 +414,7 @@ final class ProjectRunnerBuilder<T extends PlatformHostInterface> {
     '-F',
     flutterSlice,
     if (pluginModulesDir != null) ...['-I', pluginModulesDir],
+    ...pluginSearchArguments,
     if (bridgingHeader != null) ...['-import-objc-header', bridgingHeader],
     '-Xcc',
     '-isysroot',

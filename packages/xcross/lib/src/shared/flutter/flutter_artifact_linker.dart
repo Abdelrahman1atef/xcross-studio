@@ -1,12 +1,14 @@
 import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
+import 'package:xcross/src/shared/diagnostics/xcross_diagnostics.dart'; // studio: 016
 import 'package:xcross/src/shared/flutter/build/app_extension_builder.dart';
 import 'package:xcross/src/shared/flutter/build/internal/runner_binary.dart';
 import 'package:xcross/src/shared/flutter/build/ios_app_extensions.dart';
 import 'package:xcross/src/shared/flutter/build/ios_bundle_versions.dart';
 import 'package:xcross/src/shared/flutter/build/ios_deployment_target.dart';
 import 'package:xcross/src/shared/flutter/build/ios_plugin_package.dart';
+import 'package:xcross/src/shared/flutter/build/maps_api_key.dart'; // studio: 016
 import 'package:xcross/src/shared/flutter/build/project_runner.dart'; // studio: 007
 import 'package:xcross/src/shared/flutter/build/runner_shim.dart';
 import 'package:xcross/src/shared/flutter/errors.dart';
@@ -98,6 +100,40 @@ final class FlutterArtifactLinker<T extends PlatformHostInterface>
     return builtExtensions;
   }
 
+  // studio: 016 — AppDelegate's Google Maps key for the generic runner. The
+  // key is never logged, only where it was found.
+  String? _mapsApiKey() {
+    final paths = runtime.host.paths.context;
+    final flutterDir = paths.join(projectRoot, 'ios', 'Flutter');
+    Map<String, String>? settings;
+    final found = MapsApiKeyLocator(
+      fileSystem: runtime.host.fileSystem,
+      paths: paths,
+      resolveVariable: (name) =>
+          (settings ??= runtime.xcconfigs.readDebugConfigurationSync(
+            debugPath: paths.join(flutterDir, 'Debug.xcconfig'),
+            generatedPath: paths.join(flutterDir, 'Generated.xcconfig'),
+          ))[name],
+    ).locate(projectRoot);
+    if (found == null) return null;
+    if (!found.resolved) {
+      runtime.warnings.warn(
+        XcrossCodes.buildMapsKeyUnresolved,
+        subject: found.source,
+        message:
+            '${found.source} calls GMSServices.provideAPIKey, but xcross '
+            'could not find the key, so the generic runner cannot pass it and '
+            'Google Maps views will fail.',
+      );
+      return null;
+    }
+    runtime.runner.log.logInfo(
+      'Google Maps',
+      'key from ${found.source}, passed by the generic runner',
+    );
+    return found.key;
+  }
+
   /// Compile the ObjC Runner shim and return both the xcframework path and the
   /// linked Runner binary path.
   Future<RunnerBinary> _buildRunnerBinary(
@@ -148,6 +184,7 @@ final class FlutterArtifactLinker<T extends PlatformHostInterface>
           pluginsLibrary: pluginsLibrary,
           nativeAssetFrameworks: nativeAssetFrameworks,
           verbose: verbose,
+          mapsApiKey: projectRunner == null ? _mapsApiKey() : null,
         );
 
     final sceneDelegateClass = projectRunner == null

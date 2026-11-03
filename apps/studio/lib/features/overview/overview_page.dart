@@ -111,18 +111,21 @@ class _OverviewPageState extends State<OverviewPage> {
               runSpacing: XSpace.s3,
               children: [
                 for (final area in ReadinessArea.values)
-                  Builder(
-                    builder: (context) {
-                      final health = readiness.area(area);
-                      return XToolchainCard(
-                        title: areaTitle(area),
-                        state: toolchainStateOf(health.health),
-                        message: health.health == Health.unknown
-                            ? 'Run checks to find out.'
-                            : health.message,
-                      );
-                    },
-                  ),
+                  // Push only for a project the doctor found push checks in.
+                  if (area != ReadinessArea.push ||
+                      readiness.area(area).checks.isNotEmpty)
+                    Builder(
+                      builder: (context) {
+                        final health = readiness.area(area);
+                        return XToolchainCard(
+                          title: areaTitle(area),
+                          state: toolchainStateOf(health.health),
+                          message: health.health == Health.unknown
+                              ? 'Run checks to find out.'
+                              : health.message,
+                        );
+                      },
+                    ),
               ],
             ),
             if (_compilerProblem(readiness) case final problem?) ...[

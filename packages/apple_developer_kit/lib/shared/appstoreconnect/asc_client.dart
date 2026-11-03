@@ -286,10 +286,10 @@ final class AscClient implements DevelopmentProvisioningClient {
           capabilityType: capabilityType,
         ),
       );
-    } on AppleApiError catch (error) {
-      // Apple answers 409 for a capability that is already on, which is the state
-      // the caller asked for.
-      if (error.statusCode == 409) return;
+    } on AppleApiError {
+      // studio: 016 — a 409 is no longer swallowed: provisioning only asks for
+      // capabilities the list shows as off, so a 409 here is a conflict whose
+      // detail is the reason the capability stays off.
       rethrow;
     }
   }

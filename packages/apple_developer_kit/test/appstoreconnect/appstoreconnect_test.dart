@@ -11,6 +11,7 @@ import 'package:test/test.dart';
 
 import '../support/host_services.dart';
 import '../support/mapped_apple_fixture.dart';
+import '../support/signing_fixture.dart';
 
 void main() {
   test(
@@ -40,11 +41,10 @@ void main() {
           fixture.fileSystem.file(result.privateKeyPemPath).readAsStringSync(),
           contains('PRIVATE KEY'),
         );
-        expect(fixture.fileSystem.file(result.profilePath).readAsBytesSync(), [
-          4,
-          5,
-          6,
-        ]);
+        expect(
+          fixture.fileSystem.file(result.profilePath).readAsBytesSync(),
+          testProfileCms(client.profileEntitlements),
+        );
         expect(File(result.profilePath).existsSync(), isFalse);
       }
       expect(client.certificateCreations, 1);
@@ -463,6 +463,116 @@ void main() {
     },
   );
 
+  group('AC-016-5 capabilities are reported truthfully', () {
+    Future<(List<String>, Map<String, String>)> provision(
+      FakeProvisioningClient client,
+      Set<String> capabilities,
+    ) async {
+      final temp = Directory.systemTemp.createTempSync('xcross_caps_016');
+      addTearDown(() => temp.deleteSync(recursive: true));
+      final progress = <String>[];
+      final refused = <String, String>{};
+      final result =
+          await AscProvisioning(
+            hostServices: testHostServices,
+            client: client,
+          ).provisionDevelopmentIdentity(
+            bundleId: 'com.example.app',
+            deviceUdids: const ['UDID'],
+            outputDir: temp.path,
+            capabilities: capabilities,
+            onProgress: progress.add,
+            onCapabilityRefused: (type, reason) => refused[type] = reason,
+          );
+      expect(File(result.profilePath).existsSync(), isTrue);
+      return (progress, refused);
+    }
+
+    test('"Enabled" only for a capability that is now on', () async {
+      final client = FakeProvisioningClient()
+        ..capabilitiesStayingOff.add('PUSH_NOTIFICATIONS');
+      final (progress, refused) = await provision(client, {
+        'APPLE_ID_AUTH',
+        'PUSH_NOTIFICATIONS',
+      });
+      expect(progress, [
+        'Enabled the APPLE_ID_AUTH capability on com.example.app',
+      ]);
+      expect(refused.keys, ['PUSH_NOTIFICATIONS']);
+      expect(
+        refused['PUSH_NOTIFICATIONS'],
+        contains('issued profile does not grant it'),
+      );
+    });
+
+    test('a capability the list misses but the profile grants is enabled '
+        '(Apple ID backend)', () async {
+      final client = FakeProvisioningClient()
+        ..capabilitiesStayingOff.add('PUSH_NOTIFICATIONS')
+        ..profileEntitlements['aps-environment'] = 'development';
+      final (progress, refused) = await provision(client, {
+        'PUSH_NOTIFICATIONS',
+      });
+      expect(progress, [
+        'Enabled the PUSH_NOTIFICATIONS capability on com.example.app',
+      ]);
+      expect(refused, isEmpty);
+    });
+
+    test('403, 404 and 409 do not stop the build', () async {
+      final client = FakeProvisioningClient()
+        ..capabilityFailures.addAll({
+          'APPLE_ID_AUTH': const AppleApiError(403, 'Forbidden for this role'),
+          'ASSOCIATED_DOMAINS': const AppleApiError(404, 'Not found'),
+          'PUSH_NOTIFICATIONS': const AppleApiError(409, 'Conflict'),
+        });
+      final (progress, refused) = await provision(client, {
+        'APPLE_ID_AUTH',
+        'ASSOCIATED_DOMAINS',
+        'PUSH_NOTIFICATIONS',
+      });
+      expect(progress.where((line) => line.startsWith('Enabled')), isEmpty);
+      expect(refused, {
+        'APPLE_ID_AUTH': 'Forbidden for this role',
+        'ASSOCIATED_DOMAINS': 'Not found',
+        'PUSH_NOTIFICATIONS': 'Conflict',
+      });
+    });
+
+    test('401 still stops the build', () {
+      final client = FakeProvisioningClient()
+        ..capabilityFailures['PUSH_NOTIFICATIONS'] = const AppleApiError(
+          401,
+          'Unauthorized',
+        );
+      expect(
+        provision(client, {'PUSH_NOTIFICATIONS'}),
+        throwsA(isA<AppleApiError>()),
+      );
+    });
+
+    test(
+      'a backend that cannot list still tries, and the profile decides',
+      () async {
+        final client = FakeProvisioningClient(capabilitiesSupported: false)
+          ..profileEntitlements['aps-environment'] = 'development';
+        final (_, refused) = await provision(client, {
+          'APPLE_ID_AUTH',
+          'PUSH_NOTIFICATIONS',
+        });
+        expect(refused.keys, ['APPLE_ID_AUTH']);
+      },
+    );
+
+    test('a backend without capabilities names each one', () async {
+      final (_, refused) = await provision(
+        FakeProvisioningClient(capabilitiesSupported: false),
+        {'APPLE_ID_AUTH', 'PUSH_NOTIFICATIONS'},
+      );
+      expect(refused.keys, ['APPLE_ID_AUTH', 'PUSH_NOTIFICATIONS']);
+    });
+  });
+
   test('keeps a profile xcross did not create', () async {
     final temp = Directory.systemTemp.createTempSync('xcross_profile_keep');
     addTearDown(() => temp.deleteSync(recursive: true));
@@ -706,7 +816,7 @@ class FakeProvisioningClient implements DevelopmentProvisioningClient {
     createdProfileName = name;
     return AscProfile(
       id: 'profile-$bundleIdResourceId',
-      profileContentBase64: base64Encode([4, 5, 6]),
+      profileContentBase64: base64Encode(testProfileCms(profileEntitlements)),
       uuid: 'uuid',
       profileState: 'ACTIVE',
       expirationDate: null,
@@ -757,6 +867,18 @@ class FakeProvisioningClient implements DevelopmentProvisioningClient {
 
   final Set<String> enabledCapabilities = {};
 
+  /// studio: 016 — what the issued profile grants.
+  final Map<String, Object> profileEntitlements = {
+    'application-identifier': 'TEAM.com.example.app',
+  };
+
+  /// studio: 016 — capability types whose enable call throws this error.
+  final Map<String, Exception> capabilityFailures = {};
+
+  /// studio: 016 — capability types whose enable call "succeeds" (a swallowed
+  /// 409) but stays off.
+  final Set<String> capabilitiesStayingOff = {};
+
   @override
   Future<Set<String>> listEnabledCapabilities(String bundleIdResourceId) async {
     if (!capabilitiesSupported) throw const CapabilitiesUnsupported();
@@ -770,6 +892,8 @@ class FakeProvisioningClient implements DevelopmentProvisioningClient {
   }) async {
     if (!capabilitiesSupported) throw const CapabilitiesUnsupported();
     enabledCapabilityRequests.add(capabilityType);
+    if (capabilityFailures[capabilityType] case final failure?) throw failure;
+    if (capabilitiesStayingOff.contains(capabilityType)) return;
     enabledCapabilities.add(capabilityType);
   }
 

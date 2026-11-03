@@ -24,9 +24,14 @@ abstract final class AscPayloads {
   /// `ICLOUD_VERSION`, `DATA_PROTECTION_PERMISSION_LEVEL` and
   /// `APPLE_ID_AUTH_APP_CONSENT` take a setting, and sending a setting for
   /// anything else is a 409 naming those three.
+  ///
+  /// studio: 016 — developerservices2 also wants the `capability`
+  /// relationship ([withCapabilityRelationship]), as the developer portal
+  /// sends it.
   static Map<String, dynamic> capability({
     required String bundleIdResourceId,
     required String capabilityType,
+    bool withCapabilityRelationship = false,
   }) => {
     'data': {
       'type': 'bundleIdCapabilities',
@@ -35,6 +40,10 @@ abstract final class AscPayloads {
         'bundleId': {
           'data': {'type': 'bundleIds', 'id': bundleIdResourceId},
         },
+        if (withCapabilityRelationship)
+          'capability': {
+            'data': {'type': 'capabilities', 'id': capabilityType},
+          },
       },
     },
   };

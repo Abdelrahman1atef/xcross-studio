@@ -41,6 +41,7 @@ final class RunnerShim<T extends PlatformHostInterface> {
     String? pluginsLibrary,
     List<String> nativeAssetFrameworks = const [],
     bool verbose = false,
+    String? mapsApiKey, // studio: 016
   }) => runtime.runner.log.logStep('Compiling Runner', () async {
     final clang = await runtime.toolchain.resolveDarwinClang(
       runtime.sdkRepository.iosSdk(sdk, target: deploymentTarget.platform),
@@ -63,6 +64,7 @@ final class RunnerShim<T extends PlatformHostInterface> {
           runnerObjcSource(
             hasPlugins: pluginsLibrary != null,
             verbose: verbose,
+            mapsApiKey: mapsApiKey,
           ),
         );
 
@@ -280,17 +282,18 @@ final class RunnerShim<T extends PlatformHostInterface> {
   static String runnerObjcSource({
     required bool hasPlugins,
     required bool verbose,
+    String? mapsApiKey, // studio: 016
   }) =>
       '''
 #import <UIKit/UIKit.h>
 #import <Flutter/Flutter.h>
 
-${hasPlugins ? _pluginsExternDeclaration : _emptyPluginRegistrantStub}
+${hasPlugins ? _pluginsExternDeclaration : _emptyPluginRegistrantStub}${mapsApiKey == null ? '' : mapsKeyFunction(mapsApiKey)}
 @interface AppDelegate : FlutterAppDelegate <FlutterImplicitEngineDelegate>
 @end
 @implementation AppDelegate
 - (BOOL)application:(UIApplication*)application didFinishLaunchingWithOptions:(NSDictionary*)launchOptions {
-  ${verbose ? 'NSLog(@"[xcross] application launch started");' : ''}
+  ${verbose ? 'NSLog(@"[xcross] application launch started");' : ''}${mapsApiKey == null ? '' : ' XcrossProvideMapsKey();'}
   BOOL launched = [super application:application didFinishLaunchingWithOptions:launchOptions];
   ${verbose ? 'NSLog(@"[xcross] FlutterAppDelegate didFinishLaunching returned: %@", launched ? @"YES" : @"NO");' : ''}
   return launched;
@@ -325,6 +328,29 @@ int main(int argc, char * argv[]) {
   @autoreleasepool { return UIApplicationMain(argc, argv, nil, @"AppDelegate"); }
 }
 ''';
+
+  // studio: 016 — the generic runner never runs AppDelegate.swift, so the Maps
+  // SDK never got its key and the map screen crashed. The class is looked up
+  // at run time (it is exported from the plugins library), so no GoogleMaps
+  // header or link flag is needed and apps without it skip the call.
+  /// The Objective-C function that calls `[GMSServices provideAPIKey:]` with
+  /// [key], before the Flutter engine starts.
+  @visibleForTesting
+  static String mapsKeyFunction(String key) {
+    final literal = key
+        .replaceAll(r'\', r'\\')
+        .replaceAll('"', r'\"')
+        .replaceAll(RegExp(r'[\r\n]'), '');
+    return '''
+#import <objc/message.h>
+static void XcrossProvideMapsKey(void) {
+  Class services = NSClassFromString(@"GMSServices");
+  SEL selector = NSSelectorFromString(@"provideAPIKey:");
+  if (services == nil || ![services respondsToSelector:selector]) return;
+  ((BOOL (*)(id, SEL, NSString *))objc_msgSend)(services, selector, @"$literal");
+}
+''';
+  }
 
   /// Empty registrant stub — today's behaviour, used when there are no Swift
   /// Package Manager plugins to register.

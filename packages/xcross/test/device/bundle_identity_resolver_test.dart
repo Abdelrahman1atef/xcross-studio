@@ -59,20 +59,37 @@ void main() {
     },
   );
 
-  test('asks on the first build and defaults to prefixed', () async {
-    final prompt = ScriptedPrompt(['']);
+  test(
+    'AC-016-1 asks on the first build and defaults to the real id',
+    () async {
+      final prompt = ScriptedPrompt(['']);
+      final client = FakeBundleClient();
+      expect(await resolve(client, prompt: prompt), requested);
+      expect(prompt.asked, hasLength(1));
+      expect(
+        prompt.written.join(),
+        allOf(contains('[1] $requested'), contains('[2] $prefixed')),
+      );
+      expect(client.registered, [requested]);
+      expect(projectFile().readAsStringSync(), 'bundle_id: original\n');
+    },
+  );
+
+  test('AC-016-1 saves prefixed when chosen, without registering', () async {
+    final prompt = ScriptedPrompt(['2']);
     final client = FakeBundleClient();
     expect(await resolve(client, prompt: prompt), prefixed);
-    expect(prompt.asked, hasLength(1));
-    expect(
-      prompt.written.join(),
-      allOf(contains(prefixed), contains(requested)),
-    );
     expect(client.registered, isEmpty);
+    expect(projectFile().readAsStringSync(), 'bundle_id: prefixed\n');
+  });
+
+  test('AC-016-1 the real id wins when the team owns both', () async {
+    final client = FakeBundleClient(owned: {requested, prefixed});
+    expect(await resolve(client, prompt: ScriptedPrompt([])), requested);
   });
 
   test('registers the original id when chosen', () async {
-    final prompt = ScriptedPrompt(['nope', '2']);
+    final prompt = ScriptedPrompt(['nope', '1']);
     final client = FakeBundleClient();
     expect(await resolve(client, prompt: prompt), requested);
     expect(prompt.asked, hasLength(2));
@@ -96,15 +113,32 @@ void main() {
       registerError: const AppleApiError(401, 'no'),
     );
     expect(
-      resolve(client, prompt: ScriptedPrompt(['2'])),
+      resolve(client, prompt: ScriptedPrompt(['1'])),
       throwsA(isA<AppleApiError>()),
     );
   });
 
-  test('never asks without a terminal', () async {
-    final prompt = ScriptedPrompt([], interactive: false);
-    expect(await resolve(FakeBundleClient(), prompt: prompt), prefixed);
-    expect(prompt.asked, isEmpty);
+  test(
+    'AC-016-1 without a terminal registers the real id, saves nothing',
+    () async {
+      final prompt = ScriptedPrompt([], interactive: false);
+      final client = FakeBundleClient();
+      expect(await resolve(client, prompt: prompt), requested);
+      expect(prompt.asked, isEmpty);
+      expect(client.registered, [requested]);
+      expect(projectFile().existsSync(), isFalse);
+    },
+  );
+
+  test('AC-016-1 without a terminal, another team owning the id falls back '
+      'to prefixed', () async {
+    final client = FakeBundleClient(
+      registerError: const AppleApiError(409, 'taken'),
+    );
+    expect(
+      await resolve(client, prompt: ScriptedPrompt([], interactive: false)),
+      prefixed,
+    );
     expect(projectFile().existsSync(), isFalse);
   });
 
@@ -176,7 +210,7 @@ void main() {
     expect(
       await resolve(
         FakeBundleClient(),
-        prompt: ScriptedPrompt(['2']),
+        prompt: ScriptedPrompt(['1']),
         withSettings: false,
       ),
       requested,
@@ -192,7 +226,7 @@ void main() {
         prompt: prompt,
         environment: {'XCROSS_DAP': '1'},
       ),
-      prefixed,
+      requested,
     );
     expect(prompt.asked, isEmpty);
   });

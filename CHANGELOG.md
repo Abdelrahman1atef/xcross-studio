@@ -1,5 +1,29 @@
 ## Unreleased (XCross Studio)
 
+- Push, Firebase and Google Maps work in xcross-built apps (found on an iPhone X with a Firebase/FCM/Maps app):
+  - Apps are signed under their **real App ID** by default. The prefixed `XCR-<identity>.<id>` form is now used
+    only on request or when another team owns the ID (with a warning that push, Firebase and Sign in with Apple
+    will not work). The first-build question defaults to the real ID, builds from the desktop app use it too, and
+    `xcross install <ipa>` run inside the project now honours the project's saved choice.
+    `xcross project bundle-id [original|prefixed] [--json]` shows or saves it; XCross Studio has an App ID card
+    with a switch on the Signing page.
+  - `aps-environment` is added when the app uses `firebase_messaging` or the `remote-notification` background mode
+    and declares no entitlements (`build.push_entitlement_inferred`).
+  - Capabilities are reported truthfully: "Enabled …" only when the App ID's list or the issued profile shows it;
+    refusals are `sign.capability_not_enabled` with Apple's reason, and the build goes on. With an Apple ID
+    sign-in, push, associated domains, Game Center, Siri and App Groups are now really switched on (through
+    Xcode's `updateAppId.action`). Before, Apple's 409 was swallowed and reported as "Enabled", so profiles never
+    granted push.
+  - `XCROSS_RUNNER=auto` is the new default: the app's own `AppDelegate` is compiled when it has code beyond
+    Flutter's template, with the module maps of SwiftPM C-family targets (FirebaseCore, …) and every resolved
+    xcframework (GoogleMaps) visible to it; `shim` and `project` still force one runner. The generic runner also
+    passes the Google Maps key the AppDelegate gives `GMSServices.provideAPIKey` (literal, or an Info.plist value
+    with `$(VAR)` from xcconfig; `build.maps_key_unresolved` otherwise).
+  - `xcross flutter doctor` has a "Push notifications" section (entitlement, App ID, Firebase config bundle ID),
+    shown as a readiness card in XCross Studio.
+
+  ([specs/016-push-firebase-maps](specs/016-push-firebase-maps/spec.md))
+
 - App Store Connect **individual** API keys: `xcross auth --key-id <id> --private-key <p8>` without `--issuer-id`
   saves an individual key (signed as `sub: user`, no `iss`). A key passed with an Issuer ID that Apple only accepts
   as individual is detected and saved that way. Apple does not let individual keys manage devices, certificates,

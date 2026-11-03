@@ -10,6 +10,7 @@ import 'package:xcross/src/shared/flutter/build/ios_bundle_resources.dart'; // s
 import 'package:xcross/src/shared/flutter/build/ios_bundle_versions.dart';
 import 'package:xcross/src/shared/flutter/build/ios_deployment_target.dart';
 import 'package:xcross/src/shared/flutter/build/project_runner.dart'; // studio: 007
+import 'package:xcross/src/shared/flutter/build/push_entitlement.dart'; // studio: 016
 import 'package:xcross/src/shared/flutter/constants.dart';
 import 'package:xcross/src/shared/flutter/extensions/app_extension_plist.dart';
 import 'package:xcross/src/shared/flutter/flutter_build_runtime.dart';
@@ -404,13 +405,16 @@ final class FlutterBundleAssembler<T extends PlatformHostInterface>
       projectRoot,
       fromProject: runtime.extensions.applicationEntitlements(projectRoot),
     );
-    if (path == null) return plistXml;
     try {
+      final declared = path == null
+          ? const <String, Object>{}
+          : entitlements.read(path);
       return FlutterAppEntitlements.withSigningKeys(
         plistXml,
-        entitlements.read(path),
+        _withInferredPush(declared, plistXml), // studio: 016
       );
     } on FormatException catch (error) {
+      if (path == null) return plistXml;
       runtime.warnings.warn(
         XcrossCodes.buildEntitlementsUnreadable,
         subject: path,
@@ -420,6 +424,31 @@ final class FlutterBundleAssembler<T extends PlatformHostInterface>
       );
       return plistXml;
     }
+  }
+
+  // studio: 016 — `firebase_messaging` or the remote-notification background
+  // mode without `aps-environment` (no entitlements file) left the profile
+  // without push, and the FCM token null.
+  Map<String, Object> _withInferredPush(
+    Map<String, Object> declared,
+    String plistXml,
+  ) {
+    final signals = PushSignals.read(
+      fileSystem: runtime.host.fileSystem,
+      projectRoot: projectRoot,
+      infoPlistXml: plistXml,
+    );
+    final inferred = signals.inferInto(declared);
+    if (inferred == null) return declared;
+    runtime.warnings.warn(
+      XcrossCodes.buildPushEntitlementInferred,
+      subject: PushSignals.entitlementKey,
+      message:
+          'Push is switched on because ${signals.reason}, but the app '
+          'declares no ${PushSignals.entitlementKey} entitlement; xcross adds '
+          'it (the profile decides development or production).',
+    );
+    return inferred;
   }
 
   /// App Groups declared by the application target's entitlements file.

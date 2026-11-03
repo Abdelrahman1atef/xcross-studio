@@ -26,4 +26,5 @@ String areaTitle(ReadinessArea area) => switch (area) {
   ReadinessArea.iosCompiler => 'iOS release compiler',
   ReadinessArea.auth => 'Authentication',
   ReadinessArea.device => 'Device',
+  ReadinessArea.push => 'Push notifications',
 };

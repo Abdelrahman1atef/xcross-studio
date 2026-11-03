@@ -133,6 +133,26 @@ import UIKit
 }
 ''';
 
+// studio: 016 — app A's shape: a Maps key before Flutter starts.
+const _mapsAppDelegate = '''
+import Flutter
+import UIKit
+import GoogleMaps
+
+@main
+@objc class AppDelegate: FlutterAppDelegate {
+  override func application(
+    _ application: UIApplication,
+    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
+  ) -> Bool {
+    // Must run before any map is created.
+    GMSServices.provideAPIKey("test-maps-key")
+    GeneratedPluginRegistrant.register(with: self)
+    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+}
+''';
+
 const _legacyAppDelegate = '''
 import Flutter
 import UIKit
@@ -289,21 +309,61 @@ void main() {
 
     String text() => output.messages.join('\n');
 
+    test('AC-007-1 / AC-016-9 a template app keeps the generic runner, '
+        'nothing runs', () async {
+      templateProject();
+      File(p.join(project.path, 'ios', 'Runner', 'Helper.m')).deleteSync();
+      expect(await runner(environment: const {}).build(), isNull);
+      expect(
+        await runner(environment: const {'XCROSS_RUNNER': 'auto'}).build(),
+        isNull,
+      );
+      expect(compiled, isEmpty);
+      expect(output.messages, isEmpty);
+      expect(
+        RunnerMode.fromEnvironment(const {'XCROSS_RUNNER': ' Project '}),
+        RunnerMode.project,
+      );
+      expect(RunnerMode.fromEnvironment(const {}), RunnerMode.auto);
+    });
+
+    test('AC-016-9 XCROSS_RUNNER=shim never compiles the project', () async {
+      templateProject(appDelegate: _mapsAppDelegate);
+      expect(
+        await runner(environment: const {'XCROSS_RUNNER': 'shim'}).build(),
+        isNull,
+      );
+      expect(compiled, isEmpty);
+      expect(output.messages, isEmpty);
+    });
+
     test(
-      'AC-007-1 by default the generic runner is kept, nothing runs',
+      'AC-016-9 by default an AppDelegate with its own code is compiled',
       () async {
-        templateProject();
-        expect(await runner(environment: const {}).build(), isNull);
-        expect(
-          await runner(environment: const {'XCROSS_RUNNER': 'shim'}).build(),
-          isNull,
-        );
-        expect(compiled, isEmpty);
-        expect(output.messages, isEmpty);
-        expect(
-          RunnerMode.fromEnvironment(const {'XCROSS_RUNNER': ' Project '}),
-          RunnerMode.project,
-        );
+        templateProject(appDelegate: _mapsAppDelegate);
+        File(p.join(project.path, 'ios', 'Runner', 'Helper.m')).deleteSync();
+        expect(await runner(environment: const {}).build(), '/out/Runner');
+        expect(text(), contains('Runner: AppDelegate has its own code;'));
+      },
+    );
+
+    test('AC-016-9 by default an extra source file is compiled', () async {
+      templateProject();
+      expect(await runner(environment: const {}).build(), '/out/Runner');
+    });
+
+    test(
+      'AC-016-9 by default a failure still falls back with the code',
+      () async {
+        templateProject(appDelegate: _mapsAppDelegate);
+        final result = await runner(
+          environment: const {},
+          compile: (_) async =>
+              throw FlutterBuildError("error: no such module 'GoogleMaps'"),
+        ).build();
+        expect(result, isNull);
+        expect(text(), contains('[build.runner_project_failed]'));
+        expect(text(), contains('XCROSS_RUNNER=shim'));
       },
     );
 
@@ -393,6 +453,7 @@ void main() {
         bridgingHeader: '/ios/Runner/Runner-Bridging-Header.h',
         pluginsLibrary: '/plugins/libFlutterPluginsGenerated.dylib',
         pluginModulesDir: '/plugins/Modules',
+        pluginSearchArguments: ['-I', '/binary/Headers', '-F', '/binary/slice'],
         nativeAssetFrameworks: ['/assets/sqlite3.framework'],
       );
       expect(args, containsAllInOrder(['-module-name', 'Runner']));
@@ -406,6 +467,10 @@ void main() {
       );
       expect(args, containsAllInOrder(['-F', '/engine/ios-arm64']));
       expect(args, containsAllInOrder(['-I', '/plugins/Modules']));
+      expect(
+        args,
+        containsAllInOrder(['-I', '/binary/Headers', '-F', '/binary/slice']),
+      );
       expect(args, containsAllInOrder(['-Xcc', '-I/ios/Runner']));
       expect(args, containsAllInOrder(['-framework', 'Flutter']));
       expect(
@@ -476,10 +541,15 @@ void main() {
         flutterSlice: '/slice',
         deploymentTarget: target,
         includeDirectories: ['/ios/Runner', '/out/support'],
+        pluginSearchArguments: ['-I/binary/Headers', '-F/binary/slice'],
       );
       expect(
         args,
         containsAllInOrder(['-I', '/ios/Runner', '-I', '/out/support']),
+      );
+      expect(
+        args,
+        containsAllInOrder(['-I/binary/Headers', '-F/binary/slice']),
       );
       expect(args, contains('-fobjc-arc'));
       expect(

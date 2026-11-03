@@ -59,6 +59,31 @@ final class LegacyAppGroups {
   /// `ALTFeatureAppGroups`.
   static const appGroupsFeature = 'APG3427HIY';
 
+  // studio: 016 — developerservices2's JSON `bundleIdCapabilities` refuses
+  // an Apple ID session's capability changes (409 "The relationship
+  // 'capabilities' is required"), so the capabilities Xcode switches on
+  // through `updateAppId.action` go that way. Keys as in AltSign's
+  // `ALTCapabilities`.
+  /// `updateAppId.action` feature keys by App Store Connect capability type.
+  static const featureKeys = {
+    'PUSH_NOTIFICATIONS': 'push',
+    'ASSOCIATED_DOMAINS': 'SKC3T5S89Y',
+    'GAME_CENTER': 'gameCenter',
+    'SIRIKIT': 'SI015DKUHP',
+    'APP_GROUPS': appGroupsFeature,
+  };
+
+  /// Switches one feature ([featureKeys] value) on for [appIdResourceId].
+  Future<void> enableFeature({
+    required String appIdResourceId,
+    required String feature,
+  }) async {
+    await _action('ios/updateAppId.action', {
+      'appIdId': appIdResourceId,
+      feature: true,
+    });
+  }
+
   final http.Client _http;
   final LegacyAuthHeaders _authHeaders;
   final LegacyTeamId _teamId;

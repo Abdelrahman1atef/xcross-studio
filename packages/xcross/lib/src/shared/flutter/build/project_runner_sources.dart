@@ -8,19 +8,28 @@ import 'package:xcross/src/shared/flutter/project/pbx_project_reader.dart';
 /// Which executable a Flutter build ships as `Runner`.
 @internal
 enum RunnerMode {
-  /// xcross's generic Objective-C runner (the default).
+  // studio: 016 — the default: the project's sources when AppDelegate has
+  // code of its own (a Maps key, Firebase setup, …), the generic runner for
+  // Flutter's template.
+  /// [project] when the app target has code beyond Flutter's template,
+  /// [shim] otherwise.
+  auto,
+
+  /// xcross's generic Objective-C runner (`XCROSS_RUNNER=shim`).
   shim,
 
   /// The project's own Runner target sources (`XCROSS_RUNNER=project`).
   project;
 
-  /// Environment variable that opts into [project].
+  /// Environment variable that chooses the mode.
   static const environmentKey = 'XCROSS_RUNNER';
 
   static RunnerMode fromEnvironment(Map<String, String> environment) =>
-      environment[environmentKey]?.trim().toLowerCase() == 'project'
-      ? project
-      : shim;
+      switch (environment[environmentKey]?.trim().toLowerCase()) {
+        'project' => project,
+        'shim' => shim,
+        _ => auto,
+      };
 }
 
 /// The application target's sources as Xcode would compile them, minus
@@ -38,6 +47,7 @@ final class ProjectRunnerSources {
     required this.registersPluginsAtLaunch,
     required this.sceneDelegateHasCode,
     this.bridgingHeader,
+    this.hasCustomCode = true, // studio: 016
   });
 
   /// Reads the application target of `<projectRoot>/ios/*.xcodeproj`
@@ -132,6 +142,12 @@ final class ProjectRunnerSources {
             paths.basenameWithoutExtension(entry.key) == 'SceneDelegate' &&
             !isEmptySceneDelegate(entry.value),
       ),
+      hasCustomCode: texts.entries.any(
+        (entry) => !isTemplateSource(
+          paths.basenameWithoutExtension(entry.key),
+          entry.value,
+        ),
+      ),
     );
   }
 
@@ -161,7 +177,89 @@ final class ProjectRunnerSources {
   /// The project's `SceneDelegate` has a non-empty body; xcross replaces it.
   final bool sceneDelegateHasCode;
 
+  // studio: 016
+  /// Some source differs from Flutter's template (AppDelegate code, extra
+  /// files), so `XCROSS_RUNNER=auto` builds the project's own sources.
+  final bool hasCustomCode;
+
   bool get isEmpty => swift.isEmpty && objc.isEmpty;
+
+  // studio: 016 — Flutter's AppDelegate/main templates (Swift and Objective-C,
+  // before and after the UIScene migration); compared without whitespace.
+  static final _templateFragments = [
+    for (final parts in const [
+      ['@main'],
+      ['@UIApplicationMain'],
+      ['@objc'],
+      ['class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {'],
+      ['class AppDelegate: FlutterAppDelegate {'],
+      [
+        'override func application(_ application: UIApplication,',
+        'didFinishLaunchingWithOptions launchOptions:',
+        '[UIApplication.LaunchOptionsKey: Any]?) -> Bool {',
+      ],
+      ['GeneratedPluginRegistrant.register(with: self)'],
+      ['GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)'],
+      [
+        'return super.application(application,',
+        'didFinishLaunchingWithOptions: launchOptions)',
+      ],
+      [
+        'func didInitializeImplicitFlutterEngine(',
+        '_ engineBridge: FlutterImplicitEngineBridge) {',
+      ],
+      ['@implementation AppDelegate'],
+      ['@end'],
+      [
+        '- (BOOL)application:(UIApplication *)application',
+        'didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {',
+      ],
+      ['[GeneratedPluginRegistrant registerWithRegistry:self]'],
+      [
+        '[GeneratedPluginRegistrant registerWithRegistry:',
+        'engineBridge.pluginRegistry]',
+      ],
+      [
+        'return [super application:application',
+        'didFinishLaunchingWithOptions:launchOptions]',
+      ],
+      [
+        '- (void)didInitializeImplicitFlutterEngine:',
+        '(NSObject<FlutterImplicitEngineBridge> *)engineBridge {',
+      ],
+      [
+        'int main(int argc, char* argv[]) { @autoreleasepool {',
+        'return UIApplicationMain(argc, argv, nil,',
+        'NSStringFromClass([AppDelegate class]))',
+      ],
+    ])
+      parts.join().replaceAll(RegExp(r'\s+'), ''),
+  ];
+
+  /// Whether [source] (the file named [name], without extension) is
+  /// Flutter's template: an AppDelegate or `main` with nothing but the
+  /// template's statements, or an empty SceneDelegate. Any other file is
+  /// custom code.
+  @visibleForTesting
+  static bool isTemplateSource(String name, String source) {
+    if (name == 'SceneDelegate') return isEmptySceneDelegate(source);
+    if (name != 'AppDelegate' && name != 'main') return false;
+    var code = source
+        .replaceAll(RegExp(r'/\*.*?\*/', dotAll: true), '')
+        .replaceAll(RegExp('//[^\n]*'), '')
+        .replaceAll(
+          RegExp(
+            r'^\s*(import|#import|#include|@import)\b[^\n]*',
+            multiLine: true,
+          ),
+          '',
+        )
+        .replaceAll(RegExp(r'\s+'), '');
+    for (final fragment in _templateFragments) {
+      code = code.replaceAll(fragment, '');
+    }
+    return code.replaceAll(RegExp('[{};]'), '').isEmpty;
+  }
 
   /// A `main.swift` / `main.m` provides the entry point itself.
   bool get hasMainFile => [
