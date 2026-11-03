@@ -662,6 +662,8 @@ With an App Store Connect **team** key (Admin or App Manager role):
 xcross flutter build --release --ipa --export-method app-store
 xcross release check            # what App Store Connect would reject, before you upload
 xcross publish --wait           # upload (Build Upload API) and wait for Apple's processing
+xcross testflight status        # processing and beta states; group create/add, testers, what-to-test, submit
+xcross appstore metadata push   # App Store page texts; screenshots push, attach, submit --dry-run, status
 ```
 
 The build signs the app and its extensions with an Apple Distribution certificate and App Store profiles, and writes

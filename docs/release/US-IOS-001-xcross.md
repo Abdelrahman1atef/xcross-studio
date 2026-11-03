@@ -141,9 +141,9 @@ XCross Studio runs `flutter analyze` and `flutter test` as the release gate on t
    with `[sign.capability_not_enabled]`; nothing is reported as enabled unless it is on.
 3. The App Store Connect **app record** (name, platform, primary language, bundle ID, SKU) exists:
    `xcross appstore app` checks it and, if it is missing, opens App Store Connect's **New App** page with the
-   bundle ID to pick (Apple's public API cannot create apps) (🛠 021).
+   bundle ID, name and SKU to enter (Apple's public API cannot create apps) (✅ 021).
 4. The record's bundle ID equals the bundle ID in the signed app: `xcross release check` compares the signed ID with
-   the project's (✅ 018); the comparison with the record comes with `xcross appstore app` (🛠 021).
+   the project's (✅ 018) and `xcross appstore app` shows the record's (✅ 021).
 5. Extensions (notification service, widgets, share) get their own App IDs under the app's ID (✅ 003, 007).
 
 **Failure conditions:** ID owned by another team (prefixed fallback, warning); project ID differs from the record
@@ -151,7 +151,7 @@ XCross Studio runs `flutter analyze` and `flutter test` as the release gate on t
 no access to the app (401/403 from App Store Connect, shown with the role needed).
 
 **Status in xcross:** ✅ real App ID by default, `project bundle-id`, truthful capabilities (016); ✅ extensions
-(003, 007); 🛠 app record check (021); 🍎 creating the app record.
+(003, 007); ✅ app record check (021); 🍎 creating the app record.
 
 ## AC-02 — Version and build number
 
@@ -318,32 +318,33 @@ xcross publish build/xcross-ios/ipa/<name>.ipa [--app-id <Apple ID>] [--wait]
 
 `xcross testflight groups`, `xcross testflight group create <name> --internal`, `xcross testflight add --group
 <name> [--build <n>]`, `xcross testflight what-to-test "<text>"`, `xcross testflight testers add <email> --group
-<name>`, and the export compliance answer (`usesNonExemptEncryption`) (🛠 020). The 100-tester and 90-day limits
+<name>`, and the export compliance answer (`xcross testflight compliance --no-encryption`) (✅ 020). The 100-tester and
+90-day limits
 and "internal only" builds are Apple's (🍎).
 
-**Status in xcross:** 🛠 internal TestFlight (020).
+**Status in xcross:** ✅ internal TestFlight (020; writes pending a team key, reads checked).
 
 ## AC-15 — External TestFlight
 
 Beta app information (description, feedback email), beta review contact and demo account, `xcross testflight
-submit` for beta review, external groups, testers by email and `xcross testflight public-link` (🛠 020). Beta
+submit` for beta review, external groups, testers by email and `xcross testflight public-link` (✅ 020). Beta
 review itself is Apple's (🍎).
 
-**Status in xcross:** 🛠 external TestFlight (020); 🍎 beta review.
+**Status in xcross:** ✅ external TestFlight (020); 🍎 beta review.
 
 ## AC-16 — App Store submission
 
 - `xcross appstore metadata pull|push` syncs a `fastlane`-style folder (`appstore/metadata/<locale>/name.txt`,
   `subtitle.txt`, `description.txt`, `keywords.txt`, `support_url.txt`, `privacy_url.txt`, `release_notes.txt`,
-  categories, age rating) with the App Store version (🛠 021).
+  categories, age rating) with the App Store version (✅ 021).
 - `xcross appstore screenshots push` uploads `appstore/screenshots/<locale>/<display>/*.png` after checking the sizes
-  Apple accepts (🛠 021).
+  Apple accepts (✅ 021).
 - `xcross appstore attach --build <n>` attaches the processed build; `xcross appstore submit` creates and submits the
-  review submission; `xcross appstore status` shows its state (🛠 021).
+  review submission (`--dry-run` lists blockers); `xcross appstore status` shows its state (✅ 021).
 - App Privacy answers, pricing, agreements, tax and banking are not in the public API: xcross opens the page (🍎).
 
-**Status in xcross:** 🛠 metadata, screenshots, attach, submit, status (021); 🍎 privacy labels, pricing,
-agreements, approval.
+**Status in xcross:** ✅ metadata, screenshots, attach, submit, status (021; writes pending a team key, status
+checked); 🍎 privacy labels, pricing, agreements, approval.
 
 ---
 
@@ -375,7 +376,7 @@ The same steps run unattended in CI with `docs/ci/github-testflight.yml` on `ubu
 |---|---|---|---|---|
 | TC-01 | Host, toolchain, SDK ≥ 26, Flutter | `xcross flutter doctor`; Overview | all ✓ | ✅ |
 | TC-02 | Account and team | `xcross auth`; Signing | right team, role shown | ✅ |
-| TC-03 | App Store Connect record | `xcross appstore app` | record exists | 🛠 021 |
+| TC-03 | App Store Connect record | `xcross appstore app` | record exists | ✅ 021 |
 | TC-04 | Registered App ID equals project | `xcross project bundle-id`; `release check` | exact match | ✅ 016, 018 |
 | TC-05 | Version in pubspec and app | `xcross inspect <ipa>` | right marketing version | ✅ |
 | TC-06 | Build number | `inspect`; `--build-number auto` | unique build | ✅ 002, 019 |
@@ -394,13 +395,13 @@ The same steps run unattended in CI with `docs/ci/github-testflight.yml` on `ubu
 | TC-19 | Upload | `xcross publish` | accepted | ✅ 019 (store ⏳) |
 | TC-20 | Uploaded build identity | `testflight status` | version, build, app match | ✅ 019, 020 (store ⏳) |
 | TC-21 | Processing | `publish --wait` | `VALID` | ✅ 019 (store ⏳) |
-| TC-22 | Export compliance | `testflight status`; build key | declared | ✅ 018 key / 🛠 020 |
-| TC-23 | Internal group | `testflight add --group` | group has build | 🛠 020 |
+| TC-22 | Export compliance | `testflight status`; build key | declared | ✅ 018, 020 |
+| TC-23 | Internal group | `testflight add --group` | group has build | ✅ 020 (store ⏳) |
 | TC-24 | Install from TestFlight | device | installs, launches | manual |
 | TC-25 | Production backend | device | production | manual |
 | TC-26 | Critical journeys | device | no blockers | manual |
-| TC-27 | External beta review | `testflight submit` | review handled | 🛠 020 |
-| TC-28 | Submission metadata | `appstore metadata push`; `appstore status` | complete | 🛠 021 |
+| TC-27 | External beta review | `testflight submit` | review handled | ✅ 020 (store ⏳) |
+| TC-28 | Submission metadata | `appstore metadata push`; `appstore status` | complete | ✅ 021 (store ⏳) |
 | TC-29 | Duplicate build number | `publish` | refused before upload | ✅ 019 |
 | TC-30 | Interrupted upload | kill `publish`, run again | resumes or restarts safely | ✅ 019 |
 | TC-31 | Release evidence | `release.json`; Release → Export | recorded | ✅ 019 / 🛠 022 |

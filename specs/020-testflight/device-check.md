@@ -6,6 +6,7 @@ session and an individual key), so every store row waits for one.
 | # | AC | Step | Expected | Result |
 |---|---|---|---|---|
 | 1 | AC-020-1 | `xcross testflight status` in app A after `xcross publish` | the uploaded build, `VALID` once processed, beta states | ⏳ needs a team key and an upload (019) |
+| 1b | AC-020-1 | `xcross testflight status --limit 3` in app B with the **individual** key (read-only) | real builds with processing and beta states | ✅ 2026-11-03: three builds `VALID`, internal `READY_FOR_BETA_TESTING`, external `READY_FOR_BETA_SUBMISSION`, no non-exempt encryption, group listed |
 | 2 | AC-020-7 | `xcross testflight compliance --no-encryption` | `MISSING_EXPORT_COMPLIANCE` cleared | ⏳ |
 | 3 | AC-020-3, 4, 5 | `group create QA`, `add --group QA`, `what-to-test "…"` | build in the internal group with notes | ⏳ |
 | 4 | AC-020-6, 10 | `testers add <email> --group QA`; install from TestFlight on the iPhone X | invitation arrives; app installs and opens | ⏳ |
