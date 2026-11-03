@@ -202,6 +202,11 @@ abstract final class XcrossCodes {
     'Put dsymutil on PATH (it ships with the Swift toolchain and with the full '
         'LLVM release), then build again.',
   );
+  static const buildResourceLinkUnresolved = DiagnosticCode(
+    'build.resource_link_unresolved',
+    'The app is built without that file. Report the broken link to the '
+        "package's maintainers.",
+  );
   static const signCapabilityNotEnabled = DiagnosticCode(
     'sign.capability_not_enabled',
     'Sign in with `xcross auth --apple-id` (or an Admin team key), or switch '
@@ -244,6 +249,7 @@ abstract final class XcrossCodes {
     buildMapsKeyUnresolved,
     signCapabilityNotEnabled,
     releaseDsymUnavailable, // studio: 018
+    buildResourceLinkUnresolved,
   ];
 }
 

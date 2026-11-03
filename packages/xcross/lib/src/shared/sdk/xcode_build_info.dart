@@ -1,5 +1,8 @@
 // studio: 018 — the toolchain identity App Store Connect reads from every
 // bundle's Info.plist (specs/018-app-store-build, AC-018-6).
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
@@ -127,21 +130,24 @@ final class XcodeBuildInfo {
   ) {
     final file = fileSystem.file(path);
     if (!file.existsSync()) return const {};
+    // The parser prints a stack trace for every input it rejects, so the
+    // format is chosen from the header instead of by trying both.
     try {
-      final value = PropertyListSerialization.propertyListWithData(
-        file.readAsBytesSync().buffer.asByteData(),
-      );
-      if (value is Map) return value;
-    } on Object {
-      // Not binary; try XML below.
-    }
-    try {
-      final value = PropertyListSerialization.propertyListWithString(
-        file.readAsStringSync(),
-      );
+      final bytes = file.readAsBytesSync();
+      final value = _isBinary(bytes)
+          ? PropertyListSerialization.propertyListWithData(
+              ByteData.sublistView(bytes),
+            )
+          : PropertyListSerialization.propertyListWithString(
+              utf8.decode(bytes, allowMalformed: true),
+            );
       return value is Map ? value : const {};
     } on Object {
       return const {};
     }
   }
+
+  static bool _isBinary(Uint8List bytes) =>
+      bytes.length >= 8 &&
+      ascii.decode(bytes.sublist(0, 8), allowInvalid: true) == 'bplist00';
 }

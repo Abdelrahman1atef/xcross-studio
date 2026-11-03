@@ -20,6 +20,7 @@ import 'package:xcross/src/shared/flutter/flutter_build_runtime.dart';
 import 'package:xcross/src/shared/flutter/flutter_build_steps.dart';
 import 'package:xcross/src/shared/flutter/models/flutter/flutter_build_mode.dart';
 import 'package:xcross/src/shared/flutter/models/flutter/flutter_build_options.dart';
+import 'package:xcross/src/shared/flutter/swiftpm/resource_bundle_copy.dart'; // studio: 018
 import 'package:xcross/src/shared/sdk/xcode_build_info.dart'; // studio: 018
 
 @internal
@@ -452,13 +453,34 @@ final class FlutterBundleAssembler<T extends PlatformHostInterface>
         if (entity is Directory && entity.path.endsWith('.bundle'))
           paths.basename(entity.path),
     ]..sort();
+    // `<workspace>/scratch/<triple>/<configuration>`: the package sources a
+    // dangling link is looked up in are the workspace's checkouts and plugins.
+    final scratch = paths.dirname(paths.dirname(products.path));
+    final packageRoots = [
+      paths.join(scratch, 'checkouts'),
+      paths.join(paths.dirname(scratch), 'plugins'),
+    ];
+    final copier = ResourceBundleCopier(
+      fileSystem: runtime.host.fileSystem,
+      paths: paths,
+    );
     for (final name in names) {
       final target = paths.join(bundleDir, name);
       if (runtime.host.fileSystem.directory(target).existsSync()) continue;
-      await runtime.directoryCopier.copy(
+      final skipped = await copier.copy(
         paths.join(products.path, name),
         target,
+        packageRoots: packageRoots,
       );
+      for (final entry in skipped) {
+        runtime.warnings.warn(
+          XcrossCodes.buildResourceLinkUnresolved,
+          subject: '$name/$entry',
+          message:
+              '"$name/$entry" is a link to a file that is in neither the '
+              'bundle nor its package; it was left out.',
+        );
+      }
     }
     if (names.isNotEmpty) {
       runtime.runner.log.logTrace(

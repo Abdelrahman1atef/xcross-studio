@@ -1,5 +1,6 @@
 // studio: 018 — toolchain identity and export compliance in Info.plist
 // (specs/018-app-store-build, AC-018-6, AC-018-8).
+import 'dart:async';
 import 'dart:io';
 
 import 'package:cli_kit/composition/native_host.dart';
@@ -68,6 +69,39 @@ void main() {
       final keys = read(recorded: false).keys;
       expect(keys['DTXcode'], '2610');
       expect(keys.containsKey('DTXcodeBuild'), isFalse);
+    });
+
+    test('an XML SystemVersion.plist is read without printing a parser '
+        'stack trace', () {
+      final iosSdk = sdk();
+      File(
+        p.join(
+          iosSdk,
+          'System',
+          'Library',
+          'CoreServices',
+          'SystemVersion.plist',
+        ),
+      ).writeAsStringSync(
+        PropertyListSerialization.stringWithPropertyList(<String, Object>{
+          'ProductVersion': '27.1',
+          'ProductBuildVersion': '25B5',
+        }),
+      );
+      final printed = <String>[];
+      final info = runZoned(
+        () => XcodeBuildInfo.read(
+          fileSystem: detectPlatformHost().fileSystem,
+          paths: p.context,
+          iosSdk: iosSdk,
+        ),
+        zoneSpecification: ZoneSpecification(
+          print: (_, _, _, line) => printed.add(line),
+        ),
+      );
+      expect(info.sdkBuild, '25B5');
+      expect(info.dtXcode, '2710');
+      expect(printed, isEmpty);
     });
 
     test('DTXcode format', () {
