@@ -1,3 +1,5 @@
+import 'dart:ui' show AppExitResponse;
+
 import 'package:flutter/material.dart';
 
 import '../design_system/theme/x_theme.dart';
@@ -6,7 +8,7 @@ import 'services.dart';
 import 'shell.dart';
 
 /// The XCross Studio application (feature 013 design system).
-class StudioApp extends StatelessWidget {
+class StudioApp extends StatefulWidget {
   const StudioApp({
     super.key,
     required this.services,
@@ -17,6 +19,39 @@ class StudioApp extends StatelessWidget {
 
   /// Run the doctor, version and device listing on start (off in tests).
   final bool startupChecks;
+
+  @override
+  State<StudioApp> createState() => _StudioAppState();
+}
+
+class _StudioAppState extends State<StudioApp> {
+  // Closing the window ends every job first: a background `devices --watch`
+  // would otherwise keep running, and keep the app's CLI file locked.
+  late final AppLifecycleListener _lifecycle;
+
+  @override
+  void initState() {
+    super.initState();
+    _lifecycle = AppLifecycleListener(onExitRequested: _stopJobs);
+  }
+
+  Future<AppExitResponse> _stopJobs() async {
+    await widget.services.jobs.stopAll().timeout(
+      const Duration(seconds: 3),
+      onTimeout: () => <void>[],
+    );
+    return AppExitResponse.exit;
+  }
+
+  @override
+  void dispose() {
+    _lifecycle.dispose();
+    super.dispose();
+  }
+
+  StudioServices get services => widget.services;
+
+  bool get startupChecks => widget.startupChecks;
 
   @override
   Widget build(BuildContext context) => Services(

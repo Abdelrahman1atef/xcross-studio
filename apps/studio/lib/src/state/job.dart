@@ -328,9 +328,23 @@ class JobCenter extends ChangeNotifier {
       onEvent: onEvent,
       maxLines: 200,
     );
+    _background
+      ..removeWhere((old) => !old.isRunning)
+      ..add(job);
     unawaited(job.start());
     return job;
   }
+
+  /// Background jobs, kept so [stopAll] reaches them.
+  final List<Job> _background = [];
+
+  /// Ends every running job, listed or background, and the tools they
+  /// started: called when the app closes, so no `devices --watch` outlives
+  /// the window (it would keep the app's CLI file locked).
+  Future<void> stopAll() => Future.wait([
+    for (final job in [...jobs, ..._background])
+      if (job.isRunning) job.cancel(),
+  ]);
 
   /// Runs [command] and returns its NDJSON events once it ends.
   Future<(Job, List<XcrossEvent>)> collect(
