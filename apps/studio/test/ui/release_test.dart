@@ -93,6 +93,18 @@ Future<FakeLauncher> _pump(WidgetTester tester, String project) async {
       if (command == XcrossCommands.testflightStatus().join(' ')) {
         process.out(_testflight);
       }
+      if (command == 'project version --bump patch --json') {
+        process.out(
+          jsonEncode({
+            'v': 1,
+            'type': 'project_version',
+            'version': '1.0.1',
+            'build': 8,
+            'previous': '1.0.0+7',
+            'changed': true,
+          }),
+        );
+      }
       if (command.contains('--watch')) return;
       await process.exit(0);
     },
@@ -132,6 +144,34 @@ void main() {
   List<String> commands(FakeLauncher launcher) => [
     for (final start in launcher.starts) start.arguments.join(' '),
   ];
+
+  testWidgets('AC-022-9 version and build: edit, save and bump through '
+      'xcross project version', (tester) async {
+    final launcher = await _pump(tester, project.path);
+    await go(tester, 'Release');
+    await settle(tester);
+    TextField field(String label) =>
+        tester.widget<TextField>(find.widgetWithText(TextField, label));
+    expect(field('Version').controller!.text, '1.0.0');
+    expect(field('Build').controller!.text, '7');
+    expect(find.text('Saved: 1.0.0 (build 7)'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(XButton, 'Patch → 1.0.1 (8)'));
+    await settle(tester);
+    expect(commands(launcher), contains('project version --bump patch --json'));
+    expect(field('Version').controller!.text, '1.0.1');
+    expect(field('Build').controller!.text, '8');
+    expect(find.text('Build → 9'), findsOneWidget);
+
+    await tester.enterText(find.widgetWithText(TextField, 'Build'), '20');
+    await settle(tester, 2);
+    await tester.tap(find.widgetWithText(XButton, 'Save'));
+    await settle(tester);
+    expect(
+      commands(launcher),
+      contains('project version 1.0.1 --build 20 --json'),
+    );
+  });
 
   testWidgets('AC-022-1 ten steps in the order of US-IOS-001', (tester) async {
     await _pump(tester, project.path);

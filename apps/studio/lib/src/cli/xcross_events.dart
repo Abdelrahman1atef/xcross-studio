@@ -62,6 +62,7 @@ sealed class XcrossEvent {
       // Feature 023: the app icon set.
       'icons_check' => IconsCheckReport.fromJson(json),
       'icons_generate' => IconsGenerateResult.fromJson(json),
+      'project_version' => ProjectVersion.fromJson(json),
       'done' => BuildDone(
         json['exitCode'] is int ? json['exitCode']! as int : 1,
       ),
@@ -831,4 +832,29 @@ class IconsGenerateResult extends XcrossEvent {
   final String? backup;
   final String? background;
   final IconsCheckReport? check;
+}
+
+/// `project_version`: `xcross project version --json` (feature 022).
+class ProjectVersion extends XcrossEvent {
+  const ProjectVersion({
+    required this.changed,
+    this.version,
+    this.build,
+    this.previous,
+  });
+
+  factory ProjectVersion.fromJson(Map<String, Object?> json) => ProjectVersion(
+    version: _string(json['version']),
+    build: json['build'] is int ? json['build']! as int : null,
+    previous: _string(json['previous']),
+    changed: json['changed'] == true,
+  );
+
+  /// `1.2.3`; null when the pubspec has no version.
+  final String? version;
+  final int? build;
+
+  /// The old `1.2.3+7` when [changed].
+  final String? previous;
+  final bool changed;
 }

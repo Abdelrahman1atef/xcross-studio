@@ -1,5 +1,11 @@
 ## Unreleased (XCross Studio)
 
+- Change the version quickly: `xcross project version [<x.y.z>[+<n>]] [--build <n>] [--bump
+  major|minor|patch|build]` edits the `version:` line of `pubspec.yaml` (quotes, comments and other lines kept; a new
+  version also raises the build number). Step 2 of the Release page has Version and Build fields with Save and
+  one-click bumps showing the result ("Patch → 1.0.8 (8)").
+  ([specs/022-studio-release-flow](specs/022-studio-release-flow/spec.md), AC-022-9)
+
 - **App icon** in XCross Studio and `xcross icons`: `icons check [--json]` lists every icon size iOS uses
   (notification, Settings, Spotlight, home screen, iPad, App Store) with its file and status, reports what App Store
   Connect rejects (an App Store icon with an alpha channel, missing or wrong-size files) and how the logo sits

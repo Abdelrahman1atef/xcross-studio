@@ -25,3 +25,11 @@ S = `packages/studio_ext/lib`, G = `apps/studio/lib`.
 
 - [X] T010 Rebuild the CLI, repackage the desktop app, check the pages on app A (`device-check.md`, AC-022-8).
 - [X] T011 Analyze, CHANGELOG, README, user story (AC-08, AC-10, §11, §12; TC-13, 14, 17, 31; IOS-24).
+
+## Phase 5: Version and build (US4, added 2026-11-03)
+
+- [X] T012 [US4] `packages/xcross/lib/src/shared/flutter/project/pubspec_version.dart` and `project version` in
+  `packages/xcross/lib/src/target/iphone/cli/basic/project_command.dart`; tests `test/cli/project_version_test.dart`
+  (AC-022-9).
+- [X] T013 [US4] G step 2 fields, Save and bumps; `ProjectVersion` event, `projectVersion` command; test in
+  `apps/studio/test/ui/release_test.dart`.

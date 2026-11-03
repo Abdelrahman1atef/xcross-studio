@@ -170,6 +170,21 @@ abstract final class XcrossCommands {
     '--json',
   ];
 
+  /// `xcross project version --json`, setting [version] and [build] or
+  /// raising [bump] (`major`, `minor`, `patch`, `build`) when given.
+  static List<String> projectVersion({
+    String? version,
+    String? build,
+    String? bump,
+  }) => [
+    'project',
+    'version',
+    if (version != null) version.trim(),
+    if (build != null) ...['--build', build.trim()],
+    if (bump != null) ...['--bump', bump],
+    '--json',
+  ];
+
   /// `xcross release check --json`.
   static List<String> releaseCheck() => const ['release', 'check', '--json'];
 

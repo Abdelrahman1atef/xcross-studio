@@ -1,5 +1,7 @@
 // studio: 016 — `xcross project bundle-id [original|prefixed] [--json]`:
 // which App ID the project is signed under (specs/016-push-firebase-maps).
+// studio: 022 — `xcross project version`: the pubspec version and build
+// number, shown, set or bumped from the Release page.
 @internal
 library;
 
@@ -13,6 +15,7 @@ import 'package:xcross/src/shared/config/project_settings.dart';
 import 'package:xcross/src/shared/errors/errors.dart';
 import 'package:xcross/src/shared/flutter/build/ios_bundle_id.dart';
 import 'package:xcross/src/shared/flutter/project/pbx_project_reader.dart';
+import 'package:xcross/src/shared/flutter/project/pubspec_version.dart';
 import 'package:xcross/src/target/iphone/device/internal/bundle_identity_resolver.dart';
 
 /// `xcross project …`: settings committed with the project.
@@ -31,6 +34,14 @@ final class ProjectCommand extends Command<void> {
         paths: paths,
         projectRoot: projectRoot,
         environment: environment,
+        write: write,
+      ),
+    );
+    addSubcommand(
+      ProjectVersionCommand(
+        fileSystem: fileSystem,
+        paths: paths,
+        projectRoot: projectRoot,
         write: write,
       ),
     );
@@ -210,5 +221,146 @@ final class ProjectBundleIdCommand extends Command<void> {
       override: override,
       settingsPath: settings.path,
     );
+  }
+}
+
+/// `xcross project version [<x.y.z>[+<n>]] [--build <n>]
+/// [--bump major|minor|patch|build] [--json]`.
+@internal
+final class ProjectVersionCommand extends Command<void> {
+  ProjectVersionCommand({
+    required this.fileSystem,
+    required this.paths,
+    required this.projectRoot,
+    required this.write,
+  }) {
+    argParser
+      ..addOption(
+        'build',
+        valueHelp: 'n',
+        help: 'Set the build number (CFBundleVersion).',
+      )
+      ..addOption(
+        'bump',
+        allowed: [for (final part in VersionPart.values) part.name],
+        help:
+            'Raise one part by one. A new major, minor or patch version also '
+            'raises the build number.',
+      )
+      ..addFlag(
+        'json',
+        negatable: false,
+        help: 'Print one JSON object instead of text.',
+      );
+  }
+
+  final HostFileSystemInterface fileSystem;
+  final p.Context paths;
+  final String Function() projectRoot;
+  final void Function(String text) write;
+
+  @override
+  String get name => 'version';
+
+  @override
+  String get description =>
+      "Show or change the app's version and build number (the version: line "
+      'of pubspec.yaml).';
+
+  @override
+  String get invocation =>
+      'xcross project version [<x.y.z>[+<n>]] [--build <n>] '
+      '[--bump major|minor|patch|build]';
+
+  @override
+  Future<void> run() async {
+    final results = argResults!;
+    final rest = results.rest;
+    final buildText = results.option('build');
+    final bump = results.option('bump');
+    if (rest.length > 1) usageException('Pass at most one version.');
+    if (bump != null && (rest.isNotEmpty || buildText != null)) {
+      usageException('Pass --bump alone, or a version and --build.');
+    }
+    // Reported as joined: the file system may add a long-path prefix.
+    final pubspecPath = paths.join(
+      projectRoot(),
+      ProjectSettings.pubspecFileName,
+    );
+    final pubspec = fileSystem.file(pubspecPath);
+    if (!pubspec.existsSync()) {
+      throw XcrossError(
+        'No pubspec.yaml here: run `xcross project version` in the Flutter '
+        'project.',
+      );
+    }
+    final text = pubspec.readAsStringSync();
+    final current = PubspecVersion.read(text);
+
+    PubspecVersion? next;
+    if (bump != null) {
+      next = (current ?? const PubspecVersion('1.0.0', 0)).bump(
+        VersionPart.values.byName(bump),
+      );
+    } else if (rest.isNotEmpty || buildText != null) {
+      var name = current?.name ?? '1.0.0';
+      var build = current?.build;
+      if (rest.isNotEmpty) {
+        final given = PubspecVersion.parse(rest.single);
+        if (given == null) {
+          usageException(
+            'The version must be up to three numbers (1.2.3), optionally '
+            'with +<build>, not "${rest.single}".',
+          );
+        }
+        name = given.name;
+        build = given.build ?? build;
+      }
+      if (buildText != null) {
+        final number = int.tryParse(buildText.trim());
+        if (number == null || number < 1) {
+          usageException(
+            'The build number must be a whole number of 1 or more, not '
+            '"$buildText".',
+          );
+        }
+        build = number;
+      }
+      next = PubspecVersion(name, build);
+    }
+
+    final changed = next != null && next.text != current?.text;
+    if (changed) {
+      pubspec.writeAsStringSync(PubspecVersion.write(text, next));
+    }
+    final shown = next ?? current;
+    if (results.flag('json')) {
+      final json = jsonEncode({
+        'v': 1,
+        'type': 'project_version',
+        'version': shown?.name,
+        'build': shown?.build,
+        'previous': changed ? current?.text : null,
+        'changed': changed,
+        'pubspec': pubspecPath,
+      });
+      write('$json\n');
+      return;
+    }
+    if (shown == null) {
+      write(
+        'pubspec.yaml has no version: line. Set one with '
+        '`xcross project version 1.0.0+1`.\n',
+      );
+      return;
+    }
+    write('Version  ${shown.name}\n');
+    write('Build    ${shown.build ?? '(none: iOS uses 1)'}\n');
+    if (changed) {
+      write(
+        'Saved in pubspec.yaml (was '
+        '${current == null ? 'not set' : current.text}).\n',
+      );
+    }
   }
 }

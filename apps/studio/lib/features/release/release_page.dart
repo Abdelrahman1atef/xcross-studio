@@ -40,6 +40,8 @@ class _ReleasePageState extends State<ReleasePage> {
   void dispose() {
     _group.dispose();
     _whatToTest.dispose();
+    _versionField.dispose();
+    _buildField.dispose();
     super.dispose();
   }
 
@@ -74,6 +76,200 @@ class _ReleasePageState extends State<ReleasePage> {
     JobStatus.failed || JobStatus.cancelled => XStatus.failed,
     _ => XStatus.idle,
   };
+
+  // --- Step 2: version and build -----------------------------------------
+
+  /// The project the version fields were filled for, and its saved
+  /// `1.2.3+7` (null when pubspec.yaml has no version).
+  String? _versionFor;
+  String? _savedVersion;
+  final _versionField = TextEditingController();
+  final _buildField = TextEditingController();
+
+  /// Fills the fields from pubspec.yaml the first time a project is shown;
+  /// after that they follow `xcross project version`.
+  void _loadVersion(String project) {
+    if (_versionFor == project) return;
+    _versionFor = project;
+    ProjectInfo.read(project).then((info) {
+      if (mounted && _versionFor == project) {
+        setState(() => _showVersion(info.version));
+      }
+    });
+  }
+
+  void _showVersion(String? version) {
+    _savedVersion = version;
+    final parts = (version ?? '').split('+');
+    _versionField.text = parts.first;
+    _buildField.text = parts.length > 1 ? parts[1] : '';
+  }
+
+  static final _versionPattern = RegExp(r'^\d+(\.\d+){0,2}$');
+
+  /// Why Save is disabled, or null when the fields can be saved.
+  String? get _versionProblem {
+    final version = _versionField.text.trim();
+    final build = _buildField.text.trim();
+    if (!_versionPattern.hasMatch(version)) {
+      return 'The version is up to three numbers, like 1.2.3';
+    }
+    if (build.isNotEmpty && (int.tryParse(build) ?? 0) < 1) {
+      return 'The build number is a whole number of 1 or more';
+    }
+    final typed = build.isEmpty ? version : '$version+$build';
+    return typed == _savedVersion ? 'Nothing changed' : null;
+  }
+
+  /// What `--bump <part>` would save, for the button label.
+  String? _bumped(String part) {
+    final saved = _savedVersion;
+    if (saved == null) return null;
+    final parts = saved.split('+');
+    final build = (parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0) + 1;
+    final numbers = [
+      ...parts.first.split('.').map((n) => int.tryParse(n) ?? 0),
+      0,
+      0,
+    ].take(3).toList();
+    switch (part) {
+      case 'build':
+        return '$build';
+      case 'patch':
+        numbers[2]++;
+      case 'minor':
+        numbers
+          ..[1] += 1
+          ..[2] = 0;
+      case 'major':
+        numbers
+          ..[0] += 1
+          ..[1] = 0
+          ..[2] = 0;
+    }
+    return '${numbers.join('.')} ($build)';
+  }
+
+  Future<void> _setVersion(String project, {String? bump}) {
+    final build = _buildField.text.trim();
+    return _run(
+      2,
+      'Version and build',
+      bump != null
+          ? XcrossCommands.projectVersion(bump: bump)
+          : XcrossCommands.projectVersion(
+              version: _versionField.text,
+              build: build.isEmpty ? null : build,
+            ),
+      onEvent: (event) {
+        if (event is ProjectVersion && _versionFor == project) {
+          _showVersion(
+            event.version == null
+                ? null
+                : event.build == null
+                ? event.version
+                : '${event.version}+${event.build}',
+          );
+        }
+      },
+    );
+  }
+
+  Widget _versionStep(String project) {
+    _loadVersion(project);
+    final job = _jobs[2];
+    final running = job?.isRunning ?? false;
+    final problem = _versionProblem;
+    final saved = _savedVersion?.split('+');
+    return _ReleaseStep(
+      number: 2,
+      title: 'Version and build',
+      status: job != null
+          ? _statusOf(2)
+          : (_savedVersion == null ? XStatus.idle : XStatus.ready),
+      description:
+          'The version: line of pubspec.yaml. Every upload needs a new build '
+          'number; a new version starts a new release on App Store Connect.',
+      job: job?.status == JobStatus.failed ? job : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          XNote(
+            saved == null
+                ? 'pubspec.yaml has no version yet.'
+                : 'Saved: ${saved.first} (build '
+                      '${saved.length > 1 ? saved[1] : 'not set'})',
+          ),
+          const SizedBox(height: XSpace.s2),
+          Wrap(
+            spacing: XSpace.s2,
+            runSpacing: XSpace.s2,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              XTextField(
+                controller: _versionField,
+                label: 'Version',
+                hint: '1.2.3',
+                width: 140,
+                onChanged: (_) => setState(() {}),
+              ),
+              XTextField(
+                controller: _buildField,
+                label: 'Build',
+                hint: '7',
+                width: 110,
+                onChanged: (_) => setState(() {}),
+              ),
+              XButton(
+                label: 'Save',
+                icon: Icons.save_outlined,
+                variant: XButtonVariant.secondary,
+                loading: running,
+                loadingLabel: 'Saving…',
+                disabledReason: problem,
+                onPressed: problem == null && !running
+                    ? () => _setVersion(project)
+                    : null,
+              ),
+            ],
+          ),
+          const SizedBox(height: XSpace.s2),
+          Wrap(
+            spacing: XSpace.s2,
+            runSpacing: XSpace.s2,
+            children: [
+              for (final (part, name) in const [
+                ('build', 'Build'),
+                ('patch', 'Patch'),
+                ('minor', 'Minor'),
+                ('major', 'Major'),
+              ])
+                XButton(
+                  label: _bumped(part) == null
+                      ? '$name +1'
+                      : '$name → ${_bumped(part)}',
+                  icon: part == 'build' ? Icons.exposure_plus_1 : Icons.north,
+                  variant: XButtonVariant.secondary,
+                  onPressed: running
+                      ? null
+                      : () => _setVersion(project, bump: part),
+                ),
+            ],
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Use the next App Store Connect build number'),
+            subtitle: const Text(
+              'At build time the build number is one past the newest build on '
+              'App Store Connect, whatever is saved above.',
+            ),
+            value: _autoBuildNumber,
+            onChanged: (value) => setState(() => _autoBuildNumber = value),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -144,24 +340,7 @@ class _ReleasePageState extends State<ReleasePage> {
           ],
         ),
       ),
-      FutureBuilder<ProjectInfo>(
-        future: ProjectInfo.read(project),
-        builder: (context, snapshot) => _ReleaseStep(
-          number: 2,
-          title: 'Version and build',
-          status: XStatus.idle,
-          description:
-              'pubspec.yaml version ${snapshot.data?.version ?? '…'}. With the '
-              'switch on, the build number is one past the newest build on App '
-              'Store Connect.',
-          child: SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Use the next App Store Connect build number'),
-            value: _autoBuildNumber,
-            onChanged: (value) => setState(() => _autoBuildNumber = value),
-          ),
-        ),
-      ),
+      _versionStep(project),
       _ReleaseStep(
         number: 3,
         title: 'Signing',

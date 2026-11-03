@@ -41,6 +41,18 @@ commands the app needs (`release gate`, `release ci`) keep the GUI a thin shell 
    the reference Mac workflow plus `XCODE_XIP_URL`; it refuses to overwrite without `--force`. The same file is in
    the repo as `docs/ci/github-testflight.yml`. The Release page has "Create CI workflow".
 
+### User Story 4 - Change the version quickly (Priority: P1)
+
+Added 2026-11-03 at the user's request ("in release make version and build can change the version and build number
+for quick").
+
+1. **AC-022-9**: `xcross project version [<x.y.z>[+<n>]] [--build <n>] [--bump major|minor|patch|build] [--json]`
+   shows or changes the `version:` line of `pubspec.yaml`, keeping quotes, comments and every other line; a new
+   major, minor or patch version also raises the build number (Flutter uses it as Android's `versionCode`, which
+   must always grow); malformed values are usage errors and change nothing. JSON: `{"v":1,"type":"project_version",
+   "version","build","previous","changed","pubspec"}`. Step 2 of the Release page has Version and Build fields with
+   Save, and one-click bumps labelled with their result ("Patch → 1.0.8 (8)").
+
 ### User Story 3 - Archives (Priority: P2)
 
 1. **AC-022-7**: An **Archives** destination lists every `build/xcross-ios/archive/*.xcarchive` of the open project
