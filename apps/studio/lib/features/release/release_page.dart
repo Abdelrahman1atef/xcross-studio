@@ -77,6 +77,14 @@ class _ReleasePageState extends State<ReleasePage> {
     _ => XStatus.idle,
   };
 
+  // `1 error, 2 infos`.
+  static String _issueCount(List<GateIssue> issues) => [
+    for (final severity in const ['error', 'warning', 'info'])
+      if (issues.where((i) => i.severity == severity).length case final n
+          when n > 0)
+        '$n $severity${n == 1 ? '' : 's'}',
+  ].join(', ');
+
   // --- Step 2: version and build -----------------------------------------
 
   /// The project the version fields were filled for, and its saved
@@ -362,7 +370,9 @@ class _ReleasePageState extends State<ReleasePage> {
         status: _gate == null
             ? _statusOf(4)
             : (_gate!.passed ? XStatus.ready : XStatus.failed),
-        description: 'flutter analyze and flutter test in the project.',
+        description:
+            'flutter analyze and flutter test in the project. Analyzer errors '
+            'and warnings fail the gate; infos are listed but do not.',
         command: XcrossCommands.releaseGate(),
         job: _jobs[4],
         actions: [
@@ -388,9 +398,23 @@ class _ReleasePageState extends State<ReleasePage> {
                 children: [
                   for (final step in _gate!.steps)
                     XCheckRow(
-                      status: step.passed ? XStatus.ready : XStatus.failed,
-                      label: step.name,
-                      detail: step.passed ? null : step.tail.join('\n'),
+                      // Passed with infos: listed, not blocking.
+                      status: !step.passed
+                          ? XStatus.failed
+                          : step.issues.isEmpty
+                          ? XStatus.ready
+                          : XStatus.warning,
+                      label: step.issues.isEmpty
+                          ? step.name
+                          : '${step.name} (${_issueCount(step.issues)}'
+                                '${step.passed ? ', not blocking' : ''})',
+                      // The issues when the analyzer listed them, else the
+                      // last lines of a failed step.
+                      detail: step.issues.isNotEmpty
+                          ? '\n${step.issues.map((i) => i.render()).join('\n')}'
+                          : step.passed
+                          ? null
+                          : '\n${step.tail.join('\n')}',
                     ),
                 ],
               ),

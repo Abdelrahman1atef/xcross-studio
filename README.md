@@ -665,7 +665,7 @@ xcross publish --wait           # upload (Build Upload API) and wait for Apple's
 xcross testflight status        # processing and beta states; group create/add, testers, what-to-test, submit
 xcross appstore metadata push   # App Store page texts; screenshots push, attach, submit --dry-run, status
 xcross project version --bump patch   # or: xcross project version 1.2.0 --build 14
-xcross release gate             # flutter analyze + flutter test as the release gate
+xcross release gate             # flutter analyze + flutter test as the release gate (infos only fail with --fatal-infos)
 xcross release ci               # GitHub Actions workflow for ubuntu-latest (docs/ci/github-testflight.yml)
 ```
 

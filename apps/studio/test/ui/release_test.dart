@@ -44,7 +44,26 @@ final _gate = jsonEncode({
   'v': 1,
   'type': 'release_gate',
   'steps': [
-    {'name': 'flutter analyze', 'passed': true, 'exitCode': 0, 'tail': []},
+    // One deprecation info: listed, not blocking.
+    {
+      'name': 'flutter analyze',
+      'passed': true,
+      'exitCode': 0,
+      'tail': ['1 issue found.'],
+      'issues': [
+        {
+          'severity': 'info',
+          'message': "'encryptedSharedPreferences' is deprecated.",
+          'file': 'lib/core/cache/secure_storage.dart',
+          'line': 7,
+          'column': 30,
+          'code': 'deprecated_member_use',
+        },
+      ],
+      'errors': 0,
+      'warnings': 0,
+      'infos': 1,
+    },
     {'name': 'flutter test', 'passed': true, 'exitCode': 0, 'tail': []},
   ],
 });
@@ -200,7 +219,28 @@ void main() {
 
     await tester.tap(find.widgetWithText(XButton, 'Run the gate'));
     await settle(tester);
-    expect(find.text('flutter analyze'), findsOneWidget);
+    // An info is listed with its place in the code, and the gate passes.
+    final analyze = find.byWidgetPredicate(
+      (w) =>
+          w is XCheckRow &&
+          w.label == 'flutter analyze (1 info, not blocking)' &&
+          w.status == XStatus.warning &&
+          (w.detail?.contains(
+                'lib/core/cache/secure_storage.dart:7:30 '
+                '(deprecated_member_use)',
+              ) ??
+              false),
+    );
+    expect(analyze, findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (w) =>
+            w is XCheckRow &&
+            w.label == 'flutter test' &&
+            w.status == XStatus.ready,
+      ),
+      findsOneWidget,
+    );
 
     await tester.tap(find.widgetWithText(XButton, 'Build for the App Store'));
     await settle(tester);

@@ -6,6 +6,7 @@ import 'package:args/command_runner.dart';
 import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:path/path.dart' as p;
 import 'package:studio_ext/shared/appstore/command_exit.dart';
+import 'package:studio_ext/src/shared/release/analyzer_output.dart';
 import 'package:studio_ext/src/shared/release/ci_template.dart';
 
 /// Runs a tool in a folder and returns its exit code and combined output.
@@ -16,8 +17,10 @@ typedef RunTool =
       required String workingDirectory,
     });
 
-/// `xcross release gate [--json] [--skip-tests]`: `flutter analyze` and
-/// `flutter test` as the release's quality gate.
+/// `xcross release gate [--json] [--skip-tests] [--fatal-infos]`: `flutter
+/// analyze` and `flutter test` as the release's quality gate. Analyzer errors
+/// and warnings fail it; infos (a deprecation, a style lint) are reported and
+/// only fail it with `--fatal-infos`.
 final class ReleaseGateCommand extends Command<void> {
   ReleaseGateCommand({
     required Future<String> Function(String projectRoot) flutter,
@@ -36,6 +39,13 @@ final class ReleaseGateCommand extends Command<void> {
         'skip-tests',
         negatable: false,
         help: 'Run flutter analyze only.',
+      )
+      ..addFlag(
+        'fatal-infos',
+        negatable: false,
+        help:
+            'Fail on info-level analyzer issues too (errors and warnings '
+            'always fail).',
       );
   }
 
@@ -67,30 +77,58 @@ final class ReleaseGateCommand extends Command<void> {
     }
     final json = argResults!.flag('json');
     final flutter = await _flutter(root);
+    final fatalInfos = argResults!.flag('fatal-infos');
     final steps = <Map<String, Object?>>[];
     for (final (name, arguments) in [
-      ('flutter analyze', ['analyze']),
+      (
+        'flutter analyze',
+        ['analyze', if (fatalInfos) '--fatal-infos' else '--no-fatal-infos'],
+      ),
       if (!argResults!.flag('skip-tests')) ('flutter test', ['test']),
     ]) {
       if (!json) _write('Running $name…\n');
       final result = await _runTool(flutter, arguments, workingDirectory: root);
-      final lines = const LineSplitter()
-          .convert(result.output)
-          .where((line) => line.trim().isNotEmpty)
-          .toList();
+      final lines = AnalyzerOutput.withoutPubNoise(
+        const LineSplitter()
+            .convert(result.output)
+            .where((line) => line.trim().isNotEmpty),
+      );
       final tail = lines.length > tailLines
           ? lines.sublist(lines.length - tailLines)
           : lines;
+      final issues = arguments.first == 'analyze'
+          ? AnalyzerOutput.issues(lines)
+          : const <AnalyzerIssue>[];
       final passed = result.exitCode == 0;
+      int count(String severity) =>
+          issues.where((issue) => issue.severity == severity).length;
       steps.add({
         'name': name,
         'passed': passed,
         'exitCode': result.exitCode,
         'tail': tail,
+        if (arguments.first == 'analyze') ...{
+          'issues': [for (final issue in issues) issue.toJson()],
+          'errors': count('error'),
+          'warnings': count('warning'),
+          'infos': count('info'),
+        },
       });
       if (!json) {
-        _write('${passed ? '✓' : '✗'} $name\n');
-        if (!passed) _write('${tail.map((l) => '  $l').join('\n')}\n');
+        final summary = issues.isEmpty ? '' : ' (${_count(issues)})';
+        _write('${passed ? '✓' : '✗'} $name$summary\n');
+        // The issues when the analyzer listed them, else the last lines.
+        if (issues.isNotEmpty) {
+          _write('${issues.map((i) => '  ${i.render()}').join('\n')}\n');
+          if (passed) {
+            _write(
+              '  Infos do not fail the gate; pass --fatal-infos to make '
+              'them.\n',
+            );
+          }
+        } else if (!passed) {
+          _write('${tail.map((l) => '  $l').join('\n')}\n');
+        }
       }
     }
     final failed = steps.where((step) => step['passed'] != true).toList();
@@ -105,6 +143,14 @@ final class ReleaseGateCommand extends Command<void> {
       );
     }
   }
+
+  // `1 error, 2 infos`.
+  static String _count(List<AnalyzerIssue> issues) => [
+    for (final severity in const ['error', 'warning', 'info'])
+      if (issues.where((i) => i.severity == severity).length case final n
+          when n > 0)
+        '$n $severity${n == 1 ? '' : 's'}',
+  ].join(', ');
 }
 
 /// `xcross release ci [--output <path>] [--force]`: writes the GitHub Actions

@@ -608,12 +608,51 @@ class ReleaseGateResult extends XcrossEvent {
               if (step['tail'] case final List<Object?> lines)
                 for (final line in lines) '$line',
             ],
+            issues: [
+              for (final issue in _maps(step['issues']))
+                GateIssue.fromJson(issue),
+            ],
           ),
       ]);
 
-  final List<({String name, bool passed, List<String> tail})> steps;
+  final List<
+    ({String name, bool passed, List<String> tail, List<GateIssue> issues})
+  >
+  steps;
 
   bool get passed => steps.isNotEmpty && steps.every((s) => s.passed);
+}
+
+/// One `flutter analyze` issue in a `release_gate` step.
+class GateIssue {
+  const GateIssue({
+    required this.severity,
+    required this.message,
+    required this.location,
+    required this.code,
+  });
+
+  factory GateIssue.fromJson(Map<String, Object?> json) => GateIssue(
+    severity: _string(json['severity']) ?? 'info',
+    message: _string(json['message']) ?? '',
+    location: [
+      _string(json['file']) ?? '',
+      if (json['line'] case final int line) '$line',
+      if (json['column'] case final int column) '$column',
+    ].join(':'),
+    code: _string(json['code']) ?? '',
+  );
+
+  /// `error`, `warning` or `info`.
+  final String severity;
+  final String message;
+
+  /// `lib/a.dart:7:30`.
+  final String location;
+  final String code;
+
+  /// `info · <message> · lib/a.dart:7:30 (deprecated_member_use)`.
+  String render() => '$severity · $message · $location ($code)';
 }
 
 /// `publish`: one event of `xcross publish --json` (feature 019).

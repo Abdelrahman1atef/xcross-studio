@@ -25,7 +25,8 @@
   next App Store Connect build number, signing, quality gate, App Store archive and IPA, release check, upload and
   processing, TestFlight groups and notes, App Store submission with a dry run and a confirmation, the release record
   and a CI workflow), and an **Archives** destination listing the `.xcarchive`s xcross built. New CLI commands for
-  it: `xcross release gate` (`flutter analyze` and `flutter test` as the release gate) and `xcross release ci`
+  it: `xcross release gate` (`flutter analyze` and `flutter test` as the release gate; analyzer errors and warnings
+  fail it, infos such as a deprecation are listed and only fail it with `--fatal-infos`) and `xcross release ci`
   (writes a GitHub Actions workflow that builds, signs and uploads from `ubuntu-latest`, also in
   `docs/ci/github-testflight.yml`). ([specs/022-studio-release-flow](specs/022-studio-release-flow/spec.md))
 
