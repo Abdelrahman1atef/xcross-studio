@@ -174,6 +174,25 @@ abstract final class XcrossCli {
         paths: runtime.host.paths.context,
         currentDirectory: () => runtime.host.paths.context.current,
         write: runtime.log.output.write,
+        // studio: 022 — `release gate` runs the Flutter iOS builds use.
+        flutter: (projectRoot) async => runtime.host.paths.context.join(
+          await physical.flutterRuntime.resolveFlutterRoot(
+            projectRoot: projectRoot,
+          ),
+          'bin',
+          runtime.runner.hostExecutableName('flutter', extension: '.bat'),
+        ),
+        runTool: (executable, arguments, {required workingDirectory}) async {
+          final result = await runtime.runner.run(
+            executable,
+            arguments,
+            workingDirectory: workingDirectory,
+          );
+          return (
+            exitCode: result.exitCode,
+            output: '${result.stdout}\n${result.stderr}',
+          );
+        },
       ),
       // studio: 019–021 — App Store Connect: upload, TestFlight, App Store.
       ...publishCommands(runtime),

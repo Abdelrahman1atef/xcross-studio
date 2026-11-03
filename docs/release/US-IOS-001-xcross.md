@@ -118,7 +118,8 @@ analyze` and the required tests pass, production endpoints configured, no secret
 reviewed, generated configuration (for example `lib/firebase_options.dart`) available, reproducible from the
 recorded revision.
 
-XCross Studio runs `flutter analyze` and `flutter test` as the release gate on the **Release** page (🛠 022).
+XCross Studio runs `flutter analyze` and `flutter test` as the release gate on the **Release** page, through
+`xcross release gate` (✅ 022).
 `xcross release check` scans the built IPA for private keys and API secrets (✅ 018).
 
 ---
@@ -173,7 +174,7 @@ There is no Xcode to open. xcross reads `ios/Runner.xcodeproj/project.pbxproj`, 
 `ios/Runner/Info.plist` directly:
 
 1. Display name, bundle ID, deployment target, device family and orientations are shown by `xcross release check`
-   (✅ 018) and on the **Release** page (🛠 022).
+   (✅ 018) and on the **Release** page (✅ 022).
 2. The Release configuration is used for `--release` builds.
 3. Swift and Objective-C code in the app target (AppDelegate) is compiled when it has code beyond Flutter's
    template (`XCROSS_RUNNER=auto`, ✅ 016); plugins and frameworks link through SwiftPM (✅ 006).
@@ -239,7 +240,7 @@ links to them.
 ## AC-08 — Quality gate and device tests
 
 - **Static and automated tests:** `flutter pub get`, `flutter analyze`, `flutter test`; XCross Studio's **Release**
-  page runs them as the gate (🛠 022).
+  page runs them as the gate with `xcross release gate` (✅ 022).
 - **Environment:** `xcross flutter doctor`.
 - **Device tests** on a real iPhone with xcross: `xcross flutter run --release`, `xcross logs`, `xcross crashes`,
   `xcross app info` (✅ 005, 010). Push notifications, Firebase and Google Maps work in xcross-built apps (✅ 016):
@@ -248,7 +249,7 @@ links to them.
 - The rest of the original list (login, deep links, offline, accessibility, …) is unchanged and app-specific.
 
 **Status in xcross:** ✅ device run, logs, crashes (005, 010); ✅ push/Firebase/Maps (016, device check pending);
-✅ live device watcher (017); 🛠 gate in the desktop app (022).
+✅ live device watcher (017); ✅ gate in the desktop app (022).
 
 ## AC-09 — Release build
 
@@ -273,9 +274,9 @@ pending a team key).
 ## AC-10 — Archive through a GUI (replaces Xcode Organizer archives)
 
 XCross Studio → **Archives** lists every `.xcarchive` under the project with version, build, date, bundle ID,
-signing (team, certificate, profile type) and the IPA next to it, and opens the folder (🛠 022).
+signing (team, certificate) and the IPA next to it, and opens the folder (✅ 022).
 
-**Status in xcross:** 🛠 Archives page (022).
+**Status in xcross:** ✅ Archives page (022).
 
 ## AC-11 — Validation before distribution (replaces Organizer "Validate App")
 
@@ -366,7 +367,8 @@ checked); 🍎 privacy labels, pricing, agreements, approval.
 12. **QA:** `xcross testflight add --group QA`, `xcross testflight what-to-test "…"`; testers install from
     TestFlight.
 
-The same steps run unattended in CI with `docs/ci/github-testflight.yml` on `ubuntu-latest` (🛠 022).
+The same steps run unattended in CI with `docs/ci/github-testflight.yml` on `ubuntu-latest` (`xcross release ci`
+writes it into the project, ✅ 022).
 
 ---
 
@@ -386,11 +388,11 @@ The same steps run unattended in CI with `docs/ci/github-testflight.yml` on `ubu
 | TC-10 | Denied permissions | device test | app stable | manual |
 | TC-11 | Privacy manifests and SDKs | `release check` | requirements met | ✅ 018 |
 | TC-12 | Icon and launch screen | `release check`; device | production branding | ✅ 004, 018 |
-| TC-13 | Static analysis | Release → Quality gate | passes | 🛠 022 |
-| TC-14 | Automated tests | Release → Quality gate | pass | 🛠 022 |
+| TC-13 | Static analysis | Release → Quality gate (`release gate`) | passes | ✅ 022 |
+| TC-14 | Automated tests | Release → Quality gate (`release gate`) | pass | ✅ 022 |
 | TC-15 | Release archive | `flutter build … --export-method app-store` | `.xcarchive` created | ✅ 018 (store ⏳) |
 | TC-16 | App Store IPA | same | App Store IPA | ✅ 018 (store ⏳) |
-| TC-17 | Archive through the GUI | Archives page | archive listed | 🛠 022 |
+| TC-17 | Archive through the GUI | Release step 5, Archives page | archive listed | ✅ 022 |
 | TC-18 | Validation | `release check` | no errors | ✅ 018 |
 | TC-19 | Upload | `xcross publish` | accepted | ✅ 019 (store ⏳) |
 | TC-20 | Uploaded build identity | `testflight status` | version, build, app match | ✅ 019, 020 (store ⏳) |
@@ -404,7 +406,7 @@ The same steps run unattended in CI with `docs/ci/github-testflight.yml` on `ubu
 | TC-28 | Submission metadata | `appstore metadata push`; `appstore status` | complete | ✅ 021 (store ⏳) |
 | TC-29 | Duplicate build number | `publish` | refused before upload | ✅ 019 |
 | TC-30 | Interrupted upload | kill `publish`, run again | resumes or restarts safely | ✅ 019 |
-| TC-31 | Release evidence | `release.json`; Release → Export | recorded | ✅ 019 / 🛠 022 |
+| TC-31 | Release evidence | `release.json`; Release → record card | recorded | ✅ 019, 022 |
 | TC-32 | Symbols | archive `dSYMs/`, `build/symbols/ios` | retained | ✅ 018 |
 | TC-33 | Push, Firebase, Maps on device (xcross addition) | `app info`, `logs --preset push`; map screen | token, notification, map | ✅ 016 (device ⏳) |
 | TC-34 | Plug/unplug (xcross addition) | `xcross devices --watch`; top-bar badge | updates within ~2 s | ✅ 017 (device ⏳) |
@@ -513,7 +515,7 @@ external milestones.
 
 # 11. Release evidence
 
-`build/xcross-ios/release.json` (✅ 019; exported from the Release page, 🛠 022):
+`build/xcross-ios/release.json` (✅ 019; shown and copied from the Release page, ✅ 022):
 
 | Field | Source |
 |---|---|

@@ -7,6 +7,7 @@ import 'package:args/command_runner.dart';
 import 'package:cli_kit/shared/errors/errors.dart';
 import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:path/path.dart' as p;
+import 'package:studio_ext/shared/release/release_gate_command.dart'; // studio: 022
 import 'package:studio_ext/src/shared/inspect/inspect_failure.dart';
 import 'package:studio_ext/src/shared/inspect/inspect_source.dart';
 import 'package:studio_ext/src/shared/release/release_checks.dart';
@@ -19,6 +20,9 @@ final class ReleaseCommand extends Command<void> {
     required String Function() currentDirectory,
     required void Function(String) write,
     DateTime Function()? now,
+    // studio: 022 — the quality gate needs the Flutter xcross builds with.
+    Future<String> Function(String projectRoot)? flutter,
+    RunTool? runTool,
   }) {
     addSubcommand(
       ReleaseCheckCommand(
@@ -27,6 +31,24 @@ final class ReleaseCommand extends Command<void> {
         currentDirectory: currentDirectory,
         write: write,
         now: now,
+      ),
+    );
+    if (flutter != null && runTool != null) {
+      addSubcommand(
+        ReleaseGateCommand(
+          flutter: flutter,
+          runTool: runTool,
+          fileSystem: fileSystem,
+          currentDirectory: currentDirectory,
+          write: write,
+        ),
+      );
+    }
+    addSubcommand(
+      ReleaseCiCommand(
+        fileSystem: fileSystem,
+        currentDirectory: currentDirectory,
+        write: write,
       ),
     );
   }

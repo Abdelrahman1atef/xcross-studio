@@ -1,5 +1,13 @@
 ## Unreleased (XCross Studio)
 
+- XCross Studio has a **Release** destination that walks US-IOS-001 in order (readiness, version and build with the
+  next App Store Connect build number, signing, quality gate, App Store archive and IPA, release check, upload and
+  processing, TestFlight groups and notes, App Store submission with a dry run and a confirmation, the release record
+  and a CI workflow), and an **Archives** destination listing the `.xcarchive`s xcross built. New CLI commands for
+  it: `xcross release gate` (`flutter analyze` and `flutter test` as the release gate) and `xcross release ci`
+  (writes a GitHub Actions workflow that builds, signs and uploads from `ubuntu-latest`, also in
+  `docs/ci/github-testflight.yml`). ([specs/022-studio-release-flow](specs/022-studio-release-flow/spec.md))
+
 - App Store submission from the command line with the App Store Connect API (`xcross appstore …`):
   - `app [--json]` finds the project's app record, or explains that Apple's API cannot create apps and prints the
     New App page with the bundle ID, name and SKU to enter (exit 1).

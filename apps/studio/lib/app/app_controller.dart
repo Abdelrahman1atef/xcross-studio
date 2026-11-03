@@ -3,7 +3,21 @@ import 'package:flutter/foundation.dart';
 import '../src/state/job.dart';
 
 /// The seven destinations of the sidebar (design system §4).
-enum Destination { overview, build, devices, signing, logs, plugins, settings }
+enum Destination {
+  overview,
+  build,
+  devices,
+  signing,
+  logs,
+  plugins,
+
+  /// Feature 022: the App Store release in order.
+  release,
+
+  /// Feature 022: the archives xcross built.
+  archives,
+  settings,
+}
 
 /// Navigation and console-dock state of the shell (feature 013).
 class AppController extends ChangeNotifier {

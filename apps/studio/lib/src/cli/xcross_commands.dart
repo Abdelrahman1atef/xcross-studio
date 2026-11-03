@@ -133,6 +133,68 @@ abstract final class XcrossCommands {
 
   static List<String> devices() => const ['devices', '--json'];
 
+  // Feature 022: the release steps (features 018–021).
+
+  /// `xcross release gate --json`.
+  static List<String> releaseGate() => const ['release', 'gate', '--json'];
+
+  /// The App Store build: signed, archived, optionally with the next build
+  /// number from App Store Connect.
+  static List<String> appStoreBuild({bool autoBuildNumber = false}) => [
+    'flutter',
+    'build',
+    '--release',
+    '--ipa',
+    '--export-method',
+    'app-store',
+    if (autoBuildNumber) ...['--build-number', 'auto'],
+  ];
+
+  /// `xcross release check --json`.
+  static List<String> releaseCheck() => const ['release', 'check', '--json'];
+
+  /// `xcross publish --wait --json`.
+  static List<String> publish() => const ['publish', '--wait', '--json'];
+
+  /// `xcross testflight status --json`.
+  static List<String> testflightStatus() => const [
+    'testflight',
+    'status',
+    '--json',
+  ];
+
+  /// `xcross testflight add --group <name>`.
+  static List<String> testflightAdd(String group) => [
+    'testflight',
+    'add',
+    '--group',
+    group.trim(),
+  ];
+
+  /// `xcross testflight what-to-test "<text>"`.
+  static List<String> whatToTest(String text) => [
+    'testflight',
+    'what-to-test',
+    text.trim(),
+  ];
+
+  /// `xcross appstore status --json`.
+  static List<String> appStoreStatus() => const [
+    'appstore',
+    'status',
+    '--json',
+  ];
+
+  /// `xcross appstore submit [--dry-run]`.
+  static List<String> appStoreSubmit({required bool dryRun}) => [
+    'appstore',
+    'submit',
+    if (dryRun) '--dry-run',
+  ];
+
+  /// `xcross release ci`.
+  static List<String> releaseCi() => const ['release', 'ci'];
+
   /// `xcross devices --watch --json` (feature 017): a snapshot at start and
   /// after every plug, unplug or device service change.
   static List<String> devicesWatch() => const ['devices', '--watch', '--json'];

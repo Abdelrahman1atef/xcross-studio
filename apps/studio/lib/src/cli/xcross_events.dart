@@ -53,6 +53,12 @@ sealed class XcrossEvent {
       'check' => DoctorCheckResult.fromJson(json),
       'flutter_sdks' => FlutterSdkStatus.fromJson(json),
       'bundle_id' => BundleIdStatus.fromJson(json),
+      // Feature 022: the release steps.
+      'release_check' => ReleaseCheckReport.fromJson(json),
+      'release_gate' => ReleaseGateResult.fromJson(json),
+      'publish' => PublishEvent.fromJson(json),
+      'testflight_status' => TestFlightStatus.fromJson(json),
+      'appstore_status' => AppStoreStatus.fromJson(json),
       'done' => BuildDone(
         json['exitCode'] is int ? json['exitCode']! as int : 1,
       ),
@@ -520,4 +526,134 @@ class DeviceSnapshot extends XcrossEvent {
   ]);
 
   final List<ConnectedDevice> devices;
+}
+
+Map<String, Object?> _map(Object? value) =>
+    value is Map ? value.cast<String, Object?>() : const <String, Object?>{};
+
+List<Map<String, Object?>> _maps(Object? value) => [
+  if (value is List)
+    for (final entry in value)
+      if (entry is Map) entry.cast<String, Object?>(),
+];
+
+/// One issue of `xcross release check` (feature 018).
+class ReleaseIssue {
+  const ReleaseIssue({
+    required this.code,
+    required this.severity,
+    required this.message,
+    this.hint,
+    this.path,
+  });
+
+  factory ReleaseIssue.fromJson(Map<String, Object?> json) => ReleaseIssue(
+    code: _string(json['code']) ?? '',
+    severity: _string(json['severity']) ?? 'info',
+    message: _string(json['message']) ?? '',
+    hint: _string(json['hint']),
+    path: _string(json['path']),
+  );
+
+  final String code;
+
+  /// `error`, `warning` or `info`.
+  final String severity;
+  final String message;
+  final String? hint;
+  final String? path;
+}
+
+/// `release_check`: `xcross release check --json`.
+class ReleaseCheckReport extends XcrossEvent {
+  const ReleaseCheckReport({
+    required this.configuration,
+    required this.issues,
+    this.input,
+  });
+
+  factory ReleaseCheckReport.fromJson(Map<String, Object?> json) =>
+      ReleaseCheckReport(
+        input: _string(json['input']),
+        configuration: _map(json['configuration']),
+        issues: [
+          for (final issue in _maps(json['issues']))
+            ReleaseIssue.fromJson(issue),
+        ],
+      );
+
+  final String? input;
+  final Map<String, Object?> configuration;
+  final List<ReleaseIssue> issues;
+
+  int get errors => issues.where((i) => i.severity == 'error').length;
+  int get warnings => issues.where((i) => i.severity == 'warning').length;
+}
+
+/// `release_gate`: `xcross release gate --json` (feature 022).
+class ReleaseGateResult extends XcrossEvent {
+  const ReleaseGateResult(this.steps);
+
+  factory ReleaseGateResult.fromJson(Map<String, Object?> json) =>
+      ReleaseGateResult([
+        for (final step in _maps(json['steps']))
+          (
+            name: _string(step['name']) ?? '',
+            passed: step['passed'] == true,
+            tail: [
+              if (step['tail'] case final List<Object?> lines)
+                for (final line in lines) '$line',
+            ],
+          ),
+      ]);
+
+  final List<({String name, bool passed, List<String> tail})> steps;
+
+  bool get passed => steps.isNotEmpty && steps.every((s) => s.passed);
+}
+
+/// `publish`: one event of `xcross publish --json` (feature 019).
+class PublishEvent extends XcrossEvent {
+  const PublishEvent(this.event, this.fields);
+
+  factory PublishEvent.fromJson(Map<String, Object?> json) =>
+      PublishEvent(_string(json['event']) ?? '', json);
+
+  /// `start`, `progress`, `uploaded`, `state`, `issue`, `published`, `note`.
+  final String event;
+  final Map<String, Object?> fields;
+}
+
+/// `testflight_status`: `xcross testflight status --json` (feature 020).
+class TestFlightStatus extends XcrossEvent {
+  const TestFlightStatus(this.builds);
+
+  factory TestFlightStatus.fromJson(Map<String, Object?> json) =>
+      TestFlightStatus(_maps(json['builds']));
+
+  /// `version`, `buildNumber`, `processingState`, `internalBuildState`,
+  /// `externalBuildState`, `groups`, …
+  final List<Map<String, Object?>> builds;
+}
+
+/// `appstore_status`: `xcross appstore status --json` (feature 021).
+class AppStoreStatus extends XcrossEvent {
+  const AppStoreStatus({
+    this.version,
+    this.state,
+    this.build,
+    this.submissions = const [],
+  });
+
+  factory AppStoreStatus.fromJson(Map<String, Object?> json) => AppStoreStatus(
+    version: _string(json['version']),
+    state: _string(json['state']),
+    build: _string(json['build']),
+    submissions: _maps(json['submissions']),
+  );
+
+  final String? version;
+  final String? state;
+  final String? build;
+  final List<Map<String, Object?>> submissions;
 }

@@ -664,7 +664,11 @@ xcross release check            # what App Store Connect would reject, before yo
 xcross publish --wait           # upload (Build Upload API) and wait for Apple's processing
 xcross testflight status        # processing and beta states; group create/add, testers, what-to-test, submit
 xcross appstore metadata push   # App Store page texts; screenshots push, attach, submit --dry-run, status
+xcross release gate             # flutter analyze + flutter test as the release gate
+xcross release ci               # GitHub Actions workflow for ubuntu-latest (docs/ci/github-testflight.yml)
 ```
+
+XCross Studio's **Release** page runs these steps in order, and **Archives** lists the archives.
 
 The build signs the app and its extensions with an Apple Distribution certificate and App Store profiles, and writes
 `build/xcross-ios/ipa/<name>.ipa` and `build/xcross-ios/archive/Runner.xcarchive` (with dSYMs when `dsymutil` is on
