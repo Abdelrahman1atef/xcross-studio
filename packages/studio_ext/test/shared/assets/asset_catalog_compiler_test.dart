@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:studio_ext/shared/assets/asset_catalog_compiler.dart';
 import 'package:studio_ext/src/shared/assets/csi_writer.dart';
 import 'package:studio_ext/src/shared/assets/png_codec.dart';
+import 'package:studio_ext/src/shared/assets/rendition.dart';
 import 'package:test/test.dart';
 
 import '../../support/car_reader.dart';
@@ -341,8 +342,143 @@ void main() {
     expect(light.getFloat64(24, Endian.little), 1.0);
     expect(light.getFloat64(32, Endian.little), 0.5);
     final dark = primary.singleWhere((r) => r.$1[0] == 1).$2;
-    expect(dark.colorSpace, 2);
+    final darkBody = ByteData.sublistView(dark.body);
+    expect(darkBody.getUint32(8, Endian.little), 2, reason: 'colour space');
   });
+
+  group(
+    "a named colour is written as iOS looks it up, as in actool's output",
+    () {
+      late CarFile car;
+
+      setUp(() {
+        final catalog = '${temp.path}/Assets.xcassets';
+        writeJson('$catalog/Back.colorset/Contents.json', {
+          'colors': [
+            {
+              'idiom': 'universal',
+              'color': {
+                'color-space': 'srgb',
+                'components': {
+                  'red': '1.000',
+                  'green': '0.000',
+                  'blue': '0.000',
+                  'alpha': '0.500',
+                },
+              },
+            },
+          ],
+        });
+        car = CarFile(
+          compiler.compile([catalog], deploymentTarget: '16.0').car,
+        );
+      });
+
+      test('its facet names element 85, part 217 and its identifier', () {
+        final (name, facet) = car.tree('FACETKEYS').entries.single;
+        expect(utf8.decode(name), 'Back');
+        final view = ByteData.sublistView(facet);
+        final identifier = AssetNameHash.of('Back');
+        expect(
+          [
+            for (var i = 0; i < facet.length; i += 2)
+              view.getUint16(i, Endian.little),
+          ],
+          [0, 0, 3, 1, 85, 2, 217, 17, identifier],
+        );
+      });
+
+      test('its key has scale 1, element 85 and part 217', () {
+        final (key, _) = car.renditions.single;
+        // Appearance, localization, scale, idiom, subtype, dimension 2,
+        // identifier, element, part.
+        expect(key, [0, 0, 1, 0, 0, 0, AssetNameHash.of('Back'), 85, 217]);
+      });
+
+      test(
+        'its record has scale 0, blend and orientation, then the colour',
+        () {
+          final (_, bytes) = car.renditions.single;
+          final csi = Csi(bytes);
+          expect(csi.scaleFactor, 0);
+          expect(csi.width, 0);
+          expect(csi.height, 0);
+          expect(csi.layout, 1009);
+          expect(csi.name, 'Back');
+          expect(csi.tvlLength, 28);
+          expect(csi.renditionLength, 48);
+          expect(csi.tvl[1004], List.filled(8, 0));
+          expect(csi.tvl[1006], [1, 0, 0, 0]);
+          expect(ascii.decode(csi.body.sublist(0, 4)), 'RLOC');
+          final body = ByteData.sublistView(csi.body);
+          expect(body.getUint32(12, Endian.little), 4, reason: 'components');
+          expect(body.getFloat64(16, Endian.little), 1);
+          expect(body.getFloat64(40, Endian.little), 0.5);
+        },
+      );
+
+      test("its fixed bytes equal a colour record from Apple's actool", () {
+        // Read from the Assets.car of two shipped apps built with Xcode, one
+        // an sRGB colour with these same fixed fields.
+        final (_, bytes) = car.renditions.single;
+        final csi = Csi(bytes);
+        expect(bytes.sublist(0, 40), [
+          ...ascii.encode('ISTC'),
+          1, 0, 0, 0, // version
+          0, 0, 0, 0, // flags
+          0, 0, 0, 0, // width
+          0, 0, 0, 0, // height
+          0, 0, 0, 0, // scale
+          0, 0, 0, 0, // pixel format
+          0, 0, 0, 0, // colour space
+          0, 0, 0, 0, // modification time
+          0xF1, 0x03, 0, 0, // layout 1009
+        ]);
+        expect(bytes.sublist(168, 184), [
+          28, 0, 0, 0, // TVL length
+          1, 0, 0, 0, // bitmap count
+          0, 0, 0, 0,
+          48, 0, 0, 0, // record length
+        ]);
+        expect(bytes.sublist(184, 212), [
+          0xEC,
+          0x03,
+          0,
+          0,
+          8,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0xEE,
+          0x03,
+          0,
+          0,
+          4,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+        ]);
+        expect(csi.body.sublist(0, 16), [
+          ...ascii.encode('RLOC'),
+          1, 0, 0, 0, // record version
+          1, 0, 0, 0, // sRGB
+          4, 0, 0, 0, // components
+        ]);
+      });
+    },
+  );
 
   test('uniformImageColor reads a one-colour background image', () {
     final catalog = '${temp.path}/Assets.xcassets';
@@ -408,5 +544,260 @@ void main() {
     expect(result.appIconName, 'AppIcon');
     expect(result.issues.single.subject, 'AppIcon-Dev');
     expect(result.looseFiles.single.name, 'AppIcon60x60@2x.png');
+  });
+
+  group('the launch image', () {
+    const blue = (0, 0, 255);
+    const navy = (0, 0, 64);
+
+    Map<String, Object?> colorEntry(
+      (int, int, int) color, {
+      bool dark = false,
+    }) => {
+      'idiom': 'universal',
+      if (dark)
+        'appearances': [
+          {'appearance': 'luminosity', 'value': 'dark'},
+        ],
+      'color': {
+        'color-space': 'srgb',
+        'components': {
+          'red': '0x${color.$1.toRadixString(16)}',
+          'green': '0x${color.$2.toRadixString(16)}',
+          'blue': '0x${color.$3.toRadixString(16)}',
+          'alpha': '1.000',
+        },
+      },
+    };
+
+    /// `Splash.imageset` with one PNG, and with [darkPng] a dark one too.
+    String catalog({
+      Uint8List? png,
+      Uint8List? darkPng,
+      (int, int, int)? color,
+      (int, int, int)? darkColor,
+    }) {
+      final path = '${temp.path}/Assets.xcassets';
+      writeJson('$path/Splash.imageset/Contents.json', {
+        'images': [
+          {'idiom': 'universal', 'filename': 's.png', 'scale': '1x'},
+          if (darkPng != null)
+            {
+              'idiom': 'universal',
+              'filename': 'd.png',
+              'scale': '1x',
+              'appearances': [
+                {'appearance': 'luminosity', 'value': 'dark'},
+              ],
+            },
+        ],
+      });
+      writeBytes(
+        '$path/Splash.imageset/s.png',
+        png ?? solidPng(4, 4, (0, 0, 0, 0)),
+      );
+      if (darkPng != null) {
+        writeBytes('$path/Splash.imageset/d.png', darkPng);
+      }
+      if (color != null) {
+        writeJson('$path/Back.colorset/Contents.json', {
+          'colors': [
+            colorEntry(color),
+            if (darkColor != null) colorEntry(darkColor, dark: true),
+          ],
+        });
+      }
+      return path;
+    }
+
+    const whiteFallback = CatalogColor(red: 1, green: 1, blue: 1);
+
+    const backdrop = LaunchBackdrop(
+      imageName: 'Splash',
+      colorName: 'Back',
+      color: whiteFallback,
+    );
+
+    /// Image renditions as `(dark, CSI)`, light first.
+    List<(bool, Csi)> images(Uint8List car) => [
+      for (final (key, bytes) in CarFile(car).renditions)
+        if (key[8] == 181) (key[0] == 1, Csi(bytes)),
+    ]..sort((a, b) => (a.$1 ? 1 : 0) - (b.$1 ? 1 : 0));
+
+    List<int> corner(Csi csi) => csi.mlecPixels.sublist(0, 4);
+
+    test('transparent pixels become its colour, in light and dark', () {
+      final result = compiler.compile(
+        [catalog(color: blue, darkColor: navy)],
+        deploymentTarget: '16.0',
+        launch: backdrop,
+      );
+      expect(result.issues, isEmpty);
+      final all = images(result.car);
+      expect([for (final (dark, _) in all) dark], [false, true]);
+      expect(corner(all.first.$2), [255, 0, 0, 255], reason: 'BGRA');
+      expect(corner(all.last.$2), [64, 0, 0, 255], reason: 'BGRA');
+      for (final (_, csi) in all) {
+        expect(csi.flags, CsiWriter.flagImage, reason: 'a generic image');
+      }
+    });
+
+    test('a half transparent pixel blends with the colour', () {
+      final result = compiler.compile(
+        [
+          catalog(
+            png: solidPng(2, 2, (255, 0, 0, 128)),
+            color: (255, 255, 255),
+          ),
+        ],
+        deploymentTarget: '16.0',
+        launch: backdrop,
+      );
+      expect(corner(images(result.car).single.$2), [127, 127, 255, 255]);
+    });
+
+    test('an opaque pixel keeps its colour', () {
+      final result = compiler.compile(
+        [catalog(png: solidPng(2, 2, (9, 8, 7, 255)), color: blue)],
+        deploymentTarget: '16.0',
+        launch: backdrop,
+      );
+      expect(corner(images(result.car).single.$2), [7, 8, 9, 255]);
+    });
+
+    test('the same colour in dark adds no second image', () {
+      final result = compiler.compile(
+        [catalog(color: blue, darkColor: blue)],
+        deploymentTarget: '16.0',
+        launch: backdrop,
+      );
+      expect(images(result.car), hasLength(1));
+    });
+
+    test('its own dark image is drawn over the dark colour', () {
+      final result = compiler.compile(
+        [
+          catalog(
+            darkPng: solidPng(4, 4, (0, 0, 0, 0)),
+            color: blue,
+            darkColor: navy,
+          ),
+        ],
+        deploymentTarget: '16.0',
+        launch: backdrop,
+      );
+      final all = images(result.car);
+      expect(all, hasLength(2));
+      expect(corner(all.last.$2), [64, 0, 0, 255]);
+    });
+
+    test('without the colour set, the given colour is used with its dark', () {
+      final result = compiler.compile(
+        [catalog()],
+        deploymentTarget: '16.0',
+        launch: const LaunchBackdrop(
+          imageName: 'Splash',
+          colorName: 'Nothing',
+          color: CatalogColor(
+            red: 0,
+            green: 1,
+            blue: 0,
+            dark: CatalogColor(red: 1, green: 0, blue: 0),
+          ),
+        ),
+      );
+      final all = images(result.car);
+      expect(corner(all.first.$2), [0, 255, 0, 255]);
+      expect(corner(all.last.$2), [0, 0, 255, 255]);
+    });
+
+    test(
+      'other images and a catalog with no launch image keep their alpha',
+      () {
+        final path = catalog(color: blue);
+        expect(
+          corner(
+            images(
+              compiler.compile([path], deploymentTarget: '16.0').car,
+            ).single.$2,
+          ),
+          [0, 0, 0, 0],
+        );
+        expect(
+          corner(
+            images(
+              compiler
+                  .compile(
+                    [path],
+                    deploymentTarget: '16.0',
+                    launch: const LaunchBackdrop(
+                      imageName: 'SomethingElse',
+                      colorName: 'Back',
+                      color: whiteFallback,
+                    ),
+                  )
+                  .car,
+            ).single.$2,
+          ),
+          [0, 0, 0, 0],
+        );
+      },
+    );
+  });
+
+  group('an image set and a colour set with one name', () {
+    late CompiledAssetCatalog result;
+
+    setUp(() {
+      final path = '${temp.path}/Assets.xcassets';
+      writeJson('$path/LaunchBackground.imageset/Contents.json', {
+        'images': [
+          {'idiom': 'universal', 'filename': 'background.png', 'scale': '1x'},
+        ],
+      });
+      writeBytes(
+        '$path/LaunchBackground.imageset/background.png',
+        solidPng(1, 1, (255, 255, 255, 255)),
+      );
+      writeJson('$path/LaunchBackground.colorset/Contents.json', {
+        'colors': [
+          {
+            'idiom': 'universal',
+            'color': {
+              'color-space': 'srgb',
+              'components': {
+                'red': '1.000',
+                'green': '1.000',
+                'blue': '1.000',
+                'alpha': '1.000',
+              },
+            },
+          },
+        ],
+      });
+      result = compiler.compile([path], deploymentTarget: '16.0');
+    });
+
+    test('the colour wins, so UIColor(named:) can find it', () {
+      expect(result.colorNames, {'LaunchBackground'});
+      expect(result.imageNames, isEmpty);
+      final car = CarFile(result.car);
+      final (name, facet) = car.tree('FACETKEYS').entries.single;
+      expect(utf8.decode(name), 'LaunchBackground');
+      // Element 85, then the part: 217 for a colour, 181 for an image.
+      expect(ByteData.sublistView(facet).getUint16(12, Endian.little), 217);
+      expect(
+        [for (final (key, _) in car.renditions) key[8]],
+        isNot(contains(181)),
+        reason: 'no image rendition',
+      );
+    });
+
+    test('the build is told which folder to delete', () {
+      final issue = result.issues.single;
+      expect(issue.kind, AssetCatalogIssueKind.invalid);
+      expect(issue.subject, 'LaunchBackground');
+      expect(issue.message, contains('LaunchBackground.imageset'));
+    });
   });
 }

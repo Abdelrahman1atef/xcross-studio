@@ -29,6 +29,7 @@ the skipped-resource report (`// studio: 004` hunks); handled resources are no l
 | Bitmap compression | LZFSE (`bvx2`, vendored C encoder) | LZFSE uncompressed blocks (`bvx-` … `bvx$`), still type 3 | no C port; `bvx-` is what Apple's encoder emits for incompressible data, every decoder reads it |
 | TVL 1007 bytes per row | `width*4` rounded up to 16, rows unpadded | `width*4` | value and data agree for widths like 29, 58, 87, 167 |
 | Duplicate rendition keys | all inserted | first kept; app icons sorted largest first | one key per (idiom, scale); the home-screen size wins |
+| Named colour record | identifier only in the key, scale 100, body version 0 | as `actool` writes it, read byte for byte from real catalogs (2026-11-04): key element 85, part 217, scale 1; record scale 0, colour space 0 in the header, bitmap count 1, tag `RLOC`, body version 1 | iOS never found a colour written the other way, so the launch background was always the system default |
 | `ios-marketing` icon | compiled | compiled (skipped until 2026-11-04) | not used on device, but App Store Connect reads it from the catalog and rejected the upload without it (error 91111) |
 | iPad loose icons | `AppIcon76x76@2x.png` | `AppIcon76x76@2x~ipad.png` | actool naming; avoids iPhone/iPad name clashes |
 | Single-size 1024 icon | rejected (no scale) | scaled to iPhone/iPad slots | Xcode 14+ catalogs |

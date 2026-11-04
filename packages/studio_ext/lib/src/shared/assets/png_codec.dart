@@ -38,6 +38,21 @@ final class RgbaImage {
     return true;
   }
 
+  /// This image drawn over the colour [red], [green], [blue] (0…255), leaving
+  /// no pixel with any transparency.
+  RgbaImage flattenedOver(int red, int green, int blue) {
+    final out = Uint8List(rgba.length);
+    for (var i = 0; i < rgba.length; i += 4) {
+      final a = rgba[i + 3];
+      final under = 255 - a;
+      out[i] = (rgba[i] * a + red * under + 127) ~/ 255;
+      out[i + 1] = (rgba[i + 1] * a + green * under + 127) ~/ 255;
+      out[i + 2] = (rgba[i + 2] * a + blue * under + 127) ~/ 255;
+      out[i + 3] = 255;
+    }
+    return RgbaImage(width, height, out);
+  }
+
   /// The single colour of the image, or `null` when pixels differ.
   (int, int, int, int)? get uniformColor {
     if (rgba.isEmpty) return null;

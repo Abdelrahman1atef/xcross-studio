@@ -125,12 +125,22 @@ final class FlutterAssetCatalogs {
           backgroundImageColor ?? spec.background ?? LaunchStoryboard.white;
     }
 
+    final launchImage = spec?.imageName;
     final CompiledAssetCatalog compiled;
     try {
       compiled = compiler.compile(
         catalogs,
         deploymentTarget: deploymentTarget,
         extraColors: {launchColorName: ?launchColor},
+        launch: launchImage == null || launchColor == null
+            ? null
+            : LaunchBackdrop(
+                imageName: launchImage,
+                colorName: backgroundImageColor == null
+                    ? spec?.backgroundColorName
+                    : null,
+                color: launchColor,
+              ),
       );
       // A compiler fault must never fail the build: it falls back to
       // today's behaviour with a coded warning.

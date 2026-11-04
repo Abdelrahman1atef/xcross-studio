@@ -83,6 +83,24 @@ final class CatalogColor {
       '${displayP3 ? ', P3' : ''}${dark == null ? '' : ', dark: $dark'})';
 }
 
+/// The launch image and the background it is drawn over.
+@immutable
+final class LaunchBackdrop {
+  const LaunchBackdrop({
+    required this.imageName,
+    required this.color,
+    this.colorName,
+  });
+
+  final String imageName;
+
+  /// The colour set holding the background; wins over [color] when it exists.
+  final String? colorName;
+
+  /// The background when [colorName] is not a colour set.
+  final CatalogColor color;
+}
+
 /// The compiled catalog and what the app bundle needs alongside it.
 final class CompiledAssetCatalog {
   const CompiledAssetCatalog({
@@ -135,23 +153,77 @@ final class AssetCatalogCompiler {
   /// The app icon set to compile (`ASSETCATALOG_COMPILER_APPICON_NAME`).
   final String appIconName;
 
+  /// Compiles [catalogs] into one `Assets.car`.
+  ///
+  /// The image of [launch] is drawn over its background, in light and dark. On
+  /// a real iPhone a launch image's transparent pixels showed as a black square
+  /// (seen 2026-11-04), so it holds none: over the same colour, the result
+  /// looks transparent. The files in the project keep their transparency.
+  ///
+  /// The names stay stable on purpose. iOS can keep an app's older catalog
+  /// until the phone restarts (an iPhone drew a removed image into a fresh
+  /// install's launch snapshots, seen 2026-11-04), and a name that catalog lacks
+  /// comes out blank, which is worse on a user's phone than an older logo.
   CompiledAssetCatalog compile(
     List<String> catalogs, {
     required String deploymentTarget,
     Map<String, CatalogColor> extraColors = const {},
+    LaunchBackdrop? launch,
   }) {
     final issues = <AssetCatalogIssue>[];
     final loaded = CatalogLoader(fileSystem, paths).load(catalogs, issues);
     final renditions = <Rendition>[];
 
+    final colorSetNames = {
+      for (final set in loaded.colorSets)
+        if (set.colors.isNotEmpty) set.name,
+    };
+    final launchColor = launch == null ? null : _launchColor(launch, loaded);
     final imageNames = <String>{};
     for (final set in loaded.imageSets) {
-      final before = renditions.length;
-      for (final image in set.images) {
-        final rendition = _image(set.name, image, issues);
-        if (rendition != null) renditions.add(rendition);
+      // A name has one kind in the catalog, and images are written first, so
+      // this set would hide the colour from UIColor(named:) (a splash tool's
+      // leftover `LaunchBackground.imageset` did).
+      if (colorSetNames.contains(set.name)) {
+        issues.add(
+          AssetCatalogIssue(
+            AssetCatalogIssueKind.invalid,
+            set.name,
+            'Image set "${set.name}" has the same name as a colour set, so it '
+            'is not in the app. Delete ${set.name}.imageset or rename it.',
+          ),
+        );
+        continue;
       }
-      if (renditions.length > before) imageNames.add(set.name);
+      final over = set.name == launch?.imageName ? launchColor : null;
+      final compiled = <CatalogImage>[];
+      for (final image in set.images) {
+        final rendition = _image(
+          set.name,
+          image,
+          issues,
+          over: image.dark ? over?.dark ?? over : over,
+        );
+        if (rendition == null) continue;
+        renditions.add(rendition);
+        compiled.add(image);
+      }
+      // A set with no dark image still needs one over a different dark colour.
+      if (over?.dark case final dark?
+          when !_sameColor(over!, dark) && !set.images.any((i) => i.dark)) {
+        for (final image in compiled) {
+          if (paths.extension(image.filename).toLowerCase() != '.png') continue;
+          final rendition = _image(
+            set.name,
+            image,
+            issues,
+            over: dark,
+            dark: true,
+          );
+          if (rendition != null) renditions.add(rendition);
+        }
+      }
+      if (compiled.isNotEmpty) imageNames.add(set.name);
     }
 
     final colorNames = <String>{};
@@ -293,11 +365,45 @@ final class AssetCatalogCompiler {
         ),
       );
 
+  /// The background of [launch]: its colour set when there is one.
+  CatalogColor _launchColor(LaunchBackdrop launch, LoadedCatalog loaded) {
+    final colors = loaded.colorSets
+        .where((set) => set.name == launch.colorName)
+        .firstOrNull
+        ?.colors;
+    if (colors == null || colors.isEmpty) return launch.color;
+    CatalogColor of(CatalogColorEntry entry, {CatalogColor? dark}) =>
+        CatalogColor(
+          red: entry.red,
+          green: entry.green,
+          blue: entry.blue,
+          displayP3: entry.gamut == AssetGamut.displayP3,
+          dark: dark,
+        );
+    final dark = colors.where((color) => color.dark).firstOrNull;
+    final light = colors.where((color) => !color.dark).firstOrNull;
+    final darkColor = dark == null ? null : of(dark);
+    return light == null ? darkColor! : of(light, dark: darkColor);
+  }
+
+  static bool _sameColor(CatalogColor a, CatalogColor b) =>
+      a.red == b.red &&
+      a.green == b.green &&
+      a.blue == b.blue &&
+      a.displayP3 == b.displayP3;
+
+  static int _channel(double component) =>
+      (component * 255).round().clamp(0, 255);
+
+  /// The rendition of [image], drawn over [over] when given and marked as the
+  /// dark variant when [dark] says so (default: as the catalog says).
   Rendition? _image(
     String asset,
     CatalogImage image,
-    List<AssetCatalogIssue> issues,
-  ) {
+    List<AssetCatalogIssue> issues, {
+    CatalogColor? over,
+    bool? dark,
+  }) {
     final extension = paths.extension(image.filename).toLowerCase();
     void report(AssetCatalogIssueKind kind, String message) => issues.add(
       AssetCatalogIssue(kind, '$asset/${image.filename}', message),
@@ -321,17 +427,31 @@ final class AssetCatalogCompiler {
     final bytes = file.readAsBytesSync();
     try {
       if (extension == '.png') {
-        final decoded = PngDecoder.decode(bytes);
+        final source = PngDecoder.decode(bytes);
+        final decoded = over == null
+            ? source
+            : source.flattenedOver(
+                _channel(over.red),
+                _channel(over.green),
+                _channel(over.blue),
+              );
+        // Over a colour, the image takes the colour's space: its edge must not
+        // show against the same colour behind it.
+        final gamut = over == null
+            ? image.gamut
+            : over.displayP3
+            ? AssetGamut.displayP3
+            : AssetGamut.srgb;
         return Rendition(
           name: asset,
           idiom: image.idiom,
           scale: image.scale,
-          dark: image.dark,
+          dark: dark ?? image.dark,
           body: BitmapBody(
             width: decoded.width,
             height: decoded.height,
             pixelsBgra: decoded.toPremultipliedBgra(),
-            colorSpaceId: image.gamut.colorSpaceId,
+            colorSpaceId: gamut.colorSpaceId,
             kind: BitmapKind.image,
             renditionName: image.filename,
           ),

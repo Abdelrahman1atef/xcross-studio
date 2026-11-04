@@ -181,8 +181,8 @@ void main() {
           body: ColorBody(red: 1, green: 0, blue: 0, alpha: 1, colorSpaceId: 1),
         ),
       );
-      expect(color.slots.sublist(7), [0, 0]);
-      expect(color.scale, 0);
+      expect(color.slots.sublist(7), [85, 217]);
+      expect(color.scale, 1);
     });
   });
 
@@ -270,7 +270,7 @@ void main() {
       expect(csi.body.sublist(12), source);
     });
 
-    test('colour: layout 1009, COLR with four doubles', () {
+    test('colour: layout 1009, COLR stored as RLOC, four doubles', () {
       final csi = Csi(
         CsiWriter.color(
           'Accent',
@@ -284,11 +284,13 @@ void main() {
         ),
       );
       expect(csi.layout, 1009);
-      expect(csi.scaleFactor, 100);
-      expect(csi.colorSpace, 2);
+      expect(csi.scaleFactor, 0);
+      expect(csi.colorSpace, 0, reason: 'the space is in the body');
+      expect(csi.bitmapCount, 1);
       expect(csi.name, 'Accent');
       final body = ByteData.sublistView(csi.body);
-      expect(ascii.decode(csi.body.sublist(0, 4)), 'COLR');
+      expect(ascii.decode(csi.body.sublist(0, 4)), 'RLOC');
+      expect(body.getUint32(4, Endian.little), 1, reason: 'body version');
       expect(body.getUint32(8, Endian.little), 2);
       expect(body.getUint32(12, Endian.little), 4);
       expect(body.getFloat64(16 + 16, Endian.little), 0.5);
@@ -372,7 +374,10 @@ void main() {
       expect(icon.getUint16(8, Endian.little), 85);
       expect(icon.getUint16(12, Endian.little), 220);
       expect(icon.getUint16(16, Endian.little), AssetNameHash.of('AppIcon'));
-      expect(facets['Background']!.getUint16(4, Endian.little), 1);
+      final background = facets['Background']!;
+      expect(background.getUint16(4, Endian.little), 3);
+      expect(background.getUint16(8, Endian.little), 85);
+      expect(background.getUint16(12, Endian.little), 217);
 
       final appearances = car.tree('APPEARANCEKEYS').entries;
       expect(

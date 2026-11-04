@@ -101,32 +101,42 @@ abstract final class CsiWriter {
   }
 
   /// A named colour: header plus a `COLR` body with four IEEE-754 doubles.
+  ///
+  /// Every fixed field matches actool's output, read byte for byte from real
+  /// catalogs: tag `RLOC` (little-endian like `ISTC`, `MLEC`, `DWAR`), body
+  /// version 1, the colour space in the body and 0 in the header, and a bitmap
+  /// count of 1 although there is no bitmap.
   static Uint8List color(String name, ColorBody body) {
     final payload = AssetByteWriter()
-      ..fourCC('COLR')
-      ..u32le(0)
+      ..fourCC('RLOC')
+      ..u32le(1)
       ..u32le(body.colorSpaceId)
       ..u32le(4);
     for (final component in [body.red, body.green, body.blue, body.alpha]) {
       payload.f64le(component);
     }
     final payloadBytes = payload.toBytes();
+    final tvl = AssetByteWriter();
+    TvlEntries.blendAndOpacity(tvl);
+    TvlEntries.bitmapFlag(tvl);
+    final tvlBytes = tvl.toBytes();
     return (AssetByteWriter()
           ..bytes(
             header(
               renditionFlags: 0,
               width: 0,
               height: 0,
-              scaleFactor: 100,
+              scaleFactor: 0,
               pixelFormat: 0,
-              colorSpace: body.colorSpaceId,
+              colorSpace: 0,
               layout: layoutNamedColor,
               name: name,
-              tvlLength: 0,
-              bitmapCount: 0,
+              tvlLength: tvlBytes.length,
+              bitmapCount: 1,
               renditionLength: payloadBytes.length,
             ),
           )
+          ..bytes(tvlBytes)
           ..bytes(payloadBytes))
         .toBytes();
   }
@@ -198,6 +208,13 @@ abstract final class TvlEntries {
     ..u32le(8)
     ..u32le(0)
     ..f32le(1);
+
+  /// 1004 of a named colour: all zero, as actool writes it.
+  static void blendAndOpacity(AssetByteWriter w) => w
+    ..u32le(1004)
+    ..u32le(8)
+    ..u32le(0)
+    ..u32le(0);
 
   /// 1006: always 1 in the reference.
   static void bitmapFlag(AssetByteWriter w) => w

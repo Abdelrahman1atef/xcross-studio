@@ -230,9 +230,11 @@ final class RenditionKey {
       ),
       ColorBody() => RenditionKey(
         appearance: appearance,
-        scale: scale,
+        scale: 1,
         idiom: idiom,
         identifier: identifier,
+        element: elementBitmap,
+        part: partColor,
       ),
     };
   }
@@ -240,6 +242,11 @@ final class RenditionKey {
   static const elementBitmap = 85;
   static const partAppIcon = 220;
   static const partImage = 181;
+
+  /// A named colour. iOS looks colours up under this element and part, so one
+  /// without them is never found (seen on an iPhone, 2026-11-04). As in actool's
+  /// output: blog.timac.org/2018/1018-reverse-engineering-the-car-file-format.
+  static const partColor = 217;
 
   final int appearance;
   final int localization;

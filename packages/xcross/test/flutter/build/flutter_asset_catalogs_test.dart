@@ -287,6 +287,74 @@ void main() {
     expect(result.launchScreen!['UIColorName'], 'XCrossLaunchBackground');
   });
 
+  test('a transparent launch image is drawn over its named colour, and a '
+      'leftover image set does not hide that colour', () {
+    final catalog = flutterCatalog();
+    png(p.join(catalog, 'LaunchImage.imageset', 'LaunchImage.png'), 3, (
+      0,
+      0,
+      0,
+      0,
+    ));
+    json(p.join(catalog, 'LaunchBackground.colorset', 'Contents.json'), {
+      'colors': [
+        {
+          'idiom': 'universal',
+          'color': {
+            'color-space': 'srgb',
+            'components': {
+              'red': '0.000',
+              'green': '0.000',
+              'blue': '1.000',
+              'alpha': '1.000',
+            },
+          },
+        },
+      ],
+    });
+    json(p.join(catalog, 'LaunchBackground.imageset', 'Contents.json'), {
+      'images': [
+        {'idiom': 'universal', 'filename': 'background.png', 'scale': '1x'},
+      ],
+    });
+    png(p.join(catalog, 'LaunchBackground.imageset', 'background.png'), 1, (
+      255,
+      255,
+      255,
+      255,
+    ));
+    final launch = storyboard(
+      '<color key="backgroundColor" name="LaunchBackground"/>',
+    );
+
+    final result = catalogs().compile(
+      bundleDir: bundle,
+      skipped: [
+        SkippedResource(catalog, SkippedResourceReason.assetCatalog),
+        SkippedResource(launch, SkippedResourceReason.uncompiledStoryboard),
+      ],
+      deploymentTarget: '16.0',
+      launchStoryboardName: 'LaunchScreen',
+    );
+
+    expect(result.launchScreen, {
+      'UIColorName': 'LaunchBackground',
+      'UIImageName': 'LaunchImage',
+    });
+    expect(
+      firstPixel(
+        File(p.join(bundle, 'Assets.car')).readAsBytesSync(),
+        'LaunchImage.png',
+      ),
+      [255, 0, 0, 255],
+      reason: 'BGRA: the blue background, opaque',
+    );
+    expect(
+      warnings.singleWhere((w) => w.$2 == 'LaunchBackground').$1,
+      XcrossCodes.buildAssetInvalid.code,
+    );
+  });
+
   test('AC-004-4 an unreadable storyboard keeps the old behaviour', () {
     final launch = p.join(runner, 'Base.lproj', 'LaunchScreen.storyboard');
     File(launch)
@@ -322,6 +390,28 @@ void main() {
       isNull,
     );
   });
+}
+
+/// The first pixel (BGRA) of the rendition with source file [name] in [car].
+@internal
+List<int> firstPixel(Uint8List car, String name) {
+  final data = ByteData.sublistView(car);
+  final tag = ascii.encode('ISTC');
+  final wanted = ascii.encode('$name\u0000');
+  bool matches(int at, List<int> bytes) {
+    for (var i = 0; i < bytes.length; i++) {
+      if (car[at + i] != bytes[i]) return false;
+    }
+    return true;
+  }
+
+  for (var i = 0; i + 184 < car.length; i++) {
+    if (!matches(i, tag) || !matches(i + 40, wanted)) continue;
+    // CSI header, TVL, then MLEC: 16 bytes, chunk header 20, `bvx-` header 8.
+    final pixels = i + 184 + data.getUint32(i + 168, Endian.little) + 44;
+    return car.sublist(pixels, pixels + 4);
+  }
+  throw StateError('$name is not in the catalog');
 }
 
 /// A solid RGBA8 PNG.

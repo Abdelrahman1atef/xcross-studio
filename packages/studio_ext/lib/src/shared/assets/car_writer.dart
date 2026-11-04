@@ -223,7 +223,11 @@ abstract final class FacetKeys {
         (AttributeIds.part, RenditionKey.partImage),
         (AttributeIds.identifier, identifier),
       ],
-      FacetKind.color => [(AttributeIds.identifier, identifier)],
+      FacetKind.color => [
+        (AttributeIds.element, RenditionKey.elementBitmap),
+        (AttributeIds.part, RenditionKey.partColor),
+        (AttributeIds.identifier, identifier),
+      ],
     };
     final writer = AssetByteWriter()
       ..u16le(0)
