@@ -512,6 +512,84 @@ end
       );
     });
 
+    // permission_handler_apple (doctory, 2026-11-04): "use of undeclared
+    // identifier 'UIApplication'". A pod's prefix header gave each Objective-C
+    // file UIKit.
+    test('AC-006-13 Objective-C files get the UIKit their prefix header '
+        'gave them, also when nothing else needs patching', () async {
+      final root = p.join(temp.path, 'pub', 'pod_objc');
+      File(p.join(root, 'pubspec.yaml'))
+        ..createSync(recursive: true)
+        ..writeAsStringSync('name: pod_objc\nversion: 1.0.0\n');
+      void ios(String path, String text) => File(p.join(root, 'ios', path))
+        ..createSync(recursive: true)
+        ..writeAsStringSync(text);
+      ios(
+        'pod_objc.podspec',
+        "Pod::Spec.new do |s|\n  s.source_files = 'Classes/**/*'\n"
+            "  s.dependency 'Flutter'\nend\n",
+      );
+      ios('Classes/Plugin.h', '#import <Flutter/Flutter.h>\n');
+      ios(
+        'Classes/Phone.m',
+        '//  Phone\n\n#import "Plugin.h"\n[UIApplication sharedApplication];\n',
+      );
+      ios('Classes/Native.c', 'int UIFake = 1;\n');
+      File(p.join(project, '.flutter-plugins-dependencies')).writeAsStringSync(
+        jsonEncode({
+          'plugins': {
+            'ios': [
+              {'name': 'pod_objc', 'path': root},
+            ],
+          },
+        }),
+      );
+      await runner().run(['plugin', 'shim', 'pod_objc', '--project', project]);
+      final folder = p.join(
+        project,
+        'xcross_overrides',
+        'pod_objc',
+        '1.0.0',
+        'Classes',
+      );
+      expect(
+        File(p.join(folder, 'Phone.m')).readAsStringSync(),
+        '//  Phone\n\n#import <UIKit/UIKit.h>\n#import "Plugin.h"\n'
+        '[UIApplication sharedApplication];\n',
+      );
+      expect(File(p.join(folder, 'Plugin.h')).existsSync(), isFalse);
+      expect(File(p.join(folder, 'Native.c')).existsSync(), isFalse);
+      expect(out.join(), contains('✔ Patched Classes/Phone.m (import UIKit)'));
+    });
+
+    test('implicit Objective-C imports: what counts as imported and used', () {
+      // Flutter's header brings UIKit; a comment is not a use.
+      for (final source in [
+        '#import <UIKit/UIKit.h>\nUIView *v;\n',
+        '@import UIKit;\nUIView *v;\n',
+        '#import <Flutter/Flutter.h>\nUIView *v;\n',
+        '@import Flutter;\nUIView *v;\n',
+        '// UIView\n#import "A.h"\nint x;\n',
+        '#import "A.h"\nNSString *s;\n',
+      ]) {
+        expect(patchImplicitObjcImports(source), isNull, reason: source);
+      }
+      // No import at all: Foundation for its NS types.
+      expect(
+        patchImplicitObjcImports('NSString *s;\n'),
+        '#import <Foundation/Foundation.h>\nNSString *s;\n',
+      );
+      // A header can be included from plain C: guarded.
+      expect(
+        patchImplicitObjcImports(
+          '#ifndef A_H\n#define A_H\nUIView *v;\n#endif\n',
+          header: true,
+        ),
+        '#ifdef __OBJC__\n#import <UIKit/UIKit.h>\n#endif\n'
+        '#ifndef A_H\n#define A_H\nUIView *v;\n#endif\n',
+      );
+    });
+
     test('implicit imports: what counts as imported and used', () {
       // UIKit and Flutter bring Foundation; only what is used is added.
       expect(patchImplicitImports('import UIKit\nlet u: URL? = nil\n'), isNull);

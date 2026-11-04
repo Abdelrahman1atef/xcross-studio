@@ -322,6 +322,23 @@ final class PluginShimCommand extends Command<void> {
         final original = source.readAsStringSync();
         var text = original;
         final reasons = <String>[];
+        // Not plain C or C++: UIKit is Objective-C, and CocoaPods' prefix
+        // header only imports it for Objective-C.
+        final extension = paths.extension(relative);
+        if (const {'.m', '.mm', '.h'}.contains(extension)) {
+          final implicit = patchImplicitObjcImports(
+            text,
+            header: extension == '.h',
+          );
+          if (implicit != null) {
+            reasons.add(
+              implicit.contains('<UIKit/UIKit.h>')
+                  ? 'import UIKit'
+                  : 'import Foundation',
+            );
+            text = implicit;
+          }
+        }
         if (draft.splitsSwift) {
           final swift = patchSwiftHeaderImports(text, name);
           if (swift != null) {

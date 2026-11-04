@@ -238,6 +238,39 @@ String? patchImplicitImports(String source) {
   );
 }
 
+/// The Objective-C side of [patchImplicitImports], for `.m`, `.mm` and `.h`
+/// files: a pod's prefix header gave each file UIKit. Adds it when the file
+/// uses UIKit types without importing UIKit or Flutter (whose header brings
+/// it), and Foundation when it uses `NS` types and imports nothing at all.
+/// Null when it needs neither. [header] guards the import: a header can be
+/// included from plain C.
+@internal
+String? patchImplicitObjcImports(String source, {bool header = false}) {
+  bool imported(String framework) => RegExp(
+    '(?:#\\s*(?:import|include)\\s*<$framework/|@import\\s+$framework\\b)',
+  ).hasMatch(source);
+  final code = _withoutComments(source);
+  final String module;
+  if (RegExp(r'\bUI[A-Z][a-z]\w*').hasMatch(code) &&
+      !imported('UIKit') &&
+      !imported('Flutter')) {
+    module = 'UIKit';
+  } else if (RegExp(r'\bNS[A-Z]\w*').hasMatch(code) &&
+      !RegExp(r'#\s*(?:import|include)\b|@import\b').hasMatch(code)) {
+    module = 'Foundation';
+  } else {
+    return null;
+  }
+  final eol = source.contains('\r\n') ? '\r\n' : '\n';
+  final line = '#import <$module/$module.h>$eol';
+  final at = _firstCodeOffset(source);
+  return source.replaceRange(
+    at,
+    at,
+    header ? '#ifdef __OBJC__$eol$line#endif$eol' : line,
+  );
+}
+
 String _withoutComments(String source) => source
     .replaceAll(RegExp(r'/\*[\s\S]*?\*/'), '')
     .replaceAll(RegExp(r'//[^\n]*'), '');
@@ -497,9 +530,8 @@ PackageSwiftDraft draftPackageSwift({
     text.toString(),
     notes,
     objcSources: [
-      if (mixed || moduleRenames.isNotEmpty)
-        for (final file in [...native, ...headers])
-          if (targetPath == '.') file else '$targetPath/$file',
+      for (final file in [...native, ...headers])
+        if (targetPath == '.') file else '$targetPath/$file',
     ],
     swiftSources: [
       for (final file in swift)
