@@ -32,7 +32,7 @@ They are `AAPL` textures: LZFSE-compressed ASTC 4×4, where a flat block holds i
 | After a restart, the flattened image, colour record with no element or part | Light: the current logo on white, no square. Dark: a white square on black | The restart let iOS read the new catalog. iOS still found no colour |
 | Colour key corrected, body version 0, no restart | The same as the row above | iOS still read the older catalog |
 | After a restart, colour key corrected, body version 0 | No launch images written at install: 0 in three installs, against 4 for every other row | iOS read this record and produced nothing. Why is not known |
-| After a restart, colour record equal to `actool`'s | Four launch images at install: the logo on white, no square, in every one | iOS found the colour |
+| After a restart, colour record equal to `actool`'s | Four launch images at install: the logo on white, no square, in every one. The user saw the same on opening, light and dark | iOS found the colour |
 
 A long-lived iOS process keeps the older catalog for an app until the phone restarts: three restarts each brought in the
 catalog that installs before them had not, and a fresh install after deleting the app did not. So a restart is what refreshes

@@ -25,7 +25,7 @@
 
 - iOS splash: a transparent logo showed as a big black square on a real iPhone. The launch image is now drawn over its
   background colour when the app is built, so it has no transparent pixels; the files in the project stay as they are.
-  Seen on an iPhone X in the launch images iOS saved: the logo on its colour, no square. To see a new splash, restart the
+  Confirmed on an iPhone X, light and dark: the logo on its colour, no square. To see a new splash, restart the
   iPhone and install again: iOS keeps the one it saved, and deleting the app is not enough.
 
 - Asset catalogs: iOS could not find any named colour xcross compiled, so `UIColor(named:)` failed and the splash background

@@ -5,9 +5,9 @@ build crashes when opened from the home screen.
 
 | # | AC | Step | Expected | Result |
 |---|----|------|----------|--------|
-| 1 | fix | Build a project whose asset has a space in its name, install, open the screen that uses it | The asset loads, such as a Lottie animation on a loading screen | ⏳ needs the iPhone |
-| 2 | fix | Transparent logo; splash in light mode | Logo on the chosen colour, no black square | ✅ iPhone X, iOS 16.7.16, 2026-11-04, read from the launch images iOS saved; ⏳ the user's own look |
-| 3 | fix | The same in dark mode | Logo on the dark colour, no black square | ✅ the same images, where the dark colour equals the light one. ⏳ a dark colour that differs |
+| 1 | fix | Build a project whose asset has a space in its name, install, open the screen that uses it | The asset loads, such as a Lottie animation on a loading screen | ✅ iPhone X, iOS 16.7.16, the user, 2026-11-05 |
+| 2 | fix | Transparent logo; splash in light mode | Logo on the chosen colour, no black square | ✅ iPhone X, iOS 16.7.16: read from the launch images iOS saved, 2026-11-04, and seen by the user, 2026-11-05 |
+| 3 | fix | The same in dark mode | Logo on the dark colour, no black square | ✅ the same images and the user's own look, where the dark colour equals the light one. ⏳ a dark colour that differs |
 | 4 | fix | Cold start 3 times | Same size each time, no stretching | ⏳ needs the iPhone |
 | 5 | AC-026-5, 6 | Signing page, with the real saved sign-in | Status shows the method and details; the form starts on that method; no password | ✅ CLI on this machine 2026-11-04: `deviceBuilds` and `appStoreBuilds` are the saved team key, key file found. ⏳ page in a live window |
 | 6 | AC-026-8…13, 16 | Real CLI, real project: App icon page and `All screens`, as a scratch render | Every family, true proportions, the logo and icon in each frame, dark and guides | ✅ a real project, 2026-11-04, as saved images, not a live window |
