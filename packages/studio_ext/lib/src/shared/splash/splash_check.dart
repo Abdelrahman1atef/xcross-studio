@@ -459,7 +459,7 @@ final class SplashCheck {
     }
 
     final logoName = RegExp(
-      'android:src="@drawable/(\\w+)"',
+      r'android:src="@drawable/(\w+)"',
     ).firstMatch(xml)?.group(1);
     (int, int)? size;
     if (logoName == null) {

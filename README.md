@@ -678,6 +678,23 @@ corners cut, off centre or too small. `xcross icons generate logo.png --padding 
 the whole set from one image without an alpha channel (the old set goes to `.xcross/icon-backups/`). The desktop
 app's **App icon** page previews the icon as iOS masks it. See [specs/023-icon-studio](specs/023-icon-studio/spec.md).
 
+**Icon and splash studio.** The same page opens a studio with a live preview per target: image, text or symbol as the
+source; foreground, effect, padding per side and trim; colour, gradient, mesh or image background with a texture; a
+badge; and Android's file name, shape and themed icon. The CLI does the drawing:
+
+```bash
+xcross icons generate logo.png --padding 10,14,18,14 --background-type gradient --background "#0A84FF" \
+  --background2 "#5E5CE6" --targets ios,android,web,macos --save-config
+xcross icons generate logo.png --targets all --zip app-icons.zip   # nothing in the project changes
+xcross splash generate logo.png --background "#FFFFFF" --dark-background "#000000" --logo-width 120 \
+  --margin 0,0,40,0 --save-config
+xcross splash check
+xcross icons generate --config && xcross splash generate --config  # from the committed xcross_assets.json
+```
+
+Commit `xcross_assets.json` and `.xcross/assets/` so a team regenerates the same files. Replaced files go to
+`.xcross/icon-backups/`. See [specs/024-icon-splash-studio](specs/024-icon-splash-studio/spec.md).
+
 The build signs the app and its extensions with an Apple Distribution certificate and App Store profiles, and writes
 `build/xcross-ios/ipa/<name>.ipa` and `build/xcross-ios/archive/Runner.xcarchive` (with dSYMs when `dsymutil` is on
 PATH). The certificate is reused across runs; in CI pass its private key (PEM) in `XCROSS_CERTIFICATE_PRIVATE_KEY`.

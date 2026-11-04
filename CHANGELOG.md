@@ -18,6 +18,19 @@
   one-click bumps showing the result ("Patch → 1.0.8 (8)").
   ([specs/022-studio-release-flow](specs/022-studio-release-flow/spec.md), AC-022-9)
 
+- **Icon and splash studio** on the App icon page and in the CLI. One source makes every app icon and the native
+  splash. The source is an image, text (font, bold, italic) or a searchable symbol (filled, outline, round), with a
+  foreground colour, an effect (drop shadow, cast shadow, score), padding for all sides or each side, trim, a colour,
+  gradient, mesh or image background, 11 textures, a badge, and Android's file name, shape and themed icon. Targets:
+  iOS, Android (densities, adaptive, monochrome, Play Store), notification icons, web (favicon, manifest, maskable),
+  macOS, watchOS, tvOS, Android TV and the Play Store banner, each with its own live preview. `xcross splash
+  generate|check` makes the native splash: logo with its own padding and margin, background, dark variant and
+  branding image, written for iOS (`LaunchImage`, `LaunchBackground`, the storyboard xcross reads into
+  `UILaunchScreen`) and Android (`launch_background`, `values-v31` with the Android 12 safe circle), previewed on
+  phones. Writing into a project backs up what it replaces; `--output` and `--zip` touch nothing. The settings stay
+  in `xcross_assets.json` for `--config` to regenerate, and what they name is kept in `.xcross/assets/`.
+  ([specs/024-icon-splash-studio](specs/024-icon-splash-studio/spec.md))
+
 - **App icon** in XCross Studio and `xcross icons`: `icons check [--json]` lists every icon size iOS uses
   (notification, Settings, Spotlight, home screen, iPad, App Store) with its file and status, reports what App Store
   Connect rejects (an App Store icon with an alpha channel, missing or wrong-size files) and how the logo sits

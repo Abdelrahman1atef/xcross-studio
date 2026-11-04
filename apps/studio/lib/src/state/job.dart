@@ -86,6 +86,9 @@ class Job extends ChangeNotifier {
   JobStatus status = JobStatus.running;
   int? exitCode;
   RunningProcess? _process;
+
+  /// What [send] was given before the process had started.
+  final List<String> _unsent = [];
   final _done = Completer<JobStatus>();
   bool _cancelRequested = false;
 
@@ -121,6 +124,11 @@ class Job extends ChangeNotifier {
         },
       );
       _process = process;
+      if (_cancelRequested) unawaited(launcher.killTree(process));
+      for (final input in _unsent) {
+        send(input);
+      }
+      _unsent.clear();
       // Completion is captured at subscription time: the streams can end
       // before the exit code arrives.
       final outDone = Completer<void>();
@@ -164,18 +172,23 @@ class Job extends ChangeNotifier {
 
   /// Sends [input] to the command's stdin (2FA codes, `q`, …).
   void send(String input) {
+    if (!isRunning) return;
     final process = _process;
-    if (process == null || !isRunning) return;
+    if (process == null) {
+      _unsent.add(input);
+      return;
+    }
     process.writeLine(input);
     _add(OutputLine('> ${input.isEmpty ? '⏎' : input}', LineKind.command));
   }
 
   /// Ends the command and the tools it started.
   Future<void> cancel() async {
-    final process = _process;
-    if (!isRunning || process == null) return;
+    if (!isRunning) return;
     _cancelRequested = true;
-    await launcher.killTree(process);
+    // Not started yet: [start] ends it as soon as it has a process.
+    final process = _process;
+    if (process != null) await launcher.killTree(process);
   }
 
   Stream<String> _lines(Stream<List<int>> bytes) => bytes

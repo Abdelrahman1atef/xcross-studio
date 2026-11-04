@@ -62,6 +62,10 @@ sealed class XcrossEvent {
       // Feature 023: the app icon set.
       'icons_check' => IconsCheckReport.fromJson(json),
       'icons_generate' => IconsGenerateResult.fromJson(json),
+      // Feature 024: the icon and splash studio.
+      'icons_preview' => IconsPreview.fromJson(json),
+      'splash_generate' => SplashGenerateResult.fromJson(json),
+      'splash_check' => SplashCheckReport.fromJson(json),
       'project_version' => ProjectVersion.fromJson(json),
       'done' => BuildDone(
         json['exitCode'] is int ? json['exitCode']! as int : 1,
@@ -848,6 +852,7 @@ class IconsGenerateResult extends XcrossEvent {
     this.backup,
     this.background,
     this.check,
+    this.issues = const [],
   });
 
   factory IconsGenerateResult.fromJson(Map<String, Object?> json) =>
@@ -862,8 +867,12 @@ class IconsGenerateResult extends XcrossEvent {
         check: json['check'] is Map
             ? IconsCheckReport.fromJson(_map(json['check']))
             : null,
+        issues: [
+          for (final issue in _maps(json['issues'])) AssetIssue.fromJson(issue),
+        ],
       );
 
+  final List<AssetIssue> issues;
   final String? path;
   final List<String> written;
 
@@ -896,4 +905,93 @@ class ProjectVersion extends XcrossEvent {
   /// The old `1.2.3+7` when [changed].
   final String? previous;
   final bool changed;
+}
+
+/// A problem an icon or splash command reported (feature 024).
+class AssetIssue {
+  const AssetIssue(this.code, this.severity, this.message, this.hint);
+
+  factory AssetIssue.fromJson(Map<String, Object?> json) => AssetIssue(
+    _string(json['code']) ?? '',
+    _string(json['severity']) ?? 'warning',
+    _string(json['message']) ?? '',
+    _string(json['hint']) ?? '',
+  );
+
+  final String code;
+  final String severity;
+  final String message;
+  final String hint;
+}
+
+/// `icons_preview`: the images `xcross icons preview --serve` drew for a
+/// request (feature 024).
+class IconsPreview extends XcrossEvent {
+  const IconsPreview({this.seq, this.paths = const {}, this.error});
+
+  factory IconsPreview.fromJson(Map<String, Object?> json) => IconsPreview(
+    seq: json['seq'] is int ? json['seq']! as int : null,
+    paths: {
+      if (json['paths'] case final Map<String, Object?> paths)
+        for (final MapEntry(:key, :value) in paths.entries)
+          if (value is String) key: value,
+    },
+    error: _string(json['error']),
+  );
+
+  final int? seq;
+
+  /// `full`, `adaptive`, `maskable`, `silhouette`, `banner`, or for a splash
+  /// `logo`, `android12`, `darkLogo`, `darkAndroid12`, `branding`.
+  final Map<String, String> paths;
+  final String? error;
+}
+
+/// `splash_check`: `xcross splash check --json` (feature 024).
+class SplashCheckReport extends XcrossEvent {
+  const SplashCheckReport({this.issues = const [], this.errors = 0});
+
+  factory SplashCheckReport.fromJson(Map<String, Object?> json) =>
+      SplashCheckReport(
+        issues: [
+          for (final issue in _maps(json['issues'])) AssetIssue.fromJson(issue),
+        ],
+        errors: json['errors'] is int ? json['errors']! as int : 0,
+      );
+
+  final List<AssetIssue> issues;
+  final int errors;
+}
+
+/// `splash_generate`: `xcross splash generate --json` (feature 024).
+class SplashGenerateResult extends XcrossEvent {
+  const SplashGenerateResult({
+    required this.written,
+    this.path,
+    this.backup,
+    this.issues = const [],
+  });
+
+  factory SplashGenerateResult.fromJson(Map<String, Object?> json) {
+    final check = json['check'];
+    return SplashGenerateResult(
+      path: _string(json['path']),
+      backup: _string(json['backup']),
+      written: [
+        if (json['written'] case final List<Object?> names)
+          for (final name in names) '$name',
+      ],
+      issues: [
+        for (final issue in _maps(json['issues'])) AssetIssue.fromJson(issue),
+        if (check is Map)
+          for (final issue in _maps(_map(check)['issues']))
+            AssetIssue.fromJson(issue),
+      ],
+    );
+  }
+
+  final String? path;
+  final String? backup;
+  final List<String> written;
+  final List<AssetIssue> issues;
 }

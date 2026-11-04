@@ -180,6 +180,58 @@ abstract final class XcrossCommands {
   /// `xcross icons check --json` (feature 023).
   static List<String> iconsCheck() => const ['icons', 'check', '--json'];
 
+  /// `xcross icons preview --serve`: draws each design sent to it (feature
+  /// 024), writing images into [folder].
+  static List<String> iconsPreviewServe(String folder) => [
+    'icons',
+    'preview',
+    '--serve',
+    '--output',
+    folder,
+  ];
+
+  /// `xcross icons generate` with a design's [options] and [flags]; [output]
+  /// or [zip] leave the project alone (feature 024).
+  static List<String> iconsDesign(
+    String image,
+    Map<String, String> options, {
+    List<String> flags = const [],
+    String? output,
+    String? zip,
+    bool save = false,
+  }) => [
+    'icons',
+    'generate',
+    image,
+    for (final MapEntry(:key, :value) in options.entries) ...['--$key', value],
+    for (final flag in flags) '--$flag',
+    if (output != null) ...['--output', output],
+    if (zip != null) ...['--zip', zip],
+    if (save) '--save-config',
+    '--json',
+  ];
+
+  /// `xcross splash check` as JSON (feature 024).
+  static List<String> splashCheck() => const ['splash', 'check', '--json'];
+
+  /// `xcross splash generate` with a design's [options] (feature 024).
+  static List<String> splashGenerate(
+    String logo,
+    Map<String, String> options, {
+    String? output,
+    String? zip,
+    bool save = false,
+  }) => [
+    'splash',
+    'generate',
+    logo,
+    for (final MapEntry(:key, :value) in options.entries) ...['--$key', value],
+    if (output != null) ...['--output', output],
+    if (zip != null) ...['--zip', zip],
+    if (save) '--save-config',
+    '--json',
+  ];
+
   /// `xcross icons generate` with the image, background (`auto` or
   /// `#RRGGBB`) and margin in percent, as JSON (feature 023).
   static List<String> iconsGenerate(

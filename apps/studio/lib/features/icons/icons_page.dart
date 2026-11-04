@@ -12,6 +12,7 @@ import '../../src/cli/xcross_commands.dart';
 import '../../src/cli/xcross_events.dart';
 import '../../src/state/job.dart';
 import '../common/job_views.dart';
+import 'studio_panel.dart';
 
 /// iOS's icon corner radius as a share of the side.
 const _cornerShare = 0.2237;
@@ -19,9 +20,10 @@ const _cornerShare = 0.2237;
 /// Labels: body text, semibold.
 final _label = XType.body.copyWith(fontWeight: FontWeight.w600);
 
-/// App icon (feature 023): every size iOS uses, checked by `xcross icons
-/// check` and shown as iOS masks it; "Make icon set…" runs `xcross icons
-/// generate`. The page reads the icon files only to display them.
+/// App icon (features 023 and 024): every size iOS uses, checked by `xcross
+/// icons check` and shown as iOS masks it; the studio designs icons and the
+/// splash, and the CLI draws and writes them. The page reads the icon files
+/// only to display them.
 class IconsPage extends StatefulWidget {
   const IconsPage({super.key});
 
@@ -40,18 +42,7 @@ class _IconsPageState extends State<IconsPage> {
   bool _safeArea = true;
 
   bool _making = false;
-  Job? _generateJob;
-  IconsGenerateResult? _generated;
-  String? _source;
-  String _background = 'auto';
-  final _hex = TextEditingController(text: '#');
-  double _padding = 12;
-
-  @override
-  void dispose() {
-    _hex.dispose();
-    super.dispose();
-  }
+  StudioResult? _result;
 
   Future<void> _check(String project) async {
     final services = Services.of(context);
@@ -85,63 +76,6 @@ class _IconsPageState extends State<IconsPage> {
     setState(() => _report = report);
   }
 
-  /// `auto`, or the chosen `#RRGGBB`; null when the custom value is not a
-  /// colour.
-  String? get _backgroundArgument {
-    if (_background != 'custom') return _background;
-    final text = _hex.text.trim();
-    return RegExp(r'^#[0-9a-fA-F]{6}$').hasMatch(text)
-        ? text.toUpperCase()
-        : null;
-  }
-
-  Color? get _backgroundColor {
-    final value = _backgroundArgument;
-    if (value == null || value == 'auto') return null;
-    return Color(int.parse('FF${value.substring(1)}', radix: 16));
-  }
-
-  List<String>? get _generateCommand {
-    final source = _source;
-    final background = _backgroundArgument;
-    if (source == null || background == null) return null;
-    return XcrossCommands.iconsGenerate(
-      source,
-      background: background,
-      padding: _padding.round(),
-    );
-  }
-
-  Future<void> _generate(String project) async {
-    final command = _generateCommand;
-    if (command == null) return;
-    final services = Services.of(context);
-    IconsGenerateResult? result;
-    final job = services.jobs.run(
-      'Make the app icon set',
-      command,
-      workingDirectory: project,
-      onEvent: (event) {
-        if (event is IconsGenerateResult) result = event;
-      },
-    );
-    setState(() {
-      _generateJob = job;
-      _generated = null;
-    });
-    final status = await job.done;
-    if (!mounted) return;
-    setState(() {
-      _generated = result;
-      if (status == JobStatus.succeeded) _making = false;
-    });
-    if (result?.check != null) {
-      _apply(result!.check);
-    } else {
-      await _check(project);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final services = Services.of(context);
@@ -162,37 +96,49 @@ class _IconsPageState extends State<IconsPage> {
         return WorkspaceLayout(
           title: 'App icon',
           subtitle:
-              'Every icon size iOS uses (home screen, notifications, '
-              'Settings, Spotlight, App Store), checked and shown as iOS '
-              'masks it.',
-          actions: project == null
-              ? const []
-              : [
-                  XButton(
-                    label: 'Check again',
-                    icon: Icons.refresh,
-                    variant: XButtonVariant.secondary,
-                    loading: _checkJob?.isRunning ?? false,
-                    loadingLabel: 'Checking…',
-                    onPressed: () => _check(project),
-                  ),
-                  XButton(
-                    label: 'Make icon set…',
-                    icon: Icons.auto_fix_high_outlined,
-                    onPressed: () => setState(() => _making = true),
-                  ),
-                ],
-          children: project == null
-              ? const [
-                  XEmptyState(
-                    icon: Icons.apps,
-                    title: 'Open a Flutter project',
-                    message:
-                        'Choose a project on Overview to check and make its '
-                        'app icon.',
-                  ),
-                ]
-              : _content(context, project),
+              'One image makes every app icon and the native splash. iOS '
+              'sizes are checked and shown as iOS masks them.',
+          actions: [
+            if (project != null)
+              XButton(
+                label: 'Check again',
+                icon: Icons.refresh,
+                variant: XButtonVariant.secondary,
+                loading: _checkJob?.isRunning ?? false,
+                loadingLabel: 'Checking…',
+                onPressed: () => _check(project),
+              ),
+            XButton(
+              label: 'Icon and splash studio…',
+              icon: Icons.auto_fix_high_outlined,
+              onPressed: () => setState(() => _making = true),
+            ),
+          ],
+          children: [
+            if (_making) ...[
+              StudioPanel(
+                // A project's saved design loads when the panel is made.
+                key: ValueKey(project),
+                project: project,
+                onClose: () => setState(() => _making = false),
+                onResult: (result) {
+                  setState(() => _result = result);
+                  if (result.toProject && project != null) _check(project);
+                },
+              ),
+              _gap,
+            ],
+            if (project == null)
+              const XEmptyState(
+                icon: Icons.apps,
+                title: 'Open a Flutter project',
+                message:
+                    'Choose a project on Overview to check its app icon and '
+                    'write into it. The studio can export without one.',
+              )
+            else
+              ..._content(context, project),
+          ],
         );
       },
     );
@@ -200,21 +146,13 @@ class _IconsPageState extends State<IconsPage> {
 
   List<Widget> _content(BuildContext context, String project) {
     final report = _report;
-    final generated = _generated;
+    final result = _result;
     return [
-      if (_making) ...[_makePanel(context, project), _gap],
-      if (generated != null) ...[
+      if (result != null) ...[
         XCallout(
-          title: 'Wrote ${generated.written.length} icons',
+          title: result.message,
           status: XStatus.ready,
-          children: [
-            Text(
-              generated.backup == null
-                  ? 'Into ${generated.path ?? 'the icon set'}.'
-                  : 'The old set is in ${generated.backup}.',
-              style: XType.support,
-            ),
-          ],
+          children: const [],
         ),
         _gap,
       ],
@@ -232,7 +170,7 @@ class _IconsPageState extends State<IconsPage> {
           children: [
             Text(
               'ios/Runner/Assets.xcassets has no .appiconset. Make one from '
-              'your logo with "Make icon set…".',
+              'your logo in the Icon and splash studio.',
               style: XType.support,
             ),
           ],
@@ -435,146 +373,6 @@ class _IconsPageState extends State<IconsPage> {
         '${(box.width * 100).round()}% × ${(box.height * 100).round()}% · '
         '${centred ? 'centred' : 'off centre'} · '
         '${placement.outsideMask > 0.002 ? 'cut by the corners' : 'inside the corners'}';
-  }
-
-  Widget _makePanel(BuildContext context, String project) {
-    final command = _generateCommand;
-    final running = _generateJob?.isRunning ?? false;
-    const swatches = [
-      ('auto', 'Auto'),
-      ('#FFFFFF', 'White'),
-      ('#000000', 'Black'),
-      ('#0A84FF', 'Blue'),
-      ('custom', 'Custom'),
-    ];
-    return XCard(
-      title: 'Make icon set',
-      trailing: XIconButton(
-        icon: Icons.close,
-        tooltip: 'Close',
-        onPressed: () => setState(() => _making = false),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const XNote(
-            'Pick one square PNG: your logo (keep a margin) or a finished '
-            '1024 px icon (margin 0). Every size is written on a solid '
-            'background without transparency; the current set is copied to '
-            '.xcross/icon-backups first.',
-          ),
-          _gap,
-          XFilePickerField(
-            label: 'Image (PNG)',
-            value: _source,
-            directory: false,
-            extensions: const ['png'],
-            onChanged: (value) => setState(() => _source = value),
-          ),
-          _gap,
-          Wrap(
-            spacing: XSpace.s2,
-            runSpacing: XSpace.s2,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              Text('Background', style: _label),
-              for (final (value, label) in swatches)
-                ChoiceChip(
-                  label: Text(label),
-                  selected: _background == value,
-                  onSelected: (_) => setState(() => _background = value),
-                ),
-              if (_background == 'custom')
-                XTextField(
-                  controller: _hex,
-                  label: '#RRGGBB',
-                  width: 140,
-                  onChanged: (_) => setState(() {}),
-                ),
-            ],
-          ),
-          Row(
-            children: [
-              Text('Margin ${_padding.round()}%', style: _label),
-              Expanded(
-                child: Slider(
-                  value: _padding,
-                  max: 30,
-                  divisions: 30,
-                  label: '${_padding.round()}%',
-                  onChanged: (value) => setState(() => _padding = value),
-                ),
-              ),
-            ],
-          ),
-          if (_source != null) ...[
-            Wrap(
-              spacing: XSpace.s4,
-              runSpacing: XSpace.s3,
-              crossAxisAlignment: WrapCrossAlignment.end,
-              children: [
-                _Labeled(
-                  label: 'Preview',
-                  child: _ComposedIcon(
-                    source: _source!,
-                    size: 160,
-                    background: _backgroundColor,
-                    padding: _padding,
-                  ),
-                ),
-                _Labeled(
-                  label: 'Home screen',
-                  child: _ComposedIcon(
-                    source: _source!,
-                    size: 60,
-                    background: _backgroundColor,
-                    padding: _padding,
-                  ),
-                ),
-                _Labeled(
-                  label: 'Notification',
-                  child: _ComposedIcon(
-                    source: _source!,
-                    size: 30,
-                    background: _backgroundColor,
-                    padding: _padding,
-                  ),
-                ),
-              ],
-            ),
-            if (_background == 'auto')
-              const XNote(
-                "Auto uses the image's own border colour (white when the "
-                'border is transparent or mixed); the preview shows white.',
-              ),
-            _gap,
-          ],
-          if (command != null) XCommandPreview(arguments: command),
-          _gap,
-          Align(
-            alignment: Alignment.centerLeft,
-            child: XButton(
-              label: 'Write icon set',
-              icon: Icons.save_outlined,
-              loading: running,
-              loadingLabel: 'Writing…',
-              disabledReason: _source == null
-                  ? 'Pick an image first'
-                  : command == null
-                  ? 'Enter a colour as #RRGGBB'
-                  : null,
-              onPressed: command == null || running
-                  ? null
-                  : () => _generate(project),
-            ),
-          ),
-          if (_generateJob != null) ...[
-            const SizedBox(height: XSpace.s2),
-            JobConsole(job: _generateJob!, height: 120, showTitle: false),
-          ],
-        ],
-      ),
-    );
   }
 }
 
@@ -1055,39 +853,4 @@ class _SlotTile extends StatelessWidget {
       ),
     );
   }
-}
-
-/// The "Make icon set" preview: the picked image over the background with
-/// the margin, in the iOS shape. The written files come from the CLI.
-class _ComposedIcon extends StatelessWidget {
-  const _ComposedIcon({
-    required this.source,
-    required this.size,
-    required this.background,
-    required this.padding,
-  });
-
-  final String source;
-  final double size;
-  final Color? background;
-  final double padding;
-
-  @override
-  Widget build(BuildContext context) => SizedBox.square(
-    dimension: size,
-    child: ClipPath(
-      clipper: ShapeBorderClipper(shape: _iconShape(size)),
-      child: Container(
-        color: background ?? Colors.white,
-        padding: EdgeInsets.all(size * padding / 100),
-        child: Image.file(
-          File(source),
-          fit: BoxFit.contain,
-          filterQuality: FilterQuality.medium,
-          errorBuilder: (context, error, stackTrace) =>
-              const Icon(Icons.broken_image_outlined),
-        ),
-      ),
-    ),
-  );
 }
