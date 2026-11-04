@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:xcross_studio/app/app.dart';
 import 'package:xcross_studio/app/services.dart';
 import 'package:xcross_studio/design_system/design_system.dart';
+import 'package:xcross_studio/features/icons/studio_model.dart';
 import 'package:xcross_studio/src/cli/xcross_commands.dart';
 import 'package:xcross_studio/src/host/host_platform.dart';
 import 'package:xcross_studio/src/state/job.dart';
@@ -252,21 +253,89 @@ void main() {
         jsonDecode(line) as Map<String, Object?>,
   ];
 
-  /// Lets the preview's debounce pass.
-  Future<void> debounce(WidgetTester tester) async {
+  /// Answers the preview processes, then lets the debounce pass.
+  Future<void> debounce(WidgetTester tester, FakeLauncher launcher) async {
+    await settle(tester, 2);
+    for (final (index, start) in launcher.starts.indexed) {
+      final process = launcher.processes[index];
+      if (start.arguments.contains('--serve') &&
+          process.stdinLines.isNotEmpty) {
+        final last =
+            jsonDecode(process.stdinLines.last) as Map<String, Object?>;
+        process.out(
+          jsonEncode({
+            'v': 1,
+            'type': 'icons_preview',
+            'seq': last['seq'],
+            'paths': <String, String>{},
+          }),
+        );
+      }
+    }
+    await settle(tester, 2);
     await tester.pump(const Duration(milliseconds: 150));
     await settle(tester, 2);
   }
 
-  Future<String> pickImage(WidgetTester tester) async {
+  Future<String> pickImage(WidgetTester tester, FakeLauncher launcher) async {
     final source = p.join(project.path, 'logo.png');
     File(source).writeAsBytesSync(_png);
-    await tester.enterText(find.widgetWithText(TextField, 'Image'), source);
+    final field = find.widgetWithText(TextField, 'Image');
+    if (field.evaluate().isEmpty) {
+      await tester.tap(find.text('Image').first);
+      await settle(tester, 2);
+    }
+    await tester.enterText(field, source);
     await tester.testTextInput.receiveAction(TextInputAction.done);
-    await settle(tester, 2);
-    await debounce(tester);
+    await debounce(tester, launcher);
     return source;
   }
+
+  testWidgets(
+    'AC-024-17 the studio opens on a preview of the project icon, and '
+    'writing it does not replace its own source',
+    (tester) async {
+      final launcher = await openStudio(tester);
+      await debounce(tester, launcher);
+      final first = designs(launcher).first;
+      final icon = p.join(setPath, 'Icon-App-1024x1024@1x.png');
+      expect(first['source'], icon);
+      expect(first['padding'], '0');
+
+      await tester.tap(find.widgetWithText(XButton, 'Write to project'));
+      await settle(tester);
+      final kept = p.join(
+        project.path,
+        '.xcross',
+        'assets',
+        'Icon-App-1024x1024@1x.png',
+      );
+      expect(File(kept).existsSync(), isTrue);
+      final written = launcher.starts.lastWhere(
+        (start) => start.arguments.take(2).join(' ') == 'icons generate',
+      );
+      expect(written.arguments[2], kept);
+      await closeApp(tester);
+    },
+  );
+
+  testWidgets('AC-024-18 the preview stays in view while the controls scroll', (
+    tester,
+  ) async {
+    final launcher = await openStudio(tester);
+    await debounce(tester, launcher);
+    await tester.binding.setSurfaceSize(const Size(1366, 768));
+    await settle(tester, 2);
+    final strip = find.widgetWithText(ChoiceChip, 'Web');
+    final source = find.text('Source');
+    final stripBefore = tester.getTopLeft(strip);
+    final sourceBefore = tester.getTopLeft(source);
+    await tester.drag(source, const Offset(0, -200));
+    await settle(tester, 2);
+    expect(tester.getTopLeft(strip), stripBefore);
+    expect(tester.getTopLeft(source).dy, lessThan(sourceBefore.dy));
+    await closeApp(tester);
+  });
 
   testWidgets('AC-024-17 / AC-024-18 the icon tab names every design choice '
       'and every target', (tester) async {
@@ -301,21 +370,21 @@ void main() {
     tester,
   ) async {
     final launcher = await openStudio(tester);
-    final source = await pickImage(tester);
+    final source = await pickImage(tester, launcher);
 
     expect(
       commands(launcher).where((c) => c.contains('icons preview --serve')),
       hasLength(1),
     );
-    final sent = designs(launcher).single;
+    final sent = designs(launcher).last;
     expect(sent['source'], source);
-    expect(sent['padding'], '15');
+    expect(sent['padding'], '0');
 
     await tester.tap(find.widgetWithText(XButton, 'Write to project'));
     await settle(tester);
     final written = commands(launcher)
         .lastWhere((command) => command.startsWith('icons generate'));
-    expect(written, contains('--padding 15'));
+    expect(written, contains('--padding 0'));
     expect(written, contains('--targets ios'));
     expect(written, contains('--save-config'));
     expect(find.textContaining('Wrote 15 icon files'), findsOneWidget);
@@ -343,7 +412,7 @@ void main() {
     );
     File(p.join(project.path, 'logo.png')).writeAsBytesSync(_png);
     final launcher = await openStudio(tester);
-    await debounce(tester);
+    await debounce(tester, launcher);
 
     final sent = designs(launcher).single;
     expect(sent['source'], p.join(project.path, 'logo.png'));
@@ -378,6 +447,8 @@ void main() {
     await tester.tap(find.text('Splash screen'));
     await settle(tester, 2);
     expect(find.text('Margin 0 pt'), findsOneWidget);
+    // The phones are there before a logo is.
+    expect(find.text('Android 12+ (safe circle)'), findsOneWidget);
 
     final logo = p.join(project.path, 'splash.png');
     File(logo).writeAsBytesSync(_png);
@@ -389,8 +460,7 @@ void main() {
       logo,
     );
     await tester.testTextInput.receiveAction(TextInputAction.done);
-    await settle(tester, 2);
-    await debounce(tester);
+    await debounce(tester, launcher);
     expect(find.text('iPhone'), findsWidgets);
     expect(find.text('Android'), findsWidgets);
     expect(find.text('Android 12+ (safe circle)'), findsOneWidget);
@@ -418,7 +488,9 @@ void main() {
         if (!arguments.join(' ').contains('--serve')) await process.exit(0);
       },
     );
-    final settings = Settings()..wizardDismissed = true;
+    final settings = Settings()
+      ..wizardDismissed = true
+      ..consoleOpen = true;
     final jobs = JobCenter(
       launcher: launcher,
       invocation: () => const XcrossInvocation.binary(),
@@ -439,8 +511,13 @@ void main() {
     await settle(tester);
     expect(find.text('Open a Flutter project'), findsOneWidget);
     await tester.tap(find.widgetWithText(XButton, 'Icon and splash studio…'));
-    await settle(tester, 2);
-    await pickImage(tester);
+    await settle(tester);
+    await debounce(tester, launcher);
+    // Nothing chosen yet: a symbol on a colour, so there is a preview.
+    final first = designs(launcher).first;
+    expect(first['background'], IconStudioDesign.symbolBackground);
+    expect(first['trim'], isTrue);
+    await pickImage(tester, launcher);
     final write = tester.widget<XButton>(
       find.widgetWithText(XButton, 'Write to project'),
     );
@@ -450,6 +527,13 @@ void main() {
       find.widgetWithText(XButton, 'Export folder…'),
     );
     expect(export.onPressed, isNotNull);
+
+    // The studio borrows the console's room, and gives it back.
+    expect(settings.consoleOpen, isFalse);
+    await tester.tap(find.byTooltip('Close'));
+    await settle(tester, 2);
+    expect(settings.consoleOpen, isTrue);
+    expect(find.text('Open a Flutter project'), findsOneWidget);
     await closeApp(tester);
   });
 

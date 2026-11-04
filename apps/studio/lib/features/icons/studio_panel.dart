@@ -51,53 +51,93 @@ class StudioPanel extends StatefulWidget {
 
 class _StudioPanelState extends State<StudioPanel> {
   int _tab = 0;
+  StudioResult? _result;
+
+  void _onResult(StudioResult result) {
+    setState(() => _result = result);
+    widget.onResult(result);
+  }
 
   @override
-  Widget build(BuildContext context) => XCard(
-    title: 'Icon and splash studio',
-    trailing: XIconButton(
-      icon: Icons.close,
-      tooltip: 'Close',
-      onPressed: widget.onClose,
-    ),
-    child: Column(
+  Widget build(BuildContext context) {
+    final result = _result;
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Align(
-          alignment: Alignment.centerLeft,
-          child: SegmentedButton<int>(
-            segments: const [
-              ButtonSegment(
-                value: 0,
-                label: Text('App icon'),
-                icon: Icon(Icons.apps),
+        Row(
+          children: [
+            Expanded(
+              child: Wrap(
+                spacing: XSpace.s4,
+                runSpacing: XSpace.s2,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Semantics(
+                    header: true,
+                    child: Text(
+                      'Icon and splash studio',
+                      style: XType.section.copyWith(
+                        color: XTheme.of(context).colors.textPrimary,
+                      ),
+                    ),
+                  ),
+                  SegmentedButton<int>(
+                    segments: const [
+                      ButtonSegment(
+                        value: 0,
+                        label: Text('App icon'),
+                        icon: Icon(Icons.apps),
+                      ),
+                      ButtonSegment(
+                        value: 1,
+                        label: Text('Splash screen'),
+                        icon: Icon(Icons.smartphone),
+                      ),
+                    ],
+                    selected: {_tab},
+                    onSelectionChanged: (selection) =>
+                        setState(() => _tab = selection.first),
+                  ),
+                ],
               ),
-              ButtonSegment(
-                value: 1,
-                label: Text('Splash screen'),
-                icon: Icon(Icons.smartphone),
+            ),
+            XIconButton(
+              icon: Icons.close,
+              tooltip: 'Close',
+              onPressed: widget.onClose,
+            ),
+          ],
+        ),
+        if (result != null) ...[
+          const SizedBox(height: XSpace.s2),
+          XCallout(
+            title: result.message,
+            status: XStatus.ready,
+            children: const [],
+          ),
+        ],
+        const SizedBox(height: XSpace.s3),
+        Expanded(
+          // Both stay alive, so switching tabs keeps what was chosen.
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Visibility(
+                visible: _tab == 0,
+                maintainState: true,
+                child: _IconTab(project: widget.project, onResult: _onResult),
+              ),
+              Visibility(
+                visible: _tab == 1,
+                maintainState: true,
+                child: SplashTab(project: widget.project, onResult: _onResult),
               ),
             ],
-            selected: {_tab},
-            onSelectionChanged: (selection) =>
-                setState(() => _tab = selection.first),
           ),
         ),
-        const SizedBox(height: XSpace.s3),
-        // Both stay alive, so switching tabs keeps what was chosen.
-        Visibility(
-          visible: _tab == 0,
-          maintainState: true,
-          child: _IconTab(project: widget.project, onResult: widget.onResult),
-        ),
-        Visibility(
-          visible: _tab == 1,
-          maintainState: true,
-          child: SplashTab(project: widget.project, onResult: widget.onResult),
-        ),
       ],
-    ),
-  );
+    );
+  }
 }
 
 /// Target names, as the strip shows them.
@@ -159,6 +199,7 @@ class _IconTabState extends State<_IconTab> {
   void initState() {
     super.initState();
     final project = widget.project;
+    if (project == null) _design.startWith(null);
     if (project != null) {
       final saved = savedAssets(project, 'icons');
       _design.restore(saved, project);
@@ -175,6 +216,7 @@ class _IconTabState extends State<_IconTab> {
             ..addAll(present);
         }
       }
+      if (_design.imagePath == null) _design.startWith(projectIcon(project));
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -325,6 +367,12 @@ class _IconTabState extends State<_IconTab> {
       if (background != null) {
         _design.backgroundImage = await keepInProject(project, background);
       }
+      if (_design.sourceType == IconSourceType.image) {
+        // The design goes on from the copy, not the file being replaced.
+        _design.imagePath = keptSource;
+        _sourcePng = keptSource;
+        _sourceFor = _sourceKey;
+      }
     } on FileSystemException catch (error) {
       if (mounted) {
         setState(
@@ -411,32 +459,11 @@ class _IconTabState extends State<_IconTab> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final controls = _controls();
-    final preview = _preview();
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        if (constraints.maxWidth < 860) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              preview,
-              const SizedBox(height: XSpace.s3),
-              controls,
-            ],
-          );
-        }
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(width: 400, child: controls),
-            const SizedBox(width: XSpace.s4),
-            Expanded(child: preview),
-          ],
-        );
-      },
-    );
-  }
+  Widget build(BuildContext context) => StudioLayout(
+    controls: _controls(),
+    preview: _preview(),
+    actions: _actions(),
+  );
 
   Widget _controls() {
     final design = _design;
@@ -469,8 +496,13 @@ class _IconTabState extends State<_IconTab> {
                   ),
                 ],
                 selected: {design.sourceType},
-                onSelectionChanged: (selection) =>
-                    update(() => design.sourceType = selection.first),
+                onSelectionChanged: (selection) => update(() {
+                  design.sourceType = selection.first;
+                  if (selection.first != IconSourceType.image &&
+                      design.background == 'auto') {
+                    design.background = IconStudioDesign.symbolBackground;
+                  }
+                }),
               ),
             ),
             ...switch (design.sourceType) {
@@ -606,7 +638,7 @@ class _IconTabState extends State<_IconTab> {
                   // Auto is one colour taken from the image, not a blend.
                   if (selection.first != 'color' &&
                       design.background == 'auto') {
-                    design.background = '#0A84FF';
+                    design.background = IconStudioDesign.symbolBackground;
                   }
                 }),
               ),
@@ -749,9 +781,53 @@ class _IconTabState extends State<_IconTab> {
             ),
           ],
         ),
+        StudioSection('Targets', children: _targetChips()),
       ],
     );
   }
+
+  List<Widget> _targetChips() => [
+    Text('Write to the project', style: XType.support),
+    Wrap(
+      spacing: XSpace.s1,
+      runSpacing: XSpace.s1,
+      children: [
+        for (final target in _projectTargets)
+          FilterChip(
+            label: Text(_targetLabels[target]!),
+            selected: _design.targets.contains(target),
+            visualDensity: VisualDensity.compact,
+            onSelected: (value) => setState(() {
+              if (value) {
+                _design.targets.add(target);
+              } else {
+                _design.targets.remove(target);
+              }
+            }),
+          ),
+      ],
+    ),
+    Text('Exports also include', style: XType.support),
+    Wrap(
+      spacing: XSpace.s1,
+      runSpacing: XSpace.s1,
+      children: [
+        for (final target in _exportTargets)
+          FilterChip(
+            label: Text(_targetLabels[target]!),
+            selected: _design.exportTargets.contains(target),
+            visualDensity: VisualDensity.compact,
+            onSelected: (value) => setState(() {
+              if (value) {
+                _design.exportTargets.add(target);
+              } else {
+                _design.exportTargets.remove(target);
+              }
+            }),
+          ),
+      ],
+    ),
+  ];
 
   Future<void> _pickFont() async {
     final file = await openFile(
@@ -847,10 +923,6 @@ class _IconTabState extends State<_IconTab> {
     final error = _server?.error;
     final invalid = _design.invalid;
     final hasSource = _sourcePng != null;
-    final project = widget.project;
-    final running = _job?.isRunning ?? false;
-    final source = _sourcePng;
-    final disabled = !hasSource ? 'Choose a source first' : invalid;
     final preview = _previewTarget;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -913,99 +985,72 @@ class _IconTabState extends State<_IconTab> {
               },
             ],
           ),
-        const SizedBox(height: XSpace.s4),
-        Text('Write to the project', style: XType.support),
-        const SizedBox(height: XSpace.s1),
-        Wrap(
-          spacing: XSpace.s1,
-          runSpacing: XSpace.s1,
-          children: [
-            for (final target in _projectTargets)
-              FilterChip(
-                label: Text(_targetLabels[target]!),
-                selected: _design.targets.contains(target),
-                visualDensity: VisualDensity.compact,
-                onSelected: (value) => setState(() {
-                  if (value) {
-                    _design.targets.add(target);
-                  } else {
-                    _design.targets.remove(target);
-                  }
-                }),
-              ),
-          ],
+      ],
+    );
+  }
+
+  Widget _actions() {
+    final project = widget.project;
+    final running = _job?.isRunning ?? false;
+    final disabled = _sourcePng == null
+        ? 'Choose a source first'
+        : _design.invalid;
+    final source = _sourcePng;
+    final job = _job;
+    final buttons = Wrap(
+      spacing: XSpace.s2,
+      runSpacing: XSpace.s2,
+      children: [
+        XButton(
+          label: 'Write to project',
+          icon: Icons.save_outlined,
+          loading: running,
+          loadingLabel: 'Writing…',
+          disabledReason:
+              disabled ??
+              (project == null
+                  ? 'Open a Flutter project first'
+                  : _design.targets.isEmpty
+                  ? 'Choose what to write'
+                  : null),
+          onPressed:
+              running ||
+                  disabled != null ||
+                  project == null ||
+                  _design.targets.isEmpty
+              ? null
+              : () => _write(project),
         ),
-        const SizedBox(height: XSpace.s2),
-        Text('Exports also include', style: XType.support),
-        const SizedBox(height: XSpace.s1),
-        Wrap(
-          spacing: XSpace.s1,
-          runSpacing: XSpace.s1,
-          children: [
-            for (final target in _exportTargets)
-              FilterChip(
-                label: Text(_targetLabels[target]!),
-                selected: _design.exportTargets.contains(target),
-                visualDensity: VisualDensity.compact,
-                onSelected: (value) => setState(() {
-                  if (value) {
-                    _design.exportTargets.add(target);
-                  } else {
-                    _design.exportTargets.remove(target);
-                  }
-                }),
-              ),
-          ],
+        XButton(
+          label: 'Export folder…',
+          icon: Icons.folder_outlined,
+          variant: XButtonVariant.secondary,
+          disabledReason: disabled,
+          onPressed: running || disabled != null ? null : _exportFolder,
         ),
-        const SizedBox(height: XSpace.s3),
-        if (source != null)
+        XButton(
+          label: 'Export zip…',
+          icon: Icons.archive_outlined,
+          variant: XButtonVariant.secondary,
+          disabledReason: disabled,
+          onPressed: running || disabled != null ? null : _exportZip,
+        ),
+      ],
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (source != null) ...[
           XCommandPreview(
             arguments: _command(source: source, targets: _design.targets),
           ),
-        const SizedBox(height: XSpace.s2),
-        Wrap(
-          spacing: XSpace.s2,
-          runSpacing: XSpace.s2,
-          children: [
-            XButton(
-              label: 'Write to project',
-              icon: Icons.save_outlined,
-              loading: running,
-              loadingLabel: 'Writing…',
-              disabledReason:
-                  disabled ??
-                  (project == null
-                      ? 'Open a Flutter project first'
-                      : _design.targets.isEmpty
-                      ? 'Choose what to write'
-                      : null),
-              onPressed:
-                  running ||
-                      disabled != null ||
-                      project == null ||
-                      _design.targets.isEmpty
-                  ? null
-                  : () => _write(project),
-            ),
-            XButton(
-              label: 'Export folder…',
-              icon: Icons.folder_outlined,
-              variant: XButtonVariant.secondary,
-              disabledReason: disabled,
-              onPressed: running || disabled != null ? null : _exportFolder,
-            ),
-            XButton(
-              label: 'Export zip…',
-              icon: Icons.archive_outlined,
-              variant: XButtonVariant.secondary,
-              disabledReason: disabled,
-              onPressed: running || disabled != null ? null : _exportZip,
-            ),
-          ],
-        ),
-        if (_job != null) ...[
           const SizedBox(height: XSpace.s2),
-          JobConsole(job: _job!, height: 120, showTitle: false),
+        ],
+        buttons,
+        // A write that ended well says so above; the rest needs its output.
+        if (job != null && job.status != JobStatus.succeeded) ...[
+          const SizedBox(height: XSpace.s2),
+          JobConsole(job: job, height: 120, showTitle: false),
         ],
       ],
     );

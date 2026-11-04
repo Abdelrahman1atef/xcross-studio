@@ -168,6 +168,21 @@ class IconStudioDesign {
     if (effectiveTrim) 'trim': true,
   };
 
+  /// Something to preview before anything is chosen: [icon], a finished icon
+  /// that needs no margin, or a symbol on a colour.
+  void startWith(String? icon) {
+    if (icon != null) {
+      imagePath = icon;
+      padding.set(0, 0);
+    } else {
+      sourceType = IconSourceType.clipart;
+      background = symbolBackground;
+    }
+  }
+
+  /// Text and symbols are drawn in white, which Auto would put on white.
+  static const symbolBackground = '#0A84FF';
+
   /// Restores what `--save-config` stored in `xcross_assets.json`, with paths
   /// made absolute against [project].
   void restore(Map<String, Object?> saved, String project) {
@@ -281,14 +296,30 @@ class SplashStudioDesign {
   }
 }
 
+/// The project's App Store icon, the natural start for a design.
+String? projectIcon(String project) {
+  final folder = Directory(
+    p.join(project, 'ios', 'Runner', 'Assets.xcassets', 'AppIcon.appiconset'),
+  );
+  if (!folder.existsSync()) return null;
+  for (final file in folder.listSync().whereType<File>()) {
+    final name = p.basename(file.path);
+    if (name.contains('1024') && name.endsWith('.png')) return file.path;
+  }
+  return null;
+}
+
 /// [path], or a copy of it in [project] when it is outside: the saved design
-/// names it, so it has to stay with the project for a team to regenerate.
+/// names it, so it has to stay with the project for a team to regenerate. An
+/// image in the icon set is copied too, or writing would replace its own source
+/// and the next write would add the margin a second time.
 Future<String> keepInProject(
   String project,
   String path, {
   String? name,
 }) async {
-  if (p.isWithin(project, path)) return path;
+  final generated = p.split(path).any((part) => part.endsWith('.appiconset'));
+  if (p.isWithin(project, path) && !generated) return path;
   final kept = File(
     p.join(project, '.xcross', 'assets', name ?? p.basename(path)),
   );

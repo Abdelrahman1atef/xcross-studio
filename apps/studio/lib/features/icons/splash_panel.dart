@@ -161,32 +161,11 @@ class _SplashTabState extends State<SplashTab> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final controls = _controls();
-    final preview = _preview();
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        if (constraints.maxWidth < 860) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              preview,
-              const SizedBox(height: XSpace.s3),
-              controls,
-            ],
-          );
-        }
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(width: 400, child: controls),
-            const SizedBox(width: XSpace.s4),
-            Expanded(child: preview),
-          ],
-        );
-      },
-    );
-  }
+  Widget build(BuildContext context) => StudioLayout(
+    controls: _controls(),
+    preview: _preview(),
+    actions: _actions(),
+  );
 
   Widget _controls() {
     final design = _design;
@@ -336,23 +315,20 @@ class _SplashTabState extends State<SplashTab> {
 
   Widget _preview() {
     final design = _design;
-    final images = _server?.images ?? const {};
+    final images = design.logo == null ? null : _server?.images;
     final error = _server?.error ?? _copyError;
     final invalid = design.invalid;
-    final project = widget.project;
-    final running = _job?.isRunning ?? false;
     final logo = design.logo;
-    final disabled = logo == null ? 'Pick a logo first' : invalid;
     final background = StudioColor.parse(
       _dark ? (design.darkBackground ?? design.background) : design.background,
     );
     final color = background ?? Colors.white;
     final image = _dark
-        ? (images['darkLogo'] ?? images['logo'])
-        : images['logo'];
+        ? (images?['darkLogo'] ?? images?['logo'])
+        : images?['logo'];
     final android12 = _dark
-        ? (images['darkAndroid12'] ?? images['android12'])
-        : images['android12'];
+        ? (images?['darkAndroid12'] ?? images?['android12'])
+        : images?['android12'];
 
     // The previews show a 390 pt wide phone; the images are 2 px per point.
     const phoneScale = SplashPhone.width / 390 / 2;
@@ -380,41 +356,42 @@ class _SplashTabState extends State<SplashTab> {
           XNote(invalid),
           const SizedBox(height: XSpace.s2),
         ],
-        if (logo == null)
-          const XNote('Pick a logo to see the splash on a phone.')
-        else
-          Wrap(
-            spacing: XSpace.s3,
-            runSpacing: XSpace.s3,
-            children: [
-              if (design.ios)
-                SplashPhone(
-                  label: 'iPhone',
-                  color: color,
-                  image: image,
-                  scale: phoneScale,
+        if (logo == null) ...[
+          const XNote('Pick a logo to put it on these phones.'),
+          const SizedBox(height: XSpace.s2),
+        ],
+        Wrap(
+          spacing: XSpace.s3,
+          runSpacing: XSpace.s3,
+          children: [
+            if (design.ios)
+              SplashPhone(
+                label: 'iPhone',
+                color: color,
+                image: image,
+                scale: phoneScale,
+              ),
+            if (design.android)
+              SplashPhone(
+                label: 'Android',
+                color: color,
+                image: image,
+                scale: phoneScale,
+                radius: 18,
+              ),
+            if (design.android)
+              SplashPhone(
+                label: 'Android 12+ (safe circle)',
+                color: color,
+                image: android12,
+                scale: androidScale,
+                radius: 18,
+                overlay: const Android12Guide(
+                  diameter: 192 * SplashPhone.width / 412,
                 ),
-              if (design.android)
-                SplashPhone(
-                  label: 'Android',
-                  color: color,
-                  image: image,
-                  scale: phoneScale,
-                  radius: 18,
-                ),
-              if (design.android)
-                SplashPhone(
-                  label: 'Android 12+ (safe circle)',
-                  color: color,
-                  image: android12,
-                  scale: androidScale,
-                  radius: 18,
-                  overlay: const Android12Guide(
-                    diameter: 192 * SplashPhone.width / 412,
-                  ),
-                ),
-            ],
-          ),
+              ),
+          ],
+        ),
         const SizedBox(height: XSpace.s3),
         if (_check != null) ...[
           for (final issue in _check!.issues)
@@ -430,52 +407,69 @@ class _SplashTabState extends State<SplashTab> {
             ),
           if (_check!.issues.isEmpty)
             const XCheckRow(status: XStatus.ready, label: 'No problems found.'),
+        ],
+      ],
+    );
+  }
+
+  Widget _actions() {
+    final project = widget.project;
+    final running = _job?.isRunning ?? false;
+    final disabled = _design.logo == null
+        ? 'Pick a logo first'
+        : _design.invalid;
+    final logo = _design.logo;
+    final job = _job;
+    final buttons = Wrap(
+      spacing: XSpace.s2,
+      runSpacing: XSpace.s2,
+      children: [
+        XButton(
+          label: 'Write splash to project',
+          icon: Icons.save_outlined,
+          loading: running,
+          loadingLabel: 'Writing…',
+          disabledReason:
+              disabled ??
+              (project == null ? 'Open a Flutter project first' : null),
+          onPressed: running || disabled != null || project == null
+              ? null
+              : () => _write(project),
+        ),
+        XButton(
+          label: 'Export splash…',
+          icon: Icons.folder_outlined,
+          variant: XButtonVariant.secondary,
+          disabledReason: disabled,
+          onPressed: running || disabled != null ? null : _exportFolder,
+        ),
+        XButton(
+          label: 'Check splash',
+          icon: Icons.fact_check_outlined,
+          variant: XButtonVariant.secondary,
+          disabledReason: project == null
+              ? 'Open a Flutter project first'
+              : null,
+          onPressed: running || project == null
+              ? null
+              : () => _runCheck(project),
+        ),
+      ],
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (logo != null) ...[
+          XCommandPreview(
+            arguments: XcrossCommands.splashGenerate(logo, _design.options()),
+          ),
           const SizedBox(height: XSpace.s2),
         ],
-        if (logo != null)
-          XCommandPreview(
-            arguments: XcrossCommands.splashGenerate(logo, design.options()),
-          ),
-        const SizedBox(height: XSpace.s2),
-        Wrap(
-          spacing: XSpace.s2,
-          runSpacing: XSpace.s2,
-          children: [
-            XButton(
-              label: 'Write splash to project',
-              icon: Icons.save_outlined,
-              loading: running,
-              loadingLabel: 'Writing…',
-              disabledReason:
-                  disabled ??
-                  (project == null ? 'Open a Flutter project first' : null),
-              onPressed: running || disabled != null || project == null
-                  ? null
-                  : () => _write(project),
-            ),
-            XButton(
-              label: 'Export splash…',
-              icon: Icons.folder_outlined,
-              variant: XButtonVariant.secondary,
-              disabledReason: disabled,
-              onPressed: running || disabled != null ? null : _exportFolder,
-            ),
-            XButton(
-              label: 'Check splash',
-              icon: Icons.fact_check_outlined,
-              variant: XButtonVariant.secondary,
-              disabledReason: project == null
-                  ? 'Open a Flutter project first'
-                  : null,
-              onPressed: running || project == null
-                  ? null
-                  : () => _runCheck(project),
-            ),
-          ],
-        ),
-        if (_job != null) ...[
+        buttons,
+        // A write that ended well says so above; the rest needs its output.
+        if (job != null && job.status != JobStatus.succeeded) ...[
           const SizedBox(height: XSpace.s2),
-          JobConsole(job: _job!, height: 120, showTitle: false),
+          JobConsole(job: job, height: 120, showTitle: false),
         ],
       ],
     );

@@ -4,6 +4,64 @@ import 'package:flutter/material.dart';
 import '../../design_system/design_system.dart';
 import 'studio_model.dart';
 
+/// The controls beside the preview, filling the space it is given. In a wide
+/// window each side scrolls by itself, so the preview stays in view whichever
+/// control is being changed, and the actions stay under it.
+class StudioLayout extends StatelessWidget {
+  const StudioLayout({
+    super.key,
+    required this.controls,
+    required this.preview,
+    required this.actions,
+  });
+
+  final Widget controls;
+  final Widget preview;
+  final Widget actions;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      if (constraints.maxWidth < 860) {
+        return SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              preview,
+              const SizedBox(height: XSpace.s2),
+              actions,
+              const SizedBox(height: XSpace.s3),
+              controls,
+            ],
+          ),
+        );
+      }
+      // Room on the right of each side for its scrollbar.
+      Widget side(Widget child) => SingleChildScrollView(
+        padding: const EdgeInsets.only(right: XSpace.s3),
+        child: child,
+      );
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(width: 412, child: side(controls)),
+          const SizedBox(width: XSpace.s3),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: side(preview)),
+                const SizedBox(height: XSpace.s2),
+                actions,
+              ],
+            ),
+          ),
+        ],
+      );
+    },
+  );
+}
+
 /// A heading over a group of controls.
 class StudioSection extends StatelessWidget {
   const StudioSection(this.title, {super.key, required this.children});
@@ -51,6 +109,8 @@ class StudioDropdown extends StatelessWidget {
     // A saved design can name what this version does not have.
     initialValue: options.containsKey(value) ? value : null,
     isDense: true,
+    // A narrow field ends its label in dots instead of overflowing.
+    isExpanded: true,
     decoration: InputDecoration(labelText: label, isDense: true),
     items: [
       for (final MapEntry(:key, value: text) in options.entries)

@@ -42,7 +42,21 @@ class _IconsPageState extends State<IconsPage> {
   bool _safeArea = true;
 
   bool _making = false;
-  StudioResult? _result;
+  bool _consoleWasOpen = false;
+
+  /// The studio takes the whole page and the console's room too, since the
+  /// preview needs the height and the studio shows its own output. Closing it
+  /// puts the console back.
+  void _showStudio(StudioServices services, {required bool show}) {
+    final settings = services.settings;
+    if (show) {
+      _consoleWasOpen = settings.consoleOpen;
+      settings.update((s) => s.consoleOpen = false);
+    } else if (_consoleWasOpen) {
+      settings.update((s) => s.consoleOpen = true);
+    }
+    setState(() => _making = show);
+  }
 
   Future<void> _check(String project) async {
     final services = Services.of(context);
@@ -93,6 +107,20 @@ class _IconsPageState extends State<IconsPage> {
             if (mounted) _check(project);
           });
         }
+        if (_making) {
+          return Padding(
+            padding: const EdgeInsets.all(XSpace.s4),
+            child: StudioPanel(
+              // A project's saved design loads when the panel is made.
+              key: ValueKey(project),
+              project: project,
+              onClose: () => _showStudio(services, show: false),
+              onResult: (result) {
+                if (result.toProject && project != null) _check(project);
+              },
+            ),
+          );
+        }
         return WorkspaceLayout(
           title: 'App icon',
           subtitle:
@@ -111,34 +139,20 @@ class _IconsPageState extends State<IconsPage> {
             XButton(
               label: 'Icon and splash studio…',
               icon: Icons.auto_fix_high_outlined,
-              onPressed: () => setState(() => _making = true),
+              onPressed: () => _showStudio(services, show: true),
             ),
           ],
-          children: [
-            if (_making) ...[
-              StudioPanel(
-                // A project's saved design loads when the panel is made.
-                key: ValueKey(project),
-                project: project,
-                onClose: () => setState(() => _making = false),
-                onResult: (result) {
-                  setState(() => _result = result);
-                  if (result.toProject && project != null) _check(project);
-                },
-              ),
-              _gap,
-            ],
-            if (project == null)
-              const XEmptyState(
-                icon: Icons.apps,
-                title: 'Open a Flutter project',
-                message:
-                    'Choose a project on Overview to check its app icon and '
-                    'write into it. The studio can export without one.',
-              )
-            else
-              ..._content(context, project),
-          ],
+          children: project == null
+              ? const [
+                  XEmptyState(
+                    icon: Icons.apps,
+                    title: 'Open a Flutter project',
+                    message:
+                        'Choose a project on Overview to check its app icon '
+                        'and write into it. The studio can export without one.',
+                  ),
+                ]
+              : _content(context, project),
         );
       },
     );
@@ -146,16 +160,7 @@ class _IconsPageState extends State<IconsPage> {
 
   List<Widget> _content(BuildContext context, String project) {
     final report = _report;
-    final result = _result;
     return [
-      if (result != null) ...[
-        XCallout(
-          title: result.message,
-          status: XStatus.ready,
-          children: const [],
-        ),
-        _gap,
-      ],
       if (report == null)
         XCard(
           title: 'Checking the icon set',
