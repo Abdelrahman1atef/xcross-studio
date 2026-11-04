@@ -57,8 +57,9 @@ built with xcross shows the logo and colour at launch.
    <dir>] [--json] [--project <dir>]`.
 2. **AC-024-7**: **iOS**: writes `LaunchImage.imageset` (1x, 2x, 3x, with dark variants) and `LaunchBackground.colorset`
    (light and dark) and a `LaunchScreen.storyboard` showing them. xcross reads that storyboard into its launch
-   screen at build time, so the same files work with xcross and with Xcode on a Mac. Padding and margin are part of
-   the logo image's transparent canvas, so an uneven margin moves the logo on every screen size. A branding image
+   screen at build time, so the same files work with xcross and with Xcode on a Mac. An uneven margin is part of the
+   logo image's transparent canvas, so it moves the logo on every screen size; padding makes the logo smaller
+   (AC-026-28 replaced the first meaning, which could not show). A branding image
    is placed near the bottom of the same image, because an iOS launch screen shows one centred image.
 3. **AC-024-8**: **Android**: writes `drawable` and `drawable-night` `launch_background.xml` with the logo at five
    densities, and `values-v31` and `values-night-v31` styles using the Android 12 splash attributes (background, icon,

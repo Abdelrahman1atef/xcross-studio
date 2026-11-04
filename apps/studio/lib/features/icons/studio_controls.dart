@@ -263,6 +263,7 @@ class StudioSlider extends StatelessWidget {
     required this.onChanged,
     this.min = 0,
     this.unit = '%',
+    this.step = 1,
   });
 
   final String label;
@@ -270,23 +271,27 @@ class StudioSlider extends StatelessWidget {
   final double min;
   final double max;
   final String unit;
+
+  /// The smallest change; the CLI takes decimals where this is below 1.
+  final double step;
   final ValueChanged<double> onChanged;
+
+  String get _shown => value == value.roundToDouble()
+      ? '${value.round()}$unit'
+      : '${value.toStringAsFixed(1)}$unit';
 
   @override
   Widget build(BuildContext context) => Row(
     children: [
-      SizedBox(
-        width: 96,
-        child: Text('$label ${value.round()}$unit', style: XType.support),
-      ),
+      SizedBox(width: 96, child: Text('$label $_shown', style: XType.support)),
       Expanded(
         child: Slider(
           value: value.clamp(min, max),
           min: min,
           max: max,
-          divisions: (max - min).round(),
-          label: '${value.round()}$unit',
-          onChanged: (next) => onChanged(next.roundToDouble()),
+          divisions: ((max - min) / step).round(),
+          label: _shown,
+          onChanged: (next) => onChanged((next / step).round() * step),
         ),
       ),
     ],
@@ -302,28 +307,36 @@ class StudioSides extends StatelessWidget {
     required this.max,
     required this.onChanged,
     this.unit = '%',
+    this.step = 1,
+    this.alwaysSplit = false,
   });
 
   final String label;
   final FourSides sides;
   final double max;
   final String unit;
+  final double step;
+
+  /// One value for all sides would do nothing here, so it is not offered.
+  final bool alwaysSplit;
   final VoidCallback onChanged;
 
   @override
   Widget build(BuildContext context) {
     const names = ['Top', 'Right', 'Bottom', 'Left'];
+    final split = alwaysSplit || sides.split;
     return Column(
       children: [
         Row(
           children: [
             Expanded(
-              child: sides.split
+              child: split
                   ? Text(label, style: XType.support)
                   : StudioSlider(
                       label: label,
                       value: sides.values.first,
                       max: max,
+                      step: step,
                       unit: unit,
                       onChanged: (value) {
                         sides.set(0, value);
@@ -331,28 +344,30 @@ class StudioSides extends StatelessWidget {
                       },
                     ),
             ),
-            XIconButton(
-              icon: sides.split ? Icons.crop_square : Icons.more_horiz,
-              tooltip: sides.split
-                  ? 'Use one $label value'
-                  : 'Set each side of $label',
-              onPressed: () {
-                sides.split = !sides.split;
-                if (!sides.split) sides.set(0, sides.values.first);
-                onChanged();
-              },
-            ),
+            if (!alwaysSplit)
+              XIconButton(
+                icon: sides.split ? Icons.crop_square : Icons.more_horiz,
+                tooltip: sides.split
+                    ? 'Use one $label value'
+                    : 'Set each side of $label',
+                onPressed: () {
+                  sides.split = !sides.split;
+                  if (!sides.split) sides.set(0, sides.values.first);
+                  onChanged();
+                },
+              ),
           ],
         ),
-        if (sides.split)
+        if (split)
           for (var side = 0; side < 4; side++)
             StudioSlider(
               label: names[side],
               value: sides.values[side],
               max: max,
+              step: step,
               unit: unit,
               onChanged: (value) {
-                sides.set(side, value);
+                sides.values[side] = value;
                 onChanged();
               },
             ),

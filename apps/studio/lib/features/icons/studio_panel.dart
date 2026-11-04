@@ -14,9 +14,12 @@ import '../../src/cli/xcross_events.dart';
 import '../../src/state/job.dart';
 import '../common/job_views.dart';
 import 'clipart_set.dart';
+import 'device_catalog.dart';
+import 'device_gallery.dart';
 import 'preview_server.dart';
 import 'source_render.dart';
 import 'splash_panel.dart';
+import 'studio_board.dart';
 import 'studio_controls.dart';
 import 'studio_model.dart';
 import 'target_previews.dart';
@@ -52,10 +55,133 @@ class StudioPanel extends StatefulWidget {
 class _StudioPanelState extends State<StudioPanel> {
   int _tab = 0;
   StudioResult? _result;
+  final _board = StudioBoard();
+  final _filters = GalleryFilters();
+
+  /// While both are written or exported, their results wait to show together.
+  List<StudioResult>? _collecting;
+  bool _busy = false;
 
   void _onResult(StudioResult result) {
-    setState(() => _result = result);
+    final collecting = _collecting;
+    if (collecting != null) {
+      collecting.add(result);
+    } else {
+      setState(() => _result = result);
+    }
     widget.onResult(result);
+  }
+
+  @override
+  void dispose() {
+    _board.dispose();
+    super.dispose();
+  }
+
+  /// Runs the icon's and the splash's [icon] and [splash] in turn, and shows
+  /// what each did. One failing still lets the other run (AC-026-15).
+  Future<void> _both(
+    Future<bool> Function()? icon,
+    Future<bool> Function()? splash,
+  ) async {
+    final results = _collecting = <StudioResult>[];
+    setState(() {
+      _busy = true;
+      _result = null;
+    });
+    final iconDone = await icon?.call() ?? false;
+    final splashDone = await splash?.call() ?? false;
+    _collecting = null;
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _result = StudioResult(
+        [
+          ...results.map((result) => result.message),
+          if (!iconDone) 'The icon was not done: see the App icon tab.',
+          if (!splashDone)
+            'The splash was not done: see the Splash screen tab.',
+        ].join(' '),
+      );
+    });
+  }
+
+  Widget _allScreens() {
+    final project = widget.project;
+    final name = project == null ? 'App' : p.basename(project);
+    return ListenableBuilder(
+      listenable: _board,
+      builder: (context, _) {
+        final content = _board.content(name: name);
+        return SingleChildScrollView(
+          padding: const EdgeInsets.only(right: XSpace.s3),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Wrap(
+                spacing: XSpace.s2,
+                runSpacing: XSpace.s2,
+                children: [
+                  XButton(
+                    label: 'Write icon and splash to project',
+                    icon: Icons.save_outlined,
+                    loading: _busy,
+                    loadingLabel: 'Writing…',
+                    disabledReason: project == null
+                        ? 'Open a Flutter project first'
+                        : null,
+                    onPressed: _busy || project == null
+                        ? null
+                        : () => _both(
+                            () async =>
+                                await _board.writeIcon?.call(project) ?? false,
+                            () async =>
+                                await _board.writeSplash?.call(project) ??
+                                false,
+                          ),
+                  ),
+                  XButton(
+                    label: 'Export icon and splash…',
+                    icon: Icons.folder_outlined,
+                    variant: XButtonVariant.secondary,
+                    onPressed: _busy
+                        ? null
+                        : () async {
+                            final folder = await getDirectoryPath(
+                              confirmButtonText: 'Export here',
+                            );
+                            if (folder == null) return;
+                            await _both(
+                              () async =>
+                                  await _board.exportIcon?.call(folder) ??
+                                  false,
+                              () async =>
+                                  await _board.exportSplash?.call(folder) ??
+                                  false,
+                            );
+                          },
+                  ),
+                ],
+              ),
+              const SizedBox(height: XSpace.s3),
+              XCard(
+                title: 'Every screen',
+                subtitle:
+                    'Each frame is to scale, in that device\'s own size. iOS '
+                    'and Android may show a splash for only a moment, and iOS '
+                    'keeps the last one until the phone restarts.',
+                child: DeviceGallery(content: content, filters: _filters),
+              ),
+              const SizedBox(height: XSpace.s3),
+              XCard(
+                title: 'Every icon size',
+                child: IconSizesSection(content: content),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -93,6 +219,11 @@ class _StudioPanelState extends State<StudioPanel> {
                         label: Text('Splash screen'),
                         icon: Icon(Icons.smartphone),
                       ),
+                      ButtonSegment(
+                        value: 2,
+                        label: Text('All screens'),
+                        icon: Icon(Icons.devices),
+                      ),
                     ],
                     selected: {_tab},
                     onSelectionChanged: (selection) =>
@@ -125,13 +256,23 @@ class _StudioPanelState extends State<StudioPanel> {
               Visibility(
                 visible: _tab == 0,
                 maintainState: true,
-                child: _IconTab(project: widget.project, onResult: _onResult),
+                child: _IconTab(
+                  project: widget.project,
+                  onResult: _onResult,
+                  board: _board,
+                ),
               ),
               Visibility(
                 visible: _tab == 1,
                 maintainState: true,
-                child: SplashTab(project: widget.project, onResult: _onResult),
+                child: SplashTab(
+                  project: widget.project,
+                  onResult: _onResult,
+                  board: _board,
+                ),
               ),
+              // Built only when shown: its frames follow every change.
+              if (_tab == 2) _allScreens(),
             ],
           ),
         ),
@@ -168,10 +309,15 @@ const _fontFamilies = {
 };
 
 class _IconTab extends StatefulWidget {
-  const _IconTab({required this.project, required this.onResult});
+  const _IconTab({
+    required this.project,
+    required this.onResult,
+    required this.board,
+  });
 
   final String? project;
   final ValueChanged<StudioResult> onResult;
+  final StudioBoard board;
 
   @override
   State<_IconTab> createState() => _IconTabState();
@@ -218,10 +364,13 @@ class _IconTabState extends State<_IconTab> {
       }
       if (_design.imagePath == null) _design.startWith(projectIcon(project));
     }
+    widget.board
+      ..writeIcon = _write
+      ..exportIcon = _exportTo
+      ..addListener(_onPreview);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _server = PreviewServer(Services.of(context).jobs)
-        ..addListener(_onPreview);
+      _server = PreviewServer(Services.of(context).jobs)..addListener(_publish);
       unawaited(_changed());
     });
   }
@@ -230,8 +379,19 @@ class _IconTabState extends State<_IconTab> {
     if (mounted) setState(() {});
   }
 
+  /// Hands the latest images to the other tabs.
+  void _publish() {
+    final board = widget.board;
+    board
+      ..iconImages = _server?.images ?? const {}
+      ..iconShape = _design.shape
+      ..iconSource = _sourcePng
+      ..changed();
+  }
+
   @override
   void dispose() {
+    widget.board.removeListener(_onPreview);
     _server?.dispose();
     _text.dispose();
     _name.dispose();
@@ -256,7 +416,9 @@ class _IconTabState extends State<_IconTab> {
     setState(() {});
     final source = await _prepareSource();
     final badge = await _prepareBadge();
-    if (!mounted || source == null || _design.invalid != null) return;
+    if (!mounted) return;
+    if (source != widget.board.iconSource) _publish();
+    if (source == null || _design.invalid != null) return;
     server.request(_design.previewRequest(source, badgeImage: badge));
   }
 
@@ -346,11 +508,11 @@ class _IconTabState extends State<_IconTab> {
 
   /// In the project: what the saved settings name is copied into it first, so
   /// it stays there for a teammate.
-  Future<void> _write(String project) async {
+  Future<bool> _write(String project) async {
     final source = _sourcePng;
     final badge = _badgePng;
     final background = _design.backgroundImage;
-    if (source == null) return;
+    if (source == null) return false;
     final String keptSource;
     final String? keptBadge;
     try {
@@ -379,9 +541,9 @@ class _IconTabState extends State<_IconTab> {
           () => _sourceError = 'Could not copy ${error.path}: ${error.message}',
         );
       }
-      return;
+      return false;
     }
-    await _run(
+    return _run(
       _command(
         source: keptSource,
         badge: keptBadge,
@@ -394,11 +556,14 @@ class _IconTabState extends State<_IconTab> {
   }
 
   Future<void> _exportFolder() async {
-    final source = _sourcePng;
-    if (source == null) return;
     final folder = await getDirectoryPath(confirmButtonText: 'Export here');
-    if (folder == null) return;
-    await _run(
+    if (folder != null) await _exportTo(folder);
+  }
+
+  Future<bool> _exportTo(String folder) async {
+    final source = _sourcePng;
+    if (source == null) return false;
+    return _run(
       _command(
         source: source,
         targets: {..._design.targets, ..._design.exportTargets},
@@ -428,7 +593,7 @@ class _IconTabState extends State<_IconTab> {
     );
   }
 
-  Future<void> _run(
+  Future<bool> _run(
     List<String> command, {
     required String? project,
     bool toProject = false,
@@ -444,7 +609,7 @@ class _IconTabState extends State<_IconTab> {
     );
     setState(() => _job = job);
     final status = await job.done;
-    if (!mounted) return;
+    if (!mounted) return false;
     setState(() {});
     final written = result;
     if (status == JobStatus.succeeded && written != null) {
@@ -455,7 +620,9 @@ class _IconTabState extends State<_IconTab> {
           toProject: toProject,
         ),
       );
+      return true;
     }
+    return false;
   }
 
   @override
@@ -614,6 +781,7 @@ class _IconTabState extends State<_IconTab> {
               label: 'Padding',
               sides: design.padding,
               max: 45,
+              step: 0.5,
               onChanged: _changed,
             ),
           ],
@@ -723,22 +891,35 @@ class _IconTabState extends State<_IconTab> {
               label: 'Badge text (optional)',
               onChanged: (value) => update(() => design.badge = value),
             ),
-            if (design.badge.trim().isEmpty && design.savedBadge != null)
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'The saved design has a badge image. Type to replace it.',
-                      style: XType.support,
-                    ),
-                  ),
-                  XIconButton(
-                    icon: Icons.close,
-                    tooltip: 'Remove the badge',
-                    onPressed: () => update(() => design.savedBadge = null),
-                  ),
-                ],
+            if (design.badge.trim().isEmpty) ...[
+              XFilePickerField(
+                label: 'Badge image (optional)',
+                value: design.savedBadge,
+                directory: false,
+                extensions: const ['png'],
+                onChanged: (value) => update(
+                  () => design.savedBadge = value == null || value.isEmpty
+                      ? null
+                      : value,
+                ),
               ),
+              if (design.savedBadge != null)
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Typing badge text replaces this image.',
+                        style: XType.support,
+                      ),
+                    ),
+                    XIconButton(
+                      icon: Icons.close,
+                      tooltip: 'Remove the badge',
+                      onPressed: () => update(() => design.savedBadge = null),
+                    ),
+                  ],
+                ),
+            ],
             if (design.badge.trim().isNotEmpty)
               StudioColor(
                 label: 'Badge colour',
@@ -787,6 +968,17 @@ class _IconTabState extends State<_IconTab> {
   }
 
   List<Widget> _targetChips() => [
+    Align(
+      alignment: Alignment.centerLeft,
+      child: ActionChip(
+        label: const Text('Every target'),
+        visualDensity: VisualDensity.compact,
+        onPressed: () => setState(() {
+          _design.targets.addAll(_projectTargets);
+          _design.exportTargets.addAll(_exportTargets);
+        }),
+      ),
+    ),
     Text('Write to the project', style: XType.support),
     Wrap(
       spacing: XSpace.s1,
@@ -985,6 +1177,24 @@ class _IconTabState extends State<_IconTab> {
               },
             ],
           ),
+        const SizedBox(height: XSpace.s3),
+        // The other half of the app's first impression (AC-026-14).
+        Text(
+          'The splash with this icon',
+          style: XType.body.copyWith(fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: XSpace.s2),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: DeviceFrame(
+            key: const ValueKey('icon-tab-splash'),
+            screen: deviceScreens.firstWhere(
+              (screen) => screen.name.contains('iPhone 16e'),
+            ),
+            content: widget.board.content(),
+            scale: 0.3,
+          ),
+        ),
       ],
     );
   }

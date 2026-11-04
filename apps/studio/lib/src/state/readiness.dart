@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../cli/xcross_commands.dart';
@@ -50,6 +52,10 @@ class ReadinessController extends ChangeNotifier {
   /// First line of `xcross --version`, once known.
   String? cliVersion;
 
+  /// What is saved about signing in (feature 026); null until read, or
+  /// with a CLI that cannot say.
+  AuthStatusReport? savedSignIn;
+
   bool get checking => doctor?.isRunning ?? false;
 
   /// The checks of the latest doctor run.
@@ -66,7 +72,23 @@ class ReadinessController extends ChangeNotifier {
     doctor?.removeListener(notifyListeners);
     doctor = job..addListener(notifyListeners);
     notifyListeners();
+    unawaited(readSavedSignIn());
     return job;
+  }
+
+  /// Sign-in and sign-out both run the doctor, so this stays current.
+  Future<void> readSavedSignIn() async {
+    AuthStatusReport? report;
+    final job = jobs.background(
+      'Saved sign-in',
+      XcrossCommands.authStatus(),
+      onEvent: (event) {
+        if (event is AuthStatusReport) report = event;
+      },
+    );
+    await job.done;
+    savedSignIn = report;
+    notifyListeners();
   }
 
   /// Reads `xcross --version` once per call.

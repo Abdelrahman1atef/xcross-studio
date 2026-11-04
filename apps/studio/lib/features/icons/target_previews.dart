@@ -411,65 +411,7 @@ class LargeIconPreview extends StatelessWidget {
   );
 }
 
-/// A phone showing a launch screen: [color] with [image] centred, drawn at
-/// [scale] logical pixels per image pixel.
-class SplashPhone extends StatelessWidget {
-  const SplashPhone({
-    super.key,
-    required this.label,
-    required this.color,
-    required this.image,
-    this.scale = 0.2,
-    this.radius = 26,
-    this.overlay,
-  });
-
-  static const width = 164.0;
-  static const height = 340.0;
-
-  final String label;
-  final Color color;
-  final Uint8List? image;
-  final double scale;
-  final double radius;
-  final Widget? overlay;
-
-  @override
-  Widget build(BuildContext context) => _Caption(
-    label,
-    child: Container(
-      width: width,
-      height: height,
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(radius),
-        border: Border.all(color: const Color(0xFF111111), width: 4),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: OverflowBox(
-        maxWidth: double.infinity,
-        maxHeight: double.infinity,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            if (image != null)
-              Transform.scale(
-                scale: scale,
-                child: Image.memory(
-                  image!,
-                  gaplessPlayback: true,
-                  filterQuality: FilterQuality.medium,
-                ),
-              ),
-            ?overlay,
-          ],
-        ),
-      ),
-    ),
-  );
-}
-
-/// Android 12's icon circle on a [SplashPhone].
+/// Android 12's icon circle on a device frame.
 class Android12Guide extends StatelessWidget {
   const Android12Guide({super.key, required this.diameter});
 

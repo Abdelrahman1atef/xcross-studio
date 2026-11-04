@@ -1,5 +1,45 @@
 ## Unreleased (XCross Studio)
 
+- Splash: padding and margin did nothing you could see, and Android 12+ ignored them and any size above about 135 dp.
+  `--padding` now makes the logo smaller, where it used to add space around a centred image. **A saved design with padding
+  gets a smaller logo.** Margin moves the logo by half the difference between opposite sides, also on Android 12+; equal
+  margins cancel out, so the app shows each side and the CLI warns with `splash.margin_no_effect`.
+  `--android12-icon-width` is used as it is, through Android's 192 dp circle, or 160 dp with an icon background, as
+  Android documents, and what falls outside shows as cut in the app and is reported by `splash.android12_clipped`.
+
+- App icon page and Icon and splash studio: the app icon and splash now show together, on every iPhone and iPad screen and
+  common Android phones, tablets and foldables, each frame to scale in that device's own size. Filter by family, portrait
+  or landscape, light or dark, splash or home icon, with safe area guides, and add any size by hand. Android frames show
+  what Android draws, where the preview used to reuse the iOS image. The studio's new `All screens` tab writes or exports
+  the icon and splash with one action, and a new splash starts from the icon's image.
+
+- Splash options: a separate logo size for iPad, Android and Android 12+, an Android 12+ icon background, and branding
+  size and position (`--ipad-logo-width`, `--android-logo-width`, `--android12-icon-width`,
+  `--android12-icon-background`, `--dark-android12-icon-background`, `--branding-width`, `--branding-bottom`). The app
+  also offers what only the CLI had: a splash zip, every icon target at once, your own badge image, and half-percent
+  padding. `splash check` warns with `splash.branding_clipped` when branding would be cut off on small iPhones.
+
+- Signing: `xcross auth status [--json]` shows how you signed in, offline and without any password, token or key. The
+  Signing page's Status section shows the same, with what device builds and App Store builds each use, and the sign-in form
+  starts from it.
+
+- iOS splash: a transparent logo showed as a big black square on a real iPhone. The launch image is now drawn over its
+  background colour when the app is built, so it has no transparent pixels; the files in the project stay as they are.
+  Seen on an iPhone X in the launch images iOS saved: the logo on its colour, no square. To see a new splash, restart the
+  iPhone and install again: iOS keeps the one it saved, and deleting the app is not enough.
+
+- Asset catalogs: iOS could not find any named colour xcross compiled, so `UIColor(named:)` failed and the splash background
+  fell back to the system's, black in dark mode. Colours are now written as Apple's `actool` writes them, checked byte for
+  byte against real catalogs.
+
+- iOS splash and asset catalogs: an image set with the same name as a colour set hid the colour from iOS, as the
+  `LaunchBackground.imageset` flutter_native_splash leaves behind did. The colour now wins and the build warns with
+  `build.asset_invalid`. `splash check` reports it (`splash.name_clash`), and `splash generate` backs it up and removes it.
+
+- Flutter assets: an asset with a space or special character in its name could not load on iOS, such as a Lottie file named
+  `Map Loading.json`, because the file was written with a plain name while Flutter asks for `Map%20Loading.json`.
+  Assets declared by packages were left out of the app too, and are now copied, with a warning if one is missing.
+
 - Plugin builds: switching between debug and release threw away every compiled plugin and compiled them all again, because
   the build's cache key included the Flutter engine's binary, which differs per mode. The key now holds what plugins compile
   against (the engine's headers and modules, and its revision), and each build still embeds the engine of its own mode. The

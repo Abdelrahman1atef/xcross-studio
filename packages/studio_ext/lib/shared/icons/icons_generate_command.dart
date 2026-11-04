@@ -659,18 +659,31 @@ final class IconsPreviewCommand extends Command<void> {
     final options = IconOptions.parse(request, readImage: read);
     final composer = IconComposer(read(source), options.design);
     const size = previewSize;
-    final variants = <String, RgbaImage?>{
-      'full': composer.draw(size, size),
-      'adaptive': composer.draw(size, size, viewport: 72 / 108),
-      'maskable': composer.draw(size, size, viewport: 0.8),
-      'silhouette': composer.silhouette(size, size),
-      'banner': composer.draw(640, 360),
-    };
+    return _save(request, output, seq, {
+      'full': () => composer.draw(size, size),
+      'adaptive': () => composer.draw(size, size, viewport: 72 / 108),
+      'maskable': () => composer.draw(size, size, viewport: 0.8),
+      'silhouette': () => composer.silhouette(size, size),
+      'banner': () => composer.draw(640, 360),
+    });
+  }
+
+  /// Draws and writes what [request]'s `variants` names, or all of [variants]
+  /// when it names none (AC-026-17).
+  Map<String, Object?> _save(
+    Map<String, Object?> request,
+    String output,
+    String seq,
+    Map<String, RgbaImage? Function()> variants,
+  ) {
+    final wanted = request['variants'];
     final paths = <String, Object?>{};
     for (final MapEntry(:key, :value) in variants.entries) {
-      if (value == null) continue;
+      if (wanted is List && !wanted.contains(key)) continue;
+      final image = value();
+      if (image == null) continue;
       final path = p.join(output, 'preview-$seq-$key.png');
-      _fileSystem.file(path).writeAsBytesSync(PngEncoder.encode(value));
+      _fileSystem.file(path).writeAsBytesSync(PngEncoder.encode(image));
       paths[key] = path;
     }
     return paths;
@@ -685,30 +698,53 @@ final class IconsPreviewCommand extends Command<void> {
   ) {
     final design = parseSplashDesign(request, logo: logo, readImage: read);
     final withBranding = design.branding != null;
-    final variants = <String, RgbaImage>{
-      'logo': SplashImages.logoCanvas(
-        design,
-        scale: 2,
-        withBranding: withBranding,
-      ),
-      'android12': SplashImages.android12Icon(design, 576),
-      if (design.darkLogo != null || design.darkBranding != null) ...{
-        'darkLogo': SplashImages.logoCanvas(
+    final hasDark = design.darkLogo != null || design.darkBranding != null;
+    final androidWidth = design.androidLogoWidth;
+    final androidLogos = androidWidth == null
+        ? design
+        : design.withLogoWidth(androidWidth);
+    final ownAndroidLogo = withBranding || androidWidth != null;
+    final ipadWidth = design.ipadLogoWidth;
+    final ipadLogos = ipadWidth == null
+        ? null
+        : design.withLogoWidth(ipadWidth);
+    return _save(request, output, seq, {
+      'logo': () =>
+          SplashImages.logoCanvas(design, scale: 2, withBranding: withBranding),
+      'android12': () => SplashImages.android12Icon(design, scale: 2),
+      // Android keeps its branding as a separate image (AC-026-12).
+      if (ownAndroidLogo)
+        'androidLogo': () => SplashImages.logoCanvas(androidLogos, scale: 2),
+      if (ipadLogos != null)
+        'ipadLogo': () => SplashImages.logoCanvas(
+          ipadLogos,
+          scale: 2,
+          withBranding: withBranding,
+        ),
+      if (hasDark || design.darkAndroid12IconBackground != null)
+        'darkAndroid12': () =>
+            SplashImages.android12Icon(design, scale: 2, dark: true),
+      if (hasDark) ...{
+        'darkLogo': () => SplashImages.logoCanvas(
           design,
           scale: 2,
           dark: true,
           withBranding: withBranding,
         ),
-        'darkAndroid12': SplashImages.android12Icon(design, 576, dark: true),
+        if (ownAndroidLogo)
+          'darkAndroidLogo': () =>
+              SplashImages.logoCanvas(androidLogos, scale: 2, dark: true),
+        if (ipadLogos != null)
+          'darkIpadLogo': () => SplashImages.logoCanvas(
+            ipadLogos,
+            scale: 2,
+            dark: true,
+            withBranding: withBranding,
+          ),
       },
-      if (design.branding != null) 'branding': design.branding!,
-    };
-    final paths = <String, Object?>{};
-    for (final MapEntry(:key, :value) in variants.entries) {
-      final path = p.join(output, 'preview-$seq-$key.png');
-      _fileSystem.file(path).writeAsBytesSync(PngEncoder.encode(value));
-      paths[key] = path;
-    }
-    return paths;
+      if (design.branding != null) 'branding': () => design.branding,
+      if (design.darkBranding != null)
+        'darkBranding': () => design.darkBranding,
+    });
   }
 }

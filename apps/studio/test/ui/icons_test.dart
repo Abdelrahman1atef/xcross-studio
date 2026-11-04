@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:xcross_studio/app/app.dart';
 import 'package:xcross_studio/app/services.dart';
 import 'package:xcross_studio/design_system/design_system.dart';
+import 'package:xcross_studio/features/icons/device_gallery.dart';
 import 'package:xcross_studio/features/icons/studio_model.dart';
 import 'package:xcross_studio/src/cli/xcross_commands.dart';
 import 'package:xcross_studio/src/host/host_platform.dart';
@@ -17,6 +18,24 @@ import 'package:xcross_studio/src/state/settings.dart';
 
 import '../support/fake_launcher.dart';
 import 'app_test.dart' show settle, go;
+
+const _withSplash = <String, Object?>{
+  'v': 1,
+  'type': 'splash_check',
+  'ios': {'background': '#123456', 'logo': 'LaunchImage'},
+  'android': null,
+  'issues': <Object?>[],
+  'errors': 0,
+};
+
+const _noSplash = <String, Object?>{
+  'v': 1,
+  'type': 'splash_check',
+  'ios': null,
+  'android': null,
+  'issues': <Object?>[],
+  'errors': 0,
+};
 
 /// A 1×1 PNG; the page only displays the files.
 final _png = base64Decode(
@@ -122,7 +141,11 @@ void main() {
   });
   tearDown(() => project.deleteSync(recursive: true));
 
-  Future<FakeLauncher> pump(WidgetTester tester) async {
+  Future<FakeLauncher> pump(
+    WidgetTester tester, {
+    bool withProject = true,
+    Map<String, Object?> splashReport = _withSplash,
+  }) async {
     await tester.binding.setSurfaceSize(const Size(1600, 4000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final launcher = FakeLauncher(
@@ -130,6 +153,9 @@ void main() {
         final command = arguments.join(' ');
         if (command == XcrossCommands.iconsCheck().join(' ')) {
           process.out(jsonEncode(_check(setPath)));
+        }
+        if (command == XcrossCommands.splashCheck().join(' ')) {
+          process.out(jsonEncode(splashReport));
         }
         if (arguments.length > 1 &&
             arguments[0] == 'icons' &&
@@ -169,7 +195,7 @@ void main() {
     );
     final settings = Settings()
       ..wizardDismissed = true
-      ..projectPath = project.path;
+      ..projectPath = withProject ? project.path : null;
     final jobs = JobCenter(
       launcher: launcher,
       invocation: () => const XcrossInvocation.binary(),
@@ -246,11 +272,23 @@ void main() {
     await settle(tester, 2);
   }
 
-  /// What the preview process was sent, oldest first.
-  List<Map<String, Object?>> designs(FakeLauncher launcher) => [
+  /// What the preview processes were sent, oldest first.
+  List<Map<String, Object?>> allDesigns(FakeLauncher launcher) => [
     for (final process in launcher.processes)
       for (final line in process.stdinLines)
         jsonDecode(line) as Map<String, Object?>,
+  ];
+
+  /// The icon's designs: the splash has its own process and follows the icon's
+  /// image from the start (AC-026-14).
+  List<Map<String, Object?>> designs(FakeLauncher launcher) => [
+    for (final design in allDesigns(launcher))
+      if (design['kind'] != 'splash') design,
+  ];
+
+  List<Map<String, Object?>> splashDesigns(FakeLauncher launcher) => [
+    for (final design in allDesigns(launcher))
+      if (design['kind'] == 'splash') design,
   ];
 
   /// Answers the preview processes, then lets the debounce pass.
@@ -319,6 +357,404 @@ void main() {
     },
   );
 
+  group('AC-026-14 the studio shows both', () {
+    testWidgets('the icon tab shows the splash, the splash tab the icon', (
+      tester,
+    ) async {
+      final launcher = await openStudio(tester);
+      await debounce(tester, launcher);
+      expect(find.byKey(const ValueKey('icon-tab-splash')), findsOneWidget);
+      await tester.tap(find.text('Splash screen').first);
+      await settle(tester, 2);
+      expect(find.byKey(const ValueKey('splash-tab-icon')), findsOneWidget);
+      await closeApp(tester);
+    });
+
+    testWidgets("a new splash starts from the icon's image", (tester) async {
+      final launcher = await openStudio(tester);
+      await debounce(tester, launcher);
+      await debounce(tester, launcher);
+      final icon = p.join(setPath, 'Icon-App-1024x1024@1x.png');
+      expect(splashDesigns(launcher).last['source'], icon);
+      await tester.tap(find.text('Splash screen').first);
+      await settle(tester, 2);
+      expect(find.textContaining("This is the icon's image"), findsOneWidget);
+      await closeApp(tester);
+    });
+
+    testWidgets('choosing a logo stops following the icon', (tester) async {
+      final launcher = await openStudio(tester);
+      await debounce(tester, launcher);
+      await tester.tap(find.text('Splash screen').first);
+      await settle(tester, 2);
+      final mine = p.join(project.path, 'mine.png');
+      File(mine).writeAsBytesSync(_png);
+      await tester.enterText(
+        find.widgetWithText(
+          TextField,
+          'Logo (PNG with a transparent background)',
+        ),
+        mine,
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await debounce(tester, launcher);
+      await debounce(tester, launcher);
+      expect(find.textContaining("This is the icon's image"), findsNothing);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(SegmentedButton<int>),
+          matching: find.text('App icon'),
+        ),
+      );
+      await settle(tester, 2);
+      final other = await pickImage(tester, launcher);
+      await debounce(tester, launcher);
+      expect(designs(launcher).last['source'], other);
+      expect(splashDesigns(launcher).last['source'], mine);
+      await closeApp(tester);
+    });
+
+    testWidgets('the All screens tab holds the gallery and every size', (
+      tester,
+    ) async {
+      final launcher = await openStudio(tester);
+      await debounce(tester, launcher);
+      await tester.tap(find.text('All screens'));
+      await settle(tester, 2);
+      expect(find.byType(DeviceGallery), findsOneWidget);
+      expect(find.text('Every icon size'), findsOneWidget);
+      await closeApp(tester);
+    });
+  });
+
+  group('AC-026-18 what only the CLI had', () {
+    testWidgets('a splash zip, every target and a badge image', (tester) async {
+      final launcher = await openStudio(tester);
+      await debounce(tester, launcher);
+      expect(find.widgetWithText(ActionChip, 'Every target'), findsOneWidget);
+      await tester.ensureVisible(
+        find.widgetWithText(ActionChip, 'Every target'),
+      );
+      await tester.tap(find.widgetWithText(ActionChip, 'Every target'));
+      await settle(tester, 2);
+      for (final target in const ['Web', 'macOS', 'watchOS', 'tvOS']) {
+        final chip = tester.widget<FilterChip>(
+          find.widgetWithText(FilterChip, target),
+        );
+        expect(chip.selected, isTrue, reason: target);
+      }
+
+      final badge = p.join(project.path, 'badge.png');
+      File(badge).writeAsBytesSync(_png);
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Badge image (optional)'),
+        badge,
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await debounce(tester, launcher);
+      expect(designs(launcher).last['badge-image'], badge);
+
+      await tester.tap(find.text('Splash screen'));
+      await settle(tester, 2);
+      expect(find.widgetWithText(XButton, 'Export zip…'), findsOneWidget);
+      await closeApp(tester);
+    });
+
+    testWidgets('sliders reach the whole range, and padding takes decimals', (
+      tester,
+    ) async {
+      final launcher = await openStudio(tester);
+      await debounce(tester, launcher);
+      await tester.tap(find.text('Splash screen'));
+      await settle(tester, 2);
+      final sliders = tester.widgetList<Slider>(find.byType(Slider)).toList();
+      final width = sliders.firstWhere((slider) => slider.max == 1024);
+      expect(width.min, 16);
+      final padding = sliders.firstWhere((slider) => slider.max == 45);
+      expect(padding.divisions, 90, reason: 'half a percent at a time');
+      await closeApp(tester);
+    });
+  });
+
+  group('AC-026-19 AC-026-20 AC-026-21 the splash controls', () {
+    testWidgets('a size for each kind of device reaches the CLI', (
+      tester,
+    ) async {
+      final launcher = await openStudio(tester);
+      await debounce(tester, launcher);
+      await tester.tap(find.text('Splash screen'));
+      await settle(tester, 2);
+      await tester.tap(
+        find.descendant(
+          of: find
+              .ancestor(
+                of: find.text('A different size on each kind of device'),
+                matching: find.byType(Row),
+              )
+              .first,
+          matching: find.byType(Switch),
+        ),
+      );
+      await debounce(tester, launcher);
+      final sent = splashDesigns(launcher).last;
+      expect(sent['ipad-logo-width'], '120');
+      expect(sent['android-logo-width'], '120');
+      expect(sent['android12-icon-width'], '120');
+      expect(find.textContaining('iPad 120 pt'), findsOneWidget);
+      await closeApp(tester);
+    });
+
+    testWidgets('without them, nothing extra is sent', (tester) async {
+      final launcher = await openStudio(tester);
+      await debounce(tester, launcher);
+      final sent = splashDesigns(launcher).last;
+      expect(sent.containsKey('ipad-logo-width'), isFalse);
+      expect(sent.containsKey('android12-icon-background'), isFalse);
+      expect(sent.containsKey('branding-width'), isFalse);
+      await closeApp(tester);
+    });
+
+    testWidgets('a platform turned off asks for fewer images', (tester) async {
+      final launcher = await openStudio(tester);
+      await debounce(tester, launcher);
+      await tester.tap(find.text('Splash screen'));
+      await settle(tester, 2);
+      await tester.ensureVisible(find.widgetWithText(FilterChip, 'Android'));
+      await tester.tap(find.widgetWithText(FilterChip, 'Android'));
+      await debounce(tester, launcher);
+      final variants = splashDesigns(launcher).last['variants']! as List;
+      expect(variants, contains('logo'));
+      expect(variants, isNot(contains('android12')));
+      await closeApp(tester);
+    });
+  });
+
+  group('every splash control has an effect', () {
+    Future<FakeLauncher> openSplash(WidgetTester tester) async {
+      final launcher = await openStudio(tester);
+      await debounce(tester, launcher);
+      await tester.tap(find.text('Splash screen'));
+      await settle(tester, 2);
+      return launcher;
+    }
+
+    Future<void> slide(WidgetTester tester, String label, double to) async {
+      final row = find
+          .ancestor(of: find.textContaining(label), matching: find.byType(Row))
+          .first;
+      final slider = tester.widget<Slider>(
+        find.descendant(of: row, matching: find.byType(Slider)),
+      );
+      slider.onChanged!(to);
+      await tester.pump();
+    }
+
+    testWidgets('AC-026-29 margin has no one-value control, and each side '
+        'reaches the CLI', (tester) async {
+      final launcher = await openSplash(tester);
+      expect(find.byTooltip('Set each side of Margin'), findsNothing);
+      await slide(tester, 'Top 0 pt', 80);
+      await debounce(tester, launcher);
+      expect(splashDesigns(launcher).last['margin'], '80,0,0,0');
+      await closeApp(tester);
+    });
+
+    testWidgets('AC-026-28 padding reaches the CLI, by half percents', (
+      tester,
+    ) async {
+      final launcher = await openSplash(tester);
+      await slide(tester, 'Padding 0%', 12.5);
+      await debounce(tester, launcher);
+      expect(splashDesigns(launcher).last['padding'], '12.5');
+      await closeApp(tester);
+    });
+
+    testWidgets('AC-026-30 Android 12 has a slider as wide as its canvas, '
+        'starting where the logo already is', (tester) async {
+      final launcher = await openSplash(tester);
+      await tester.tap(
+        find.descendant(
+          of: find
+              .ancestor(
+                of: find.text('A different size on each kind of device'),
+                matching: find.byType(Row),
+              )
+              .first,
+          matching: find.byType(Switch),
+        ),
+      );
+      await debounce(tester, launcher);
+      final row = find
+          .ancestor(
+            of: find.textContaining('Android 12+ ', findRichText: true).first,
+            matching: find.byType(Row),
+          )
+          .first;
+      final slider = tester.widget<Slider>(
+        find.descendant(of: row, matching: find.byType(Slider)),
+      );
+      expect(slider.max, 288);
+      await slide(tester, 'Android 12+ ', 250);
+      await debounce(tester, launcher);
+      expect(splashDesigns(launcher).last['android12-icon-width'], '250');
+      await closeApp(tester);
+    });
+
+    testWidgets('AC-026-31 an iPad size shows on an iPad', (tester) async {
+      final launcher = await openSplash(tester);
+      expect(find.byKey(const ValueKey('splash-tab-iPad')), findsNothing);
+      await tester.tap(
+        find.descendant(
+          of: find
+              .ancestor(
+                of: find.text('A different size on each kind of device'),
+                matching: find.byType(Row),
+              )
+              .first,
+          matching: find.byType(Switch),
+        ),
+      );
+      await debounce(tester, launcher);
+      expect(find.byKey(const ValueKey('splash-tab-iPad')), findsOneWidget);
+      await closeApp(tester);
+    });
+
+    testWidgets('AC-026-30 a size saved past the canvas comes back on it', (
+      tester,
+    ) async {
+      File(p.join(project.path, 'logo.png')).writeAsBytesSync(_png);
+      File(p.join(project.path, 'xcross_assets.json')).writeAsStringSync(
+        jsonEncode({
+          'splash': {'source': 'logo.png', 'android12-icon-width': '497'},
+        }),
+      );
+      final launcher = await openStudio(tester);
+      await debounce(tester, launcher);
+      expect(splashDesigns(launcher).last['android12-icon-width'], '288');
+      await closeApp(tester);
+    });
+  });
+
+  testWidgets('AC-026-23 the studio restores the new options', (tester) async {
+    File(p.join(project.path, 'logo.png')).writeAsBytesSync(_png);
+    File(p.join(project.path, 'xcross_assets.json')).writeAsStringSync(
+      jsonEncode({
+        'splash': {
+          'source': 'logo.png',
+          'ipad-logo-width': '200',
+          'android-logo-width': '60',
+          'android12-icon-width': '100',
+          'android12-icon-background': '#112233',
+          'dark-android12-icon-background': '#445566',
+          'branding': 'logo.png',
+          'branding-width': '90',
+          'branding-bottom': '40',
+        },
+      }),
+    );
+    final launcher = await openStudio(tester);
+    await debounce(tester, launcher);
+    final sent = splashDesigns(launcher).last;
+    expect(sent['ipad-logo-width'], '200');
+    expect(sent['android-logo-width'], '60');
+    expect(sent['android12-icon-width'], '100');
+    expect(sent['android12-icon-background'], '#112233');
+    expect(sent['dark-android12-icon-background'], '#445566');
+    expect(sent['branding-width'], '90');
+    expect(sent['branding-bottom'], '40');
+    await closeApp(tester);
+  });
+
+  group('AC-026-15 one action for both', () {
+    testWidgets('writes the icon and the splash, and reports each', (
+      tester,
+    ) async {
+      final launcher = await openStudio(tester);
+      await debounce(tester, launcher);
+      await debounce(tester, launcher);
+      await tester.tap(find.text('All screens'));
+      await settle(tester, 2);
+      await tester.tap(
+        find.widgetWithText(XButton, 'Write icon and splash to project'),
+      );
+      await settle(tester);
+      await settle(tester);
+      String? started(String command) => launcher.starts
+          .map((start) => start.arguments.take(2).join(' '))
+          .where((name) => name == command)
+          .firstOrNull;
+      expect(started('icons generate'), isNotNull);
+      expect(started('splash generate'), isNotNull);
+      expect(find.textContaining('icon files'), findsOneWidget);
+      expect(find.textContaining('splash files'), findsOneWidget);
+      await closeApp(tester);
+    });
+
+    testWidgets('without a project it says why', (tester) async {
+      final launcher = await pump(tester, withProject: false);
+      await go(tester, 'App icon');
+      await settle(tester);
+      await tester.tap(find.widgetWithText(XButton, 'Icon and splash studio…'));
+      await settle(tester, 2);
+      await debounce(tester, launcher);
+      await tester.tap(find.text('All screens'));
+      await settle(tester, 2);
+      final button = tester.widget<XButton>(
+        find.widgetWithText(XButton, 'Write icon and splash to project'),
+      );
+      expect(button.onPressed, isNull);
+      expect(button.disabledReason, 'Open a Flutter project first');
+      await closeApp(tester);
+    });
+  });
+
+  group('AC-026-16 the page shows the project', () {
+    testWidgets('the same gallery, from the files', (tester) async {
+      await pump(tester);
+      await go(tester, 'App icon');
+      await settle(tester);
+      expect(find.byType(DeviceGallery), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Android icon sizes'),
+        800,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('Android icon sizes'), findsOneWidget);
+    });
+
+    testWidgets('says the splash is missing, and how to make it', (
+      tester,
+    ) async {
+      await pump(tester, splashReport: _noSplash);
+      await go(tester, 'App icon');
+      await settle(tester);
+      expect(
+        find.textContaining('This project has no splash yet'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('reads the splash files the check names', (tester) async {
+      final imageSet = Directory(
+        p.join(
+          project.path,
+          'ios',
+          'Runner',
+          'Assets.xcassets',
+          'LaunchImage.imageset',
+        ),
+      )..createSync(recursive: true);
+      File(p.join(imageSet.path, 'LaunchImage@2x.png')).writeAsBytesSync(_png);
+      await pump(tester);
+      await go(tester, 'App icon');
+      await settle(tester);
+      expect(find.textContaining('no splash yet'), findsNothing);
+      final gallery = tester.widget<DeviceGallery>(find.byType(DeviceGallery));
+      expect(gallery.content.logo, isNotNull);
+      expect(gallery.content.background, const Color(0xFF123456));
+    });
+  });
+
   testWidgets('AC-024-18 the preview stays in view while the controls scroll', (
     tester,
   ) async {
@@ -372,9 +808,10 @@ void main() {
     final launcher = await openStudio(tester);
     final source = await pickImage(tester, launcher);
 
+    // One for the icon and one for the splash, however many designs were sent.
     expect(
       commands(launcher).where((c) => c.contains('icons preview --serve')),
-      hasLength(1),
+      hasLength(2),
     );
     final sent = designs(launcher).last;
     expect(sent['source'], source);
@@ -446,7 +883,9 @@ void main() {
     final launcher = await openStudio(tester);
     await tester.tap(find.text('Splash screen'));
     await settle(tester, 2);
-    expect(find.text('Margin 0 pt'), findsOneWidget);
+    // Margin always shows its sides: one value would do nothing (AC-026-29).
+    expect(find.text('Margin'), findsOneWidget);
+    expect(find.text('Top 0 pt'), findsOneWidget);
     // The phones are there before a logo is.
     expect(find.text('Android 12+ (safe circle)'), findsOneWidget);
 
@@ -465,7 +904,7 @@ void main() {
     expect(find.text('Android'), findsWidgets);
     expect(find.text('Android 12+ (safe circle)'), findsOneWidget);
 
-    final sent = designs(launcher).lastWhere((d) => d['kind'] == 'splash');
+    final sent = splashDesigns(launcher).last;
     expect(sent['source'], logo);
 
     await tester.tap(find.widgetWithText(XButton, 'Write splash to project'));

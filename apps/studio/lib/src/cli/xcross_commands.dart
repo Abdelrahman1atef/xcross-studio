@@ -451,6 +451,9 @@ abstract final class XcrossCommands {
 
   static List<String> authClean() => const ['auth', 'clean'];
 
+  /// studio: 026 — what is saved about signing in; reads files only.
+  static List<String> authStatus() => const ['auth', 'status', '--json'];
+
   static List<String> pluginList(String project) => [
     'plugin',
     'list',

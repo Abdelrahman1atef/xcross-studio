@@ -241,6 +241,31 @@ class SplashStudioDesign {
   bool ios = true;
   bool android = true;
 
+  /// A logo size for one kind of device; null: the logo's width (feature 026).
+  double? ipadLogoWidth;
+  double? androidLogoWidth;
+  double? android12IconWidth;
+
+  /// Android 12's icon background (feature 026); null: none.
+  String? android12IconBackground;
+  String? darkAndroid12IconBackground;
+
+  /// The branding's width in points or dp, and how far up Android 11 and older
+  /// draw it, in dp (feature 026).
+  double brandingWidth = 180;
+  double brandingBottom = 32;
+
+  bool get separateSizes =>
+      ipadLogoWidth != null ||
+      androidLogoWidth != null ||
+      android12IconWidth != null;
+
+  /// Android 12's canvas in dp; a logo this wide already runs off it.
+  static const android12MaxWidth = 288.0;
+
+  /// The circle's inscribed square: a logo of any shape fits at this size.
+  double get android12SafeWidth => android12IconBackground == null ? 135 : 113;
+
   String? get invalid {
     if (!isHexColor(background)) {
       return 'Enter the background colour as #RRGGBB.';
@@ -249,6 +274,14 @@ class SplashStudioDesign {
       return 'Enter the dark background colour as #RRGGBB.';
     }
     if (!ios && !android) return 'Choose iOS, Android or both.';
+    for (final color in [
+      android12IconBackground,
+      darkAndroid12IconBackground,
+    ]) {
+      if (color != null && !isHexColor(color)) {
+        return 'Enter the icon background colour as #RRGGBB.';
+      }
+    }
     return null;
   }
 
@@ -262,12 +295,39 @@ class SplashStudioDesign {
     'branding': ?branding,
     'dark-branding': ?darkBranding,
     'platforms': [if (ios) 'ios', if (android) 'android'].join(','),
+    if (ipadLogoWidth case final width?) 'ipad-logo-width': _number(width),
+    if (androidLogoWidth case final width?)
+      'android-logo-width': _number(width),
+    if (android12IconWidth case final width?)
+      'android12-icon-width': _number(width),
+    'android12-icon-background': ?android12IconBackground,
+    'dark-android12-icon-background': ?darkAndroid12IconBackground,
+    if (branding != null) ...{
+      'branding-width': _number(brandingWidth),
+      'branding-bottom': _number(brandingBottom),
+    },
   };
 
+  static String _number(double value) => value.round().toString();
+
+  /// What the frames need, so a turned off platform costs nothing (AC-026-17).
   Map<String, Object?> previewRequest() => {
     'kind': 'splash',
     'source': logo,
     ...options(),
+    'variants': [
+      'logo',
+      'darkLogo',
+      'branding',
+      'darkBranding',
+      if (ios) ...['ipadLogo', 'darkIpadLogo'],
+      if (android) ...[
+        'androidLogo',
+        'darkAndroidLogo',
+        'android12',
+        'darkAndroid12',
+      ],
+    ],
   };
 
   void restore(Map<String, Object?> saved, String project) {
@@ -288,6 +348,16 @@ class SplashStudioDesign {
     margin.parse(text('margin'));
     branding = path('branding');
     darkBranding = path('dark-branding');
+    double? size(String key) => double.tryParse(text(key) ?? '');
+    ipadLogoWidth = size('ipad-logo-width');
+    androidLogoWidth = size('android-logo-width');
+    // Saved before Android 12's sizes took effect, it may be off the canvas.
+    android12IconWidth = size('android12-icon-width')
+        ?.clamp(16, android12MaxWidth);
+    android12IconBackground = text('android12-icon-background');
+    darkAndroid12IconBackground = text('dark-android12-icon-background');
+    brandingWidth = size('branding-width') ?? brandingWidth;
+    brandingBottom = size('branding-bottom') ?? brandingBottom;
     final platforms = text('platforms');
     if (platforms != null) {
       ios = platforms.contains('ios');

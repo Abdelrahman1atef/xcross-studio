@@ -390,6 +390,7 @@ Edit it with `xcross config`, inspect it with `xcross config show`, prove it wit
 | `xcross flutter precache [--mode debug\|profile\|release\|all]` | Download the iOS engine artifacts and, for profile and release, the iOS AOT compiler for the current Flutter SDK, so CI images and offline machines build without the network |
 | `xcross cache prune [--dry-run] [--older-than <days>]` | Remove cached Flutter engine artifacts and AOT compilers for engines no discoverable Flutter SDK uses and that went unused for `--older-than` days (default 30) |
 | `xcross auth` | Save Apple ID or App Store Connect credentials |
+| `xcross auth status` | Show how you signed in and what each kind of build uses, offline |
 | `xcross auth clean` | Delete saved credentials, sessions, and signing material |
 | `xcross tunnel` | Mount the Developer Disk Image + start the iOS 17+ RSD tunnel over USB |
 | `xcross tunnel --wifi` | Prepare wireless pairing, reconnect or advertise pair-host, mount DDI, and open the Wi-Fi RSD tunnel |
@@ -693,12 +694,17 @@ xcross icons generate logo.png --padding 10,14,18,14 --background-type gradient 
 xcross icons generate logo.png --targets all --zip app-icons.zip   # nothing in the project changes
 xcross splash generate logo.png --background "#FFFFFF" --dark-background "#000000" --logo-width 120 \
   --margin 0,0,40,0 --save-config
+xcross splash generate logo.png --logo-width 200 --ipad-logo-width 300 --android12-icon-width 120 \
+  --android12-icon-background "#FFFFFF"                            # a size for each kind of device
 xcross splash check
 xcross icons generate --config && xcross splash generate --config  # from the committed xcross_assets.json
 ```
 
 Commit `xcross_assets.json` and `.xcross/assets/` so a team regenerates the same files. Replaced files go to
-`.xcross/icon-backups/`. See [specs/024-icon-splash-studio](specs/024-icon-splash-studio/spec.md).
+`.xcross/icon-backups/`. See [specs/024-icon-splash-studio](specs/024-icon-splash-studio/spec.md). In XCross Studio, the
+App icon page and the studio's `All screens` tab show both on every screen size
+([specs/026-all-screens-preview](specs/026-all-screens-preview/spec.md)). iOS keeps showing the splash it saved: to see a
+new one, restart the iPhone and install again. Deleting the app is not enough.
 
 The build signs the app and its extensions with an Apple Distribution certificate and App Store profiles, and writes
 `build/xcross-ios/ipa/<name>.ipa` and `build/xcross-ios/archive/Runner.xcarchive` (with dSYMs when `dsymutil` is on

@@ -12,6 +12,8 @@ import '../../src/cli/xcross_commands.dart';
 import '../../src/cli/xcross_events.dart';
 import '../../src/state/job.dart';
 import '../common/job_views.dart';
+import 'device_gallery.dart';
+import 'studio_controls.dart';
 import 'studio_panel.dart';
 
 /// iOS's icon corner radius as a share of the side.
@@ -40,6 +42,10 @@ class _IconsPageState extends State<IconsPage> {
   /// so they are not loaded through the image cache by path).
   final Map<String, Uint8List> _images = {};
   bool _safeArea = true;
+
+  /// The project's icon and splash, for the gallery (feature 026).
+  GalleryContent? _gallery;
+  final _filters = GalleryFilters();
 
   bool _making = false;
   bool _consoleWasOpen = false;
@@ -73,6 +79,64 @@ class _IconsPageState extends State<IconsPage> {
     setState(() => _checkJob = job);
     await job.done;
     if (mounted) _apply(report);
+    if (mounted) await _readSplash(project);
+  }
+
+  /// Reads the project's splash for the gallery. Only to display it: what is
+  /// wrong with it is `splash check`'s to say.
+  Future<void> _readSplash(String project) async {
+    SplashCheckReport? splash;
+    final job = Services.of(context).jobs.run(
+      'Check the splash',
+      XcrossCommands.splashCheck(),
+      workingDirectory: project,
+      onEvent: (event) {
+        if (event is SplashCheckReport) splash = event;
+      },
+    );
+    await job.done;
+    if (!mounted) return;
+    final report = _report;
+    Uint8List? read(String relative) {
+      final file = File(p.joinAll([project, ...relative.split('/')]));
+      return file.existsSync() ? file.readAsBytesSync() : null;
+    }
+
+    final logo = splash?.ios?.logo;
+    final imageSet = 'ios/Runner/Assets.xcassets/$logo.imageset';
+    const res = 'android/app/src/main/res';
+    final colors = splash?.ios ?? splash?.android;
+    final hasSplash = splash?.ios != null || splash?.android != null;
+    final launcher = read('$res/mipmap-xxxhdpi/ic_launcher.png');
+    setState(
+      () => _gallery = GalleryContent(
+        name: p.basename(project),
+        icon: report?.source == null ? null : _images[report!.source],
+        adaptiveIcon: launcher,
+        background: StudioColor.parse(colors?.background) ?? Colors.white,
+        darkBackground: StudioColor.parse(colors?.darkBackground),
+        logo: logo == null ? null : read('$imageSet/$logo@2x.png'),
+        darkLogo: logo == null ? null : read('$imageSet/${logo}Dark@2x.png'),
+        ipadLogo: logo == null ? null : read('$imageSet/$logo-iPad@2x.png'),
+        darkIpadLogo: logo == null
+            ? null
+            : read('$imageSet/${logo}Dark-iPad@2x.png'),
+        androidLogo: read('$res/drawable-xhdpi/splash_logo.png'),
+        darkAndroidLogo: read('$res/drawable-night-xhdpi/splash_logo.png'),
+        android12: read('$res/drawable-xhdpi/android12_splash.png'),
+        darkAndroid12: read('$res/drawable-night-xhdpi/android12_splash.png'),
+        branding: read('$res/drawable-xhdpi/splash_branding.png'),
+        darkBranding: read('$res/drawable-night-xhdpi/splash_branding.png'),
+        notes: [
+          if (report?.path == null)
+            'This project has no app icon set yet. Make one in the Icon and '
+                'splash studio.',
+          if (!hasSplash)
+            'This project has no splash yet. Make one in the Icon and splash '
+                'studio.',
+        ],
+      ),
+    );
   }
 
   void _apply(IconsCheckReport? report) {
@@ -162,6 +226,7 @@ class _IconsPageState extends State<IconsPage> {
 
   List<Widget> _content(BuildContext context, String project) {
     final report = _report;
+    final gallery = _gallery;
     return [
       if (report == null)
         XCard(
@@ -188,6 +253,21 @@ class _IconsPageState extends State<IconsPage> {
         _sizesCard(report),
         _gap,
         _issuesCard(report),
+      ],
+      if (gallery != null) ...[
+        _gap,
+        XCard(
+          title: 'Every screen',
+          subtitle:
+              "The project's icon and splash, each frame to scale in that "
+              "device's own size.",
+          child: DeviceGallery(content: gallery, filters: _filters),
+        ),
+        _gap,
+        XCard(
+          title: 'Android icon sizes',
+          child: IconSizesSection(content: gallery, ios: false),
+        ),
       ],
     ];
   }

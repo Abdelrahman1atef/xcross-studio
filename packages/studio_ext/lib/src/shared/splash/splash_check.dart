@@ -117,6 +117,9 @@ final class SplashCheck {
   /// The narrowest supported iPhone, in points.
   static const narrowestScreen = 320;
 
+  /// The shortest supported iPhone, in points.
+  static const shortestScreen = 568;
+
   static const _generateHint =
       'Make one with `xcross splash generate <logo.png>`.';
 
@@ -180,6 +183,20 @@ final class SplashCheck {
     final colorName = spec.backgroundColorName;
     if (colorName != null) {
       (light, dark) = _colorSet(colorName);
+      final clash = 'ios/Runner/Assets.xcassets/$colorName.imageset';
+      if (fileSystem.directory(_path(clash)).existsSync()) {
+        issues.add(
+          IconIssue(
+            'splash.name_clash',
+            'warning',
+            '$clash has the same name as the background colour, so xcross '
+                'leaves it out of the app and Xcode may not find the colour.',
+            hint:
+                'Delete that folder, or run `xcross splash generate`, which '
+                'backs it up and removes it.',
+          ),
+        );
+      }
     } else if (spec.background case final color?) {
       light = (
         (color.red * 255).round(),
@@ -223,6 +240,22 @@ final class SplashCheck {
         darkImage = hasDark;
         size = (decoded.width ~/ scale, decoded.height ~/ scale);
         _checkLogo(decoded, light, issues, 'iOS');
+        // iOS centres the image at its own size, so the ends of a tall one,
+        // where branding sits, fall outside a shorter screen (AC-026-22).
+        if (size.$2 > shortestScreen) {
+          issues.add(
+            IconIssue(
+              'splash.branding_clipped',
+              'warning',
+              'The launch image is ${size.$2} points tall, so its top and '
+                  'bottom, where branding sits, are cut off on iPhones shorter '
+                  'than that. The shortest is $shortestScreen points.',
+              hint:
+                  'Check it in the studio on the small iPhones, or use a '
+                  'smaller logo or no branding on iOS.',
+            ),
+          );
+        }
         if (size.$1 > narrowestScreen) {
           issues.add(
             IconIssue(

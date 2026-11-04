@@ -67,6 +67,8 @@ sealed class XcrossEvent {
       'splash_generate' => SplashGenerateResult.fromJson(json),
       'splash_check' => SplashCheckReport.fromJson(json),
       'project_version' => ProjectVersion.fromJson(json),
+      // Feature 026: how the user signed in.
+      'auth_status' => AuthStatusReport.fromJson(json),
       'done' => BuildDone(
         json['exitCode'] is int ? json['exitCode']! as int : 1,
       ),
@@ -956,7 +958,12 @@ class IconsPreview extends XcrossEvent {
 
 /// `splash_check`: `xcross splash check --json` (feature 024).
 class SplashCheckReport extends XcrossEvent {
-  const SplashCheckReport({this.issues = const [], this.errors = 0});
+  const SplashCheckReport({
+    this.issues = const [],
+    this.errors = 0,
+    this.ios,
+    this.android,
+  });
 
   factory SplashCheckReport.fromJson(Map<String, Object?> json) =>
       SplashCheckReport(
@@ -964,10 +971,130 @@ class SplashCheckReport extends XcrossEvent {
           for (final issue in _maps(json['issues'])) AssetIssue.fromJson(issue),
         ],
         errors: json['errors'] is int ? json['errors']! as int : 0,
+        ios: json['ios'] is Map
+            ? SplashPlatformStatus.fromJson(_map(json['ios']))
+            : null,
+        android: json['android'] is Map
+            ? SplashPlatformStatus.fromJson(_map(json['android']))
+            : null,
       );
 
   final List<AssetIssue> issues;
   final int errors;
+  final SplashPlatformStatus? ios;
+  final SplashPlatformStatus? android;
+}
+
+/// One platform's splash, as a project holds it (feature 026).
+class SplashPlatformStatus {
+  const SplashPlatformStatus({this.background, this.darkBackground, this.logo});
+
+  factory SplashPlatformStatus.fromJson(Map<String, Object?> json) =>
+      SplashPlatformStatus(
+        background: _string(json['background']),
+        darkBackground: _string(json['darkBackground']),
+        logo: _string(json['logo']),
+      );
+
+  /// `#RRGGBB`.
+  final String? background;
+  final String? darkBackground;
+
+  /// The image set (iOS) or drawable (Android) with the logo.
+  final String? logo;
+}
+
+/// `auth_status`: `xcross auth status --json` (feature 026).
+class AuthStatusReport extends XcrossEvent {
+  const AuthStatusReport({
+    this.deviceBuilds,
+    this.appStoreBuilds,
+    this.appleId,
+    this.apiKey,
+  });
+
+  factory AuthStatusReport.fromJson(Map<String, Object?> json) =>
+      AuthStatusReport(
+        deviceBuilds: _string(json['deviceBuilds']),
+        appStoreBuilds: _string(json['appStoreBuilds']),
+        appleId: json['appleId'] is Map
+            ? SavedAppleId.fromJson(_map(json['appleId']))
+            : null,
+        apiKey: json['apiKey'] is Map
+            ? SavedApiKey.fromJson(_map(json['apiKey']))
+            : null,
+      );
+
+  /// `apple-id`, `api-key` or null.
+  final String? deviceBuilds;
+
+  /// `api-key` or null.
+  final String? appStoreBuilds;
+  final SavedAppleId? appleId;
+  final SavedApiKey? apiKey;
+}
+
+/// The saved Apple ID session, without its token.
+class SavedAppleId {
+  const SavedAppleId({
+    this.email,
+    this.teamId,
+    this.anisetteUrl,
+    this.expires,
+    this.expired = false,
+    this.problem,
+  });
+
+  factory SavedAppleId.fromJson(Map<String, Object?> json) => SavedAppleId(
+    email: _string(json['email']),
+    teamId: _string(json['teamId']),
+    anisetteUrl: _string(json['anisetteUrl']),
+    expires: DateTime.tryParse(_string(json['expires']) ?? ''),
+    expired: json['expired'] == true,
+    problem: _string(json['problem']),
+  );
+
+  final String? email;
+  final String? teamId;
+  final String? anisetteUrl;
+  final DateTime? expires;
+  final bool expired;
+
+  /// Why the session could not be read; the other fields are then empty.
+  final String? problem;
+}
+
+/// The saved App Store Connect API key, without its contents.
+class SavedApiKey {
+  const SavedApiKey({
+    this.keyType,
+    this.issuerId,
+    this.keyId,
+    this.privateKeyPath,
+    this.privateKeyFound = false,
+    this.problem,
+  });
+
+  factory SavedApiKey.fromJson(Map<String, Object?> json) => SavedApiKey(
+    keyType: _string(json['keyType']),
+    issuerId: _string(json['issuerId']),
+    keyId: _string(json['keyId']),
+    privateKeyPath: _string(json['privateKeyPath']),
+    privateKeyFound: json['privateKeyFound'] == true,
+    problem: _string(json['problem']),
+  );
+
+  /// `team` or `individual`.
+  final String? keyType;
+  final String? issuerId;
+  final String? keyId;
+  final String? privateKeyPath;
+  final bool privateKeyFound;
+
+  /// Why the key could not be read; the other fields are then empty.
+  final String? problem;
+
+  bool get isIndividual => keyType == 'individual';
 }
 
 /// `splash_generate`: `xcross splash generate --json` (feature 024).
@@ -976,6 +1103,7 @@ class SplashGenerateResult extends XcrossEvent {
     required this.written,
     this.path,
     this.backup,
+    this.removed = const [],
     this.issues = const [],
   });
 
@@ -986,6 +1114,10 @@ class SplashGenerateResult extends XcrossEvent {
       backup: _string(json['backup']),
       written: [
         if (json['written'] case final List<Object?> names)
+          for (final name in names) '$name',
+      ],
+      removed: [
+        if (json['removed'] case final List<Object?> names)
           for (final name in names) '$name',
       ],
       issues: [
@@ -1000,5 +1132,8 @@ class SplashGenerateResult extends XcrossEvent {
   final String? path;
   final String? backup;
   final List<String> written;
+
+  /// Files of an old image set that hid the background colour.
+  final List<String> removed;
   final List<AssetIssue> issues;
 }

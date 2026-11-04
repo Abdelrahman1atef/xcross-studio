@@ -1,5 +1,6 @@
 // studio: 024 — the native splash screen
 // (specs/024-icon-splash-studio, User Story 2).
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -8,7 +9,9 @@ import 'package:args/command_runner.dart';
 import 'package:cli_kit/composition/native_host.dart';
 import 'package:cli_kit/shared/errors/errors.dart';
 import 'package:path/path.dart' as p;
+import 'package:studio_ext/shared/assets/asset_catalog_compiler.dart';
 import 'package:studio_ext/shared/assets/launch_storyboard.dart';
+import 'package:studio_ext/shared/icons/icons_generate_command.dart';
 import 'package:studio_ext/shared/splash/splash_command.dart';
 import 'package:studio_ext/src/shared/assets/png_codec.dart';
 import 'package:studio_ext/src/shared/icons/icon_design.dart';
@@ -53,13 +56,61 @@ void main() {
       expect(_visible(image), (0, 0, 239, 119));
     });
 
-    test('padding adds transparent space, in percent of the logo width', () {
+    test(
+      'AC-026-28 padding makes the logo smaller, and the screen shows it',
+      () {
+        final image = SplashImages.logoCanvas(
+          SplashDesign(logo: _logo(), padding: const IconPadding.all(10)),
+          scale: 1,
+        );
+        expect(
+          (image.width, image.height),
+          (120, 60),
+          reason: 'the same canvas',
+        );
+        expect(_visible(image), (12, 6, 107, 53), reason: '80% of the logo');
+      },
+    );
+
+    test('AC-026-28 uneven padding also moves it', () {
+      final design = SplashDesign(
+        logo: _logo(),
+        padding: IconPadding.parse('0,0,0,40')!,
+      );
+      final image = SplashImages.logoCanvas(design, scale: 1);
+      final (left, _, right, _) = _visible(image);
+      expect(left, 48, reason: '40% of the width from the left');
+      expect(right, 119);
+    });
+
+    test('AC-026-28 the logo keeps its shape whatever the padding', () {
       final image = SplashImages.logoCanvas(
-        SplashDesign(logo: _logo(), padding: const IconPadding.all(10)),
+        SplashDesign(logo: _logo(), padding: IconPadding.parse('40,0,0,0')!),
         scale: 1,
       );
-      expect((image.width, image.height), (144, 84));
-      expect(_visible(image), (12, 12, 131, 71));
+      final (left, top, right, bottom) = _visible(image);
+      expect((right - left + 1) / (bottom - top + 1), closeTo(2, 0.05));
+    });
+
+    test('AC-026-29 one margin value cancels out, and that is noticed', () {
+      final equal = SplashDesign(
+        logo: _logo(),
+        margin: const SplashMargin(50, 50, 50, 50),
+      );
+      expect(equal.marginHasNoEffect, isTrue);
+      final image = SplashImages.logoCanvas(equal, scale: 1);
+      // In the middle of a larger canvas: exactly where no margin puts it.
+      final (left, top, right, bottom) = _visible(image);
+      expect((left + right + 1) / 2, image.width / 2);
+      expect((top + bottom + 1) / 2, image.height / 2);
+      expect(
+        SplashDesign(
+          logo: _logo(),
+          margin: const SplashMargin(50, 0, 0, 0),
+        ).marginHasNoEffect,
+        isFalse,
+      );
+      expect(SplashDesign(logo: _logo()).marginHasNoEffect, isFalse);
     });
 
     test('a top margin moves a centred logo down', () {
@@ -138,6 +189,82 @@ void main() {
     });
   });
 
+  group('AC-026-12 AC-026-17 the splash preview', () {
+    late Directory root;
+    late String logo;
+    late String branding;
+
+    setUp(() {
+      root = Directory.systemTemp.createTempSync('splash_preview_');
+      logo = p.join(root.path, 'logo.png');
+      branding = p.join(root.path, 'band.png');
+      File(logo).writeAsBytesSync(PngEncoder.encode(_logo()));
+      File(
+        branding,
+      ).writeAsBytesSync(PngEncoder.encode(_logo(width: 40, height: 10)));
+    });
+    tearDown(() => root.deleteSync(recursive: true));
+
+    Future<Map<String, Object?>> preview(Map<String, Object?> design) async {
+      final out = <String>[];
+      final input = StreamController<List<int>>();
+      final done =
+          (CommandRunner<void>('xcross', 't')..addCommand(
+                IconsPreviewCommand(
+                  fileSystem: detectPlatformHost().fileSystem,
+                  write: out.add,
+                  input: input.stream,
+                ),
+              ))
+              .run(['preview', '--serve', '--output', p.join(root.path, 'p')]);
+      input.add(
+        utf8.encode(
+          '${jsonEncode({'seq': 1, 'kind': 'splash', 'source': logo, ...design})}\n',
+        ),
+      );
+      await input.close();
+      await done;
+      final reply = jsonDecode(out.single) as Map<String, Object?>;
+      return (reply['paths']! as Map).cast<String, Object?>();
+    }
+
+    test('Android gets its logo without the branding iOS has inside', () async {
+      final paths = await preview({'branding': branding});
+      expect(
+        paths.keys,
+        containsAll(['logo', 'androidLogo', 'android12', 'branding']),
+      );
+      RgbaImage image(String key) =>
+          _png(File(paths[key]! as String).readAsBytesSync());
+      expect(image('logo').height, SplashImages.brandedHeight * 2);
+      expect(image('androidLogo').height, 120, reason: '120 pt wide, 60 tall');
+    });
+
+    test('with no branding, no second logo is drawn', () async {
+      final paths = await preview(const {});
+      expect(paths.keys, unorderedEquals(['logo', 'android12']));
+    });
+
+    test('a dark design has its dark images', () async {
+      final paths = await preview({
+        'branding': branding,
+        'dark-branding': branding,
+      });
+      expect(
+        paths.keys,
+        containsAll(['darkLogo', 'darkAndroidLogo', 'darkBranding']),
+      );
+    });
+
+    test('a request can name the images it needs', () async {
+      final paths = await preview({
+        'branding': branding,
+        'variants': ['android12'],
+      });
+      expect(paths.keys, ['android12']);
+    });
+  });
+
   group('AC-024-8 Android files', () {
     const res = 'android/app/src/main/res';
 
@@ -196,16 +323,133 @@ void main() {
         logo: _logo(width: 400, height: 400),
         logoWidth: 300,
       );
-      expect(SplashImages.android12Clipped(design), isTrue);
-      final image = SplashImages.android12Icon(design, 288);
+      expect(SplashImages.android12Shrunk(design), isTrue);
+      expect(SplashImages.android12Cut(design), isFalse);
+      final image = SplashImages.android12Icon(design, scale: 1);
       final (left, top, right, bottom) = _visible(image);
       expect(right - left + 1, closeTo(136, 2));
       expect(bottom - top + 1, closeTo(136, 2));
       expect(left, closeTo(76, 2));
       expect(
-        SplashImages.android12Clipped(SplashDesign(logo: _logo())),
+        SplashImages.android12Shrunk(SplashDesign(logo: _logo())),
         isFalse,
       );
+    });
+
+    group('AC-026-30 the size chosen for Android 12', () {
+      final square = _logo(width: 400, height: 400);
+      int visibleWidth(SplashDesign design) {
+        final (left, _, right, _) = _visible(
+          SplashImages.android12Icon(design, scale: 1),
+        );
+        return right - left + 1;
+      }
+
+      for (final width in const [60.0, 135.0, 136.0, 192.0, 250.0]) {
+        test('is used as it is at ${width.round()} dp', () {
+          expect(
+            visibleWidth(SplashDesign(logo: square, android12IconWidth: width)),
+            width.round(),
+          );
+        });
+      }
+
+      test('a larger one is reported as cut, and is not shrunk', () {
+        final design = SplashDesign(logo: square, android12IconWidth: 250);
+        expect(SplashImages.android12Shrunk(design), isFalse);
+        expect(SplashImages.android12Cut(design), isTrue);
+      });
+
+      test('a square logo that fits the circle is not reported', () {
+        expect(
+          SplashImages.android12Cut(
+            SplashDesign(logo: square, android12IconWidth: 130),
+          ),
+          isFalse,
+        );
+      });
+
+      test('a round logo can fill the circle without being cut', () {
+        // Only what shows counts, not the transparent corners.
+        const size = 192;
+        final pixels = Uint8List(size * size * 4);
+        for (var y = 0; y < size; y++) {
+          for (var x = 0; x < size; x++) {
+            final dx = x - (size - 1) / 2;
+            final dy = y - (size - 1) / 2;
+            if (dx * dx + dy * dy <= 94 * 94) {
+              pixels.setRange((y * size + x) * 4, (y * size + x) * 4 + 4, [
+                0,
+                0,
+                0,
+                255,
+              ]);
+            }
+          }
+        }
+        expect(
+          SplashImages.android12Cut(
+            SplashDesign(
+              logo: RgbaImage(size, size, pixels),
+              android12IconWidth: 192,
+            ),
+          ),
+          isFalse,
+        );
+      });
+
+      test('with an icon background: a 240 dp canvas and a 160 dp circle', () {
+        final design = SplashDesign(
+          logo: square,
+          android12IconWidth: 150,
+          android12IconBackground: (1, 2, 3),
+        );
+        expect(SplashImages.android12Canvas(design), 240);
+        expect(SplashImages.android12Circle(design), 160);
+        expect(SplashImages.android12Icon(design, scale: 2).width, 480);
+        expect(SplashImages.android12Cut(design), isTrue, reason: '150 > 113');
+      });
+
+      test('a dark icon background alone has its own canvas', () {
+        final design = SplashDesign(
+          logo: square,
+          darkAndroid12IconBackground: (1, 2, 3),
+        );
+        expect(SplashImages.android12Canvas(design), 288);
+        expect(SplashImages.android12Canvas(design, dark: true), 240);
+      });
+    });
+
+    group('Android 12 follows padding and margin', () {
+      final square = _logo(height: 100);
+
+      test('AC-026-28 padding makes the icon smaller', () {
+        final image = SplashImages.android12Icon(
+          SplashDesign(
+            logo: square,
+            logoWidth: 100,
+            padding: const IconPadding.all(25),
+          ),
+          scale: 1,
+        );
+        final (left, top, right, bottom) = _visible(image);
+        expect((right - left + 1, bottom - top + 1), (50, 50));
+        expect((left + right + 1) / 2, 144, reason: 'still in the middle');
+      });
+
+      test('AC-026-29 margin moves it by half the difference', () {
+        final image = SplashImages.android12Icon(
+          SplashDesign(
+            logo: square,
+            logoWidth: 100,
+            margin: const SplashMargin(40, 0, 0, 20),
+          ),
+          scale: 1,
+        );
+        final (left, top, right, bottom) = _visible(image);
+        expect((left + right + 1) / 2, 154, reason: '10 to the right');
+        expect((top + bottom + 1) / 2, 164, reason: '20 down');
+      });
     });
   });
 
@@ -287,6 +531,357 @@ void main() {
       );
       expect(storyboard.readAsStringSync(), contains('LaunchImage'));
       expect(styles.readAsStringSync(), stylesBefore);
+    });
+
+    group("an old image with the background colour's name", () {
+      late File leftover;
+
+      setUp(() {
+        leftover = File(
+          p.join(
+            project,
+            'ios/Runner/Assets.xcassets/LaunchBackground.imageset/background.png',
+          ),
+        )..createSync(recursive: true);
+        leftover.writeAsStringSync('old');
+      });
+
+      test('generate removes it, after a backup, and says so', () async {
+        await run(['generate', logo, '--json']);
+        final json = lastJson();
+        expect(leftover.parent.existsSync(), isFalse);
+        expect(json['removed'], [
+          'ios/Runner/Assets.xcassets/LaunchBackground.imageset/background.png',
+        ]);
+        expect(
+          File(
+            p.join(
+              json['backup']! as String,
+              'ios/Runner/Assets.xcassets/LaunchBackground.imageset/background.png',
+            ),
+          ).readAsStringSync(),
+          'old',
+        );
+        final check = json['check']! as Map<String, Object?>;
+        expect(check['warnings'], 0, reason: '${check['issues']}');
+      });
+
+      test('generate for Android only leaves it', () async {
+        await run(['generate', logo, '--platforms', 'android', '--json']);
+        expect(leftover.existsSync(), isTrue);
+        expect(lastJson()['removed'], isEmpty);
+      });
+
+      test('--output leaves it', () async {
+        await run([
+          'generate',
+          logo,
+          '--output',
+          p.join(root.path, 'out'),
+          '--json',
+        ]);
+        expect(leftover.existsSync(), isTrue);
+      });
+
+      test('check reports it', () async {
+        await run(['generate', logo]);
+        leftover
+          ..createSync(recursive: true)
+          ..writeAsStringSync('back again');
+        await run(['check', '--json']);
+        final issues = (lastJson()['issues']! as List)
+            .cast<Map<String, Object?>>();
+        expect(issues.map((i) => i['code']), contains('splash.name_clash'));
+      });
+    });
+
+    group('AC-026-19 a size for each kind of device', () {
+      RgbaImage written(String path) =>
+          _png(File(p.join(project, path)).readAsBytesSync());
+
+      test('an iPad width adds iPad images and leaves iPhones alone', () async {
+        await run(['generate', logo, '--ipad-logo-width', '200']);
+        const set = 'ios/Runner/Assets.xcassets/LaunchImage.imageset';
+        expect(written('$set/LaunchImage-iPad@2x.png').width, 400);
+        expect(written('$set/LaunchImage@2x.png').width, 240);
+        final contents =
+            jsonDecode(
+                  File(
+                    p.join(project, set, 'Contents.json'),
+                  ).readAsStringSync(),
+                )
+                as Map;
+        final images = (contents['images'] as List)
+            .cast<Map<String, Object?>>();
+        expect(
+          images.singleWhere((image) => image['idiom'] == 'ipad')['filename'],
+          'LaunchImage-iPad@2x.png',
+        );
+        expect(
+          images.where((image) => image['idiom'] == 'universal'),
+          hasLength(3),
+        );
+      });
+
+      test('without one, no iPad image is written', () async {
+        await run(['generate', logo]);
+        expect(
+          File(
+            p.join(
+              project,
+              'ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage-iPad@2x.png',
+            ),
+          ).existsSync(),
+          isFalse,
+        );
+      });
+
+      test('an iPad image is flattened over the colour too', () async {
+        await run(['generate', logo, '--ipad-logo-width', '200']);
+        final compiled =
+            AssetCatalogCompiler(
+              fileSystem: detectPlatformHost().fileSystem,
+              paths: p.context,
+            ).compile(
+              [p.join(project, 'ios/Runner/Assets.xcassets')],
+              deploymentTarget: '16.0',
+              launch: const LaunchBackdrop(
+                imageName: 'LaunchImage',
+                colorName: 'LaunchBackground',
+                color: CatalogColor(red: 1, green: 1, blue: 1),
+              ),
+            );
+        expect(compiled.issues, isEmpty);
+        expect(compiled.imageNames, {'LaunchImage'});
+      });
+
+      test('Android 11 and older have their own width', () async {
+        await run(['generate', logo, '--android-logo-width', '60']);
+        expect(
+          written(
+            'android/app/src/main/res/drawable-xhdpi/splash_logo.png',
+          ).width,
+          120,
+        );
+        const set = 'ios/Runner/Assets.xcassets/LaunchImage.imageset';
+        expect(written('$set/LaunchImage@2x.png').width, 240, reason: 'iOS');
+      });
+
+      test(
+        'Android 12 has its own width, and only it warns of its circle',
+        () async {
+          await run([
+            'generate',
+            logo,
+            '--logo-width',
+            '200',
+            '--android12-icon-width',
+            '100',
+            '--json',
+          ]);
+          final issues = (lastJson()['issues']! as List)
+              .cast<Map<String, Object?>>();
+          expect(
+            issues.map((i) => i['code']),
+            isNot(contains('splash.android12_clipped')),
+          );
+          final icon = written(
+            'android/app/src/main/res/drawable-xhdpi/android12_splash.png',
+          );
+          final (left, _, right, _) = _visible(icon);
+          expect(right - left + 1, 200, reason: '100 dp at 2 px per dp');
+        },
+      );
+
+      for (final option in const [
+        '--ipad-logo-width',
+        '--android-logo-width',
+        '--android12-icon-width',
+      ]) {
+        test('$option outside 16 to 1024 says so', () {
+          expect(
+            run(['generate', logo, option, '2000']),
+            throwsA(
+              isA<UsageException>().having(
+                (e) => e.message,
+                'message',
+                contains(option),
+              ),
+            ),
+          );
+        });
+      }
+    });
+
+    test('AC-026-20 Android 12 icon background, light and dark', () async {
+      await run([
+        'generate',
+        logo,
+        '--android12-icon-background',
+        '#112233',
+        '--dark-android12-icon-background',
+        '#445566',
+      ]);
+      String styles(String folder) => File(
+        p.join(project, 'android/app/src/main/res/$folder/styles.xml'),
+      ).readAsStringSync();
+      expect(
+        styles('values-v31'),
+        contains(
+          '<item name="android:windowSplashScreenIconBackgroundColor">#112233</item>',
+        ),
+      );
+      expect(styles('values-night-v31'), contains('#445566'));
+    });
+
+    test('AC-026-20 without one, Android 12 has no icon background', () async {
+      await run(['generate', logo]);
+      expect(
+        File(
+          p.join(project, 'android/app/src/main/res/values-v31/styles.xml'),
+        ).readAsStringSync(),
+        isNot(contains('IconBackgroundColor')),
+      );
+    });
+
+    group('AC-026-21 branding', () {
+      late String band;
+
+      setUp(() {
+        band = p.join(root.path, 'band.png');
+        File(
+          band,
+        ).writeAsBytesSync(PngEncoder.encode(_logo(width: 40, height: 10)));
+      });
+
+      test('its width and height above the bottom reach Android', () async {
+        await run([
+          'generate',
+          logo,
+          '--branding',
+          band,
+          '--branding-width',
+          '100',
+          '--branding-bottom',
+          '50',
+        ]);
+        const res = 'android/app/src/main/res';
+        expect(
+          _png(
+            File(
+              p.join(project, '$res/drawable-xhdpi/splash_branding.png'),
+            ).readAsBytesSync(),
+          ).width,
+          200,
+        );
+        expect(
+          File(
+            p.join(project, '$res/drawable/launch_background.xml'),
+          ).readAsStringSync(),
+          contains('android:bottom="50dp"'),
+        );
+      });
+
+      test('its width reaches iOS', () {
+        final image = SplashImages.logoCanvas(
+          SplashDesign(
+            logo: _logo(width: 10, height: 10),
+            logoWidth: 10,
+            branding: _logo(width: 40, height: 10),
+            brandingWidth: 100,
+          ),
+          scale: 1,
+          withBranding: true,
+        );
+        expect(image.width, 100);
+      });
+    });
+
+    group('AC-026-22 branding that would be cut off', () {
+      List<String> codes() => [
+        for (final issue
+            in ((lastJson()['check']! as Map)['issues'] as List)
+                .cast<Map<String, Object?>>())
+          issue['code']! as String,
+      ];
+
+      test('warns, naming the heights', () async {
+        final band = p.join(root.path, 'band.png');
+        File(
+          band,
+        ).writeAsBytesSync(PngEncoder.encode(_logo(width: 40, height: 10)));
+        await run(['generate', logo, '--branding', band, '--json']);
+        expect(codes(), contains('splash.branding_clipped'));
+        final issue = ((lastJson()['check']! as Map)['issues'] as List)
+            .cast<Map<String, Object?>>()
+            .singleWhere((i) => i['code'] == 'splash.branding_clipped');
+        expect(issue['message'], contains('760 points tall'));
+        expect(issue['message'], contains('568 points'));
+      });
+
+      test('a splash that fits does not warn', () async {
+        await run(['generate', logo, '--json']);
+        expect(codes(), isNot(contains('splash.branding_clipped')));
+      });
+    });
+
+    test('AC-026-23 the new options are saved and read back', () async {
+      await run([
+        'generate',
+        logo,
+        '--ipad-logo-width',
+        '200',
+        '--android-logo-width',
+        '60',
+        '--android12-icon-width',
+        '100',
+        '--android12-icon-background',
+        '#112233',
+        '--branding-width',
+        '90',
+        '--branding-bottom',
+        '40',
+        '--save-config',
+      ]);
+      final saved =
+          (jsonDecode(
+                    File(
+                      p.join(project, 'xcross_assets.json'),
+                    ).readAsStringSync(),
+                  )
+                  as Map)['splash']
+              as Map;
+      expect(saved['ipad-logo-width'], '200');
+      expect(saved['android-logo-width'], '60');
+      expect(saved['android12-icon-width'], '100');
+      expect(saved['android12-icon-background'], '#112233');
+      expect(saved['branding-width'], '90');
+      expect(saved['branding-bottom'], '40');
+
+      final output = p.join(root.path, 'again');
+      await run(['generate', '--config', '--output', output]);
+      expect(
+        File(
+          p.join(
+            output,
+            'ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage-iPad@2x.png',
+          ),
+        ).existsSync(),
+        isTrue,
+      );
+      expect(
+        File(
+          p.join(output, 'android/app/src/main/res/values-v31/styles.xml'),
+        ).readAsStringSync(),
+        contains('#112233'),
+      );
+    });
+
+    test('the text report says iOS keeps the saved splash', () async {
+      await run(['generate', logo]);
+      expect(out.last, contains('restart the iPhone, then install again'));
+      await run(['generate', logo, '--output', p.join(root.path, 'out')]);
+      expect(out.last, isNot(contains('restart the iPhone')));
     });
 
     test('--output and --zip touch nothing in the project', () async {
@@ -376,6 +971,60 @@ void main() {
         ],
         ['splash.android12_clipped'],
       );
+    });
+
+    test(
+      'AC-026-30 a chosen Android 12 size that gets cut is reported',
+      () async {
+        await run([
+          'generate',
+          logo,
+          '--android12-icon-width',
+          '250',
+          '--json',
+        ]);
+        final issue = (lastJson()['issues']! as List).single as Map;
+        expect(issue['code'], 'splash.android12_clipped');
+        expect(issue['message'], contains('192 dp'));
+      },
+    );
+
+    test('AC-026-29 equal margins say they do nothing', () async {
+      await run(['generate', logo, '--margin', '50', '--json']);
+      expect([
+        for (final issue in lastJson()['issues']! as List)
+          (issue as Map)['code'],
+      ], contains('splash.margin_no_effect'));
+      await run(['generate', logo, '--margin', '80,0,0,0', '--json']);
+      expect([
+        for (final issue in lastJson()['issues']! as List)
+          (issue as Map)['code'],
+      ], isNot(contains('splash.margin_no_effect')));
+    });
+
+    test('AC-026-30 the Android 12 files follow an icon background', () async {
+      await run([
+        'generate',
+        logo,
+        '--android12-icon-background',
+        '#112233',
+        '--dark-android12-icon-background',
+        '#445566',
+      ]);
+      RgbaImage icon(String folder) => _png(
+        File(
+          p.join(
+            project,
+            'android/app/src/main/res/$folder/android12_splash.png',
+          ),
+        ).readAsBytesSync(),
+      );
+      expect(
+        icon('drawable-xhdpi').width,
+        480,
+        reason: '240 dp at 2 px per dp',
+      );
+      expect(icon('drawable-night-xhdpi').width, 480);
     });
 
     test('AC-024-20 settings saved, then regenerated', () async {

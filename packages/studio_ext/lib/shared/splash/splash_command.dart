@@ -26,6 +26,13 @@ const _textOptions = [
   'branding',
   'dark-branding',
   'platforms',
+  'ipad-logo-width',
+  'android-logo-width',
+  'android12-icon-width',
+  'android12-icon-background',
+  'dark-android12-icon-background',
+  'branding-width',
+  'branding-bottom',
 ];
 
 const _pathOptions = ['source', 'dark-logo', 'branding', 'dark-branding'];
@@ -73,6 +80,22 @@ SplashDesign parseSplashDesign(
     return path == null ? null : readImage(path);
   }
 
+  /// A size option from [least] to [most], or null when it is not set.
+  double? size(String key, double least, double most) {
+    final value = text(key);
+    if (value == null) return null;
+    final parsed = double.tryParse(value);
+    if (parsed == null || parsed < least || parsed > most) {
+      throw IconOptionError(
+        '--$key must be from ${least.round()} to ${most.round()}.',
+      );
+    }
+    return parsed;
+  }
+
+  IconColor? optionalColor(String key) =>
+      text(key) == null ? null : color(key, (0, 0, 0));
+
   return SplashDesign(
     logo: logo,
     darkLogo: image('dark-logo'),
@@ -85,6 +108,17 @@ SplashDesign parseSplashDesign(
     margin: margin,
     branding: image('branding'),
     darkBranding: image('dark-branding'),
+    ipadLogoWidth: size('ipad-logo-width', 16, 1024),
+    androidLogoWidth: size('android-logo-width', 16, 1024),
+    android12IconWidth: size('android12-icon-width', 16, 1024),
+    android12IconBackground: optionalColor('android12-icon-background'),
+    darkAndroid12IconBackground: optionalColor(
+      'dark-android12-icon-background',
+    ),
+    brandingWidth:
+        size('branding-width', 16, 1024) ?? SplashImages.defaultBrandingWidth,
+    brandingBottom:
+        size('branding-bottom', 0, 500) ?? SplashImages.defaultBrandingBottom,
   );
 }
 
@@ -225,15 +259,18 @@ final class SplashGenerateCommand extends Command<void> {
         'padding',
         valueHelp: 'n or top,right,bottom,left',
         defaultsTo: '0',
-        help: 'Space around the logo, in percent of its width.',
+        help:
+            'Space kept clear inside the logo width, in percent: more makes '
+            'the logo smaller, and uneven values also move it.',
       )
       ..addOption(
         'margin',
         valueHelp: 'n or top,right,bottom,left',
         defaultsTo: '0',
         help:
-            'Space around the logo, in points. A larger top margin moves it '
-            'down.',
+            'Moves the logo, in points: it moves by half the difference between '
+            'opposite sides, so a top margin of 80 moves it 40 down. Equal '
+            'margins cancel out, as a splash centres its image.',
       )
       ..addOption(
         'branding',
@@ -249,6 +286,47 @@ final class SplashGenerateCommand extends Command<void> {
         'platforms',
         valueHelp: 'ios,android',
         help: 'Default: the folders the project has.',
+      )
+      ..addOption(
+        'ipad-logo-width',
+        valueHelp: 'points',
+        help: 'The logo width on iPads. Default: --logo-width.',
+      )
+      ..addOption(
+        'android-logo-width',
+        valueHelp: 'dp',
+        help: 'The logo width on Android 11 and older. Default: --logo-width.',
+      )
+      ..addOption(
+        'android12-icon-width',
+        valueHelp: 'dp',
+        help:
+            'The logo width on Android 12 and newer, used as it is: Android '
+            'cuts what falls outside its circle (192 dp, or 160 dp with an icon '
+            'background). Default: --logo-width, kept inside the circle.',
+      )
+      ..addOption(
+        'android12-icon-background',
+        valueHelp: '#RRGGBB',
+        help: 'The circle behind the icon on Android 12 and newer.',
+      )
+      ..addOption(
+        'dark-android12-icon-background',
+        valueHelp: '#RRGGBB',
+        help: 'The same, in dark mode.',
+      )
+      ..addOption(
+        'branding-width',
+        valueHelp: 'points',
+        help: 'The branding image width. Default: 180.',
+      )
+      ..addOption(
+        'branding-bottom',
+        valueHelp: 'dp',
+        help:
+            'How far above the bottom Android 11 and older draw the branding. '
+            'iOS keeps it inside its image, and Android 12 and newer place it '
+            'themselves. Default: 32.',
       )
       ..addOption(
         'output',
@@ -356,21 +434,46 @@ final class SplashGenerateCommand extends Command<void> {
       if (platforms.contains('android')) ...SplashFiles.android(design),
     };
     final issues = <Map<String, Object?>>[
-      if (platforms.contains('android') &&
-          SplashImages.android12Clipped(design))
+      if (platforms.contains('android') && SplashImages.android12Shrunk(design))
         {
           'code': 'splash.android12_clipped',
           'severity': 'warning',
           'message':
               'At ${design.logoWidth.round()} points the logo would be cut by '
               "Android 12's circle, so its icon uses a smaller size "
-              '(${SplashImages.android12SafeSide.round()} dp).',
-          'hint': 'Use a smaller --logo-width, or a square logo.',
+              '(${SplashImages.android12SafeSide(design).round()} dp).',
+          'hint':
+              'Use --android12-icon-width to choose its size there: Android '
+              'cuts what falls outside the circle.',
+        }
+      else if (platforms.contains('android') &&
+          SplashImages.android12Cut(design))
+        {
+          'code': 'splash.android12_clipped',
+          'severity': 'warning',
+          'message':
+              'Android 12 cuts this logo: part of it is outside its circle, '
+              '${SplashImages.android12Circle(design).round()} dp across.',
+          'hint':
+              'Use a smaller --android12-icon-width or less margin, or check '
+              'in the studio that the cut part does not matter.',
+        },
+      if (design.marginHasNoEffect)
+        const {
+          'code': 'splash.margin_no_effect',
+          'severity': 'warning',
+          'message':
+              'Equal margins cancel out: a splash centres its image, so the '
+              'logo stays where it is.',
+          'hint':
+              'Use different values to move it, such as --margin 80,0,0,0, or '
+              '--padding to make it smaller.',
         },
     ];
 
     final writer = AssetFilesWriter(_fileSystem);
     String? backup;
+    var removed = const <String>[];
     final String path;
     if (zip != null) {
       path = p.isAbsolute(zip) ? zip : p.join(cwd, zip);
@@ -380,8 +483,14 @@ final class SplashGenerateCommand extends Command<void> {
       writer.writeFiles(path, files);
     } else {
       path = root;
-      backup = writer.backUp(root, files.keys, _now());
+      if (platforms.contains('ios')) {
+        removed = writer.filesUnder(root, SplashFiles.iosLeftoverImageSet);
+      }
+      backup = writer.backUp(root, [...files.keys, ...removed], _now());
       writer.writeFiles(root, files);
+      if (removed.isNotEmpty) {
+        writer.removeFolder(root, SplashFiles.iosLeftoverImageSet);
+      }
     }
     final check = toProject
         ? SplashCheck(fileSystem: _fileSystem, projectRoot: root).run()
@@ -402,12 +511,24 @@ final class SplashGenerateCommand extends Command<void> {
 
     if (results.flag('json')) {
       _write(
-        '${jsonEncode({'v': 1, 'type': 'splash_generate', 'path': path, 'written': files.keys.toList()..sort(), 'backup': backup, 'platforms': platforms, 'issues': issues, 'check': check?.toJson()})}\n',
+        '${jsonEncode({'v': 1, 'type': 'splash_generate', 'path': path, 'written': files.keys.toList()..sort(), 'removed': removed, 'backup': backup, 'platforms': platforms, 'issues': issues, 'check': check?.toJson()})}\n',
       );
       return;
     }
     final out = StringBuffer()..writeln('Wrote ${files.length} files to $path');
+    if (removed.isNotEmpty) {
+      out.writeln(
+        '  Removed ${SplashFiles.iosLeftoverImageSet}, an old image with the '
+        "background colour's name.",
+      );
+    }
     if (backup != null) out.writeln('  Replaced files are in $backup');
+    if (toProject && platforms.contains('ios')) {
+      out.writeln(
+        '  iOS keeps showing the splash it saved: to see this one, restart the '
+        'iPhone, then install again. Deleting the app is not enough.',
+      );
+    }
     for (final issue in issues) {
       out
         ..writeln(

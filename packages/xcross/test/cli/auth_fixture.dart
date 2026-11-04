@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
 import 'package:xcross/src/shared/cli/basic/auth_command.dart';
+import 'package:xcross/src/shared/cli/command_prompt.dart';
 
 import '../log_fixture.dart';
 import 'runtime_fixture.dart';
@@ -18,11 +19,12 @@ AuthCommand authFixture({
   Abi abi = Abi.linuxX64,
   http.Client Function()? createAdiHttpClient,
   http.Client Function()? createHttpClient,
+  CommandPrompt? commandPrompt,
 }) {
   final base = services ?? testRuntime().appleHostServices;
   return AuthCommand(
     log: testLog(),
-    commandPrompt: TestCommandPrompt(),
+    commandPrompt: commandPrompt ?? TestCommandPrompt(),
     hostServices: AppleHostServices(
       host: base.host,
       abi: abi,

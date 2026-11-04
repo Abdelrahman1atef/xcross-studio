@@ -1,6 +1,7 @@
 // Feature 024: the splash tab. The CLI draws the logo canvas and writes the
 // files; this names the choices and shows them on a phone.
 import 'dart:io';
+import 'dart:math';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
@@ -11,17 +12,25 @@ import '../../src/cli/xcross_commands.dart';
 import '../../src/cli/xcross_events.dart';
 import '../../src/state/job.dart';
 import '../common/job_views.dart';
+import 'device_catalog.dart';
+import 'device_gallery.dart';
 import 'preview_server.dart';
+import 'studio_board.dart';
 import 'studio_controls.dart';
 import 'studio_model.dart';
 import 'studio_panel.dart';
-import 'target_previews.dart';
 
 class SplashTab extends StatefulWidget {
-  const SplashTab({super.key, required this.project, required this.onResult});
+  const SplashTab({
+    super.key,
+    required this.project,
+    required this.onResult,
+    required this.board,
+  });
 
   final String? project;
   final ValueChanged<StudioResult> onResult;
+  final StudioBoard board;
 
   @override
   State<SplashTab> createState() => _SplashTabState();
@@ -36,6 +45,9 @@ class _SplashTabState extends State<SplashTab> {
   SplashCheckReport? _check;
   String? _copyError;
 
+  /// The logo is the icon's source, until another is chosen (AC-026-14).
+  bool _logoFromIcon = false;
+
   @override
   void initState() {
     super.initState();
@@ -44,34 +56,59 @@ class _SplashTabState extends State<SplashTab> {
       _design.restore(savedAssets(project, 'splash'), project);
       _hasDark = _design.darkBackground != null || _design.darkLogo != null;
     }
+    widget.board
+      ..splash = _design
+      ..writeSplash = _write
+      ..exportSplash = _exportTo
+      ..addListener(_onBoard);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _server = PreviewServer(Services.of(context).jobs)
-        ..addListener(_onPreview);
+      _server = PreviewServer(Services.of(context).jobs)..addListener(_publish);
       _changed();
     });
   }
 
-  void _onPreview() {
-    if (mounted) setState(() {});
+  /// Follows the icon's source while no other logo is chosen.
+  void _onBoard() {
+    if (!mounted) return;
+    final source = widget.board.iconSource;
+    if ((_design.logo == null || _logoFromIcon) && source != _design.logo) {
+      _design.logo = source;
+      _logoFromIcon = source != null;
+      _changed();
+    } else {
+      setState(() {});
+    }
+  }
+
+  /// Hands the latest images to the other tabs.
+  void _publish() {
+    if (!mounted) return;
+    widget.board
+      ..splashImages = _design.logo == null
+          ? const {}
+          : _server?.images ?? const {}
+      ..changed();
   }
 
   @override
   void dispose() {
+    widget.board.removeListener(_onBoard);
     _server?.dispose();
     super.dispose();
   }
 
   void _changed() {
     setState(() {});
+    if (_design.logo == null) _publish();
     if (_design.logo == null || _design.invalid != null) return;
     _server?.request(_design.previewRequest());
   }
 
-  Future<void> _write(String project) async {
+  Future<bool> _write(String project) async {
     final design = _design;
     final logo = design.logo;
-    if (logo == null) return;
+    if (logo == null) return false;
     // What the saved design names has to stay with the project.
     final String kept;
     try {
@@ -87,10 +124,10 @@ class _SplashTabState extends State<SplashTab> {
           () => _copyError = 'Could not copy ${error.path}: ${error.message}',
         );
       }
-      return;
+      return false;
     }
     if (mounted) setState(() => _copyError = null);
-    await _run(
+    return _run(
       XcrossCommands.splashGenerate(kept, design.options(), save: true),
       project: project,
       toProject: true,
@@ -98,11 +135,34 @@ class _SplashTabState extends State<SplashTab> {
   }
 
   Future<void> _exportFolder() async {
+    final folder = await getDirectoryPath(confirmButtonText: 'Export here');
+    if (folder != null) await _exportTo(folder);
+  }
+
+  Future<void> _exportZip() async {
     final logo = _design.logo;
     if (logo == null) return;
-    final folder = await getDirectoryPath(confirmButtonText: 'Export here');
-    if (folder == null) return;
+    final location = await getSaveLocation(
+      suggestedName: 'splash.zip',
+      acceptedTypeGroups: const [
+        XTypeGroup(label: 'Zip', extensions: ['zip']),
+      ],
+    );
+    if (location == null) return;
     await _run(
+      XcrossCommands.splashGenerate(
+        logo,
+        _design.options(),
+        zip: location.path,
+      ),
+      project: widget.project,
+    );
+  }
+
+  Future<bool> _exportTo(String folder) async {
+    final logo = _design.logo;
+    if (logo == null) return false;
+    return _run(
       XcrossCommands.splashGenerate(logo, _design.options(), output: folder),
       project: widget.project,
     );
@@ -123,7 +183,7 @@ class _SplashTabState extends State<SplashTab> {
     if (mounted) setState(() => _check = report);
   }
 
-  Future<void> _run(
+  Future<bool> _run(
     List<String> command, {
     required String? project,
     bool toProject = false,
@@ -142,7 +202,7 @@ class _SplashTabState extends State<SplashTab> {
       _check = null;
     });
     final status = await job.done;
-    if (!mounted) return;
+    if (!mounted) return false;
     setState(() {
       final written = result;
       if (written != null) {
@@ -151,13 +211,18 @@ class _SplashTabState extends State<SplashTab> {
     });
     final written = result;
     if (status == JobStatus.succeeded && written != null) {
+      final ios = toProject && written.written.any((f) => f.startsWith('ios/'));
       widget.onResult(
         StudioResult(
           'Wrote ${written.written.length} splash files'
-          '${written.backup == null ? '' : '. Replaced files are in ${written.backup}'}.',
+          '${written.removed.isEmpty ? '' : ' and removed an old background image'}'
+          '${written.backup == null ? '' : '. Replaced files are in ${written.backup}'}.'
+          '${ios ? ' iOS keeps showing the splash it saved: to see this one, restart the iPhone, then install again. Deleting the app is not enough.' : ''}',
         ),
       );
+      return true;
     }
+    return false;
   }
 
   @override
@@ -188,32 +253,111 @@ class _SplashTabState extends State<SplashTab> {
               value: design.logo,
               directory: false,
               extensions: const ['png'],
-              onChanged: (value) => update(() => design.logo = path(value)),
+              onChanged: (value) => update(() {
+                design.logo = path(value);
+                _logoFromIcon = false;
+              }),
             ),
+            if (_logoFromIcon)
+              const XNote(
+                "This is the icon's image. Pick a logo to use another one.",
+              ),
             StudioSlider(
               label: 'Width',
               value: design.logoWidth,
-              min: 40,
-              max: 300,
+              min: 16,
+              max: 1024,
               unit: ' pt',
               onChanged: (value) => update(() => design.logoWidth = value),
             ),
+            Row(
+              children: [
+                Switch(
+                  value: design.separateSizes,
+                  onChanged: (value) => update(() {
+                    final width = value ? design.logoWidth : null;
+                    design
+                      ..ipadLogoWidth = width
+                      ..androidLogoWidth = width
+                      // Starts where it already is, not cut by the circle.
+                      ..android12IconWidth = width == null
+                          ? null
+                          : min(width, design.android12SafeWidth);
+                  }),
+                ),
+                const SizedBox(width: XSpace.s2),
+                Expanded(
+                  child: Text(
+                    'A different size on each kind of device',
+                    style: XType.support,
+                  ),
+                ),
+              ],
+            ),
+            if (design.separateSizes) ...[
+              StudioSlider(
+                label: 'iPad',
+                value: design.ipadLogoWidth ?? design.logoWidth,
+                min: 16,
+                max: 1024,
+                unit: ' pt',
+                onChanged: (value) =>
+                    update(() => design.ipadLogoWidth = value),
+              ),
+              StudioSlider(
+                label: 'Android',
+                value: design.androidLogoWidth ?? design.logoWidth,
+                min: 16,
+                max: 1024,
+                unit: ' dp',
+                onChanged: (value) =>
+                    update(() => design.androidLogoWidth = value),
+              ),
+              StudioSlider(
+                label: 'Android 12+',
+                value: design.android12IconWidth ?? design.android12SafeWidth,
+                min: 16,
+                max: SplashStudioDesign.android12MaxWidth,
+                unit: ' dp',
+                onChanged: (value) =>
+                    update(() => design.android12IconWidth = value),
+              ),
+              XNote(
+                'All iPhones share one size: iOS has one launch image for them. '
+                'Android 12+ shows the logo through a circle, '
+                '${design.android12IconBackground == null ? 192 : 160} dp '
+                'across, and cuts what falls outside, as its phone shows.',
+              ),
+            ] else if (design.logoWidth > design.android12SafeWidth) ...[
+              XNote(
+                'Android 12+ keeps this logo at about '
+                '${design.android12SafeWidth.round()} dp, so its circle does '
+                'not cut it. Turn on a different size to choose it there.',
+              ),
+            ],
             StudioSides(
               label: 'Padding',
               sides: design.padding,
               max: 45,
+              step: 0.5,
               onChanged: _changed,
+            ),
+            const XNote(
+              'Padding makes the logo smaller inside its width. Different values '
+              'also move it.',
             ),
             StudioSides(
               label: 'Margin',
               sides: design.margin,
-              max: 200,
+              max: 1000,
               unit: ' pt',
+              alwaysSplit: true,
               onChanged: _changed,
             ),
             const XNote(
-              'A launch screen centres its image, so a larger top margin moves '
-              'the logo down, and a larger bottom margin moves it up.',
+              'Margin moves the logo by half the difference between opposite '
+              'sides: a top of 80 moves it 40 down. Equal margins cancel out, '
+              'because a splash centres its image.',
             ),
           ],
         ),
@@ -225,6 +369,14 @@ class _SplashTabState extends State<SplashTab> {
               value: design.background,
               onChanged: (value) =>
                   update(() => design.background = value ?? '#FFFFFF'),
+            ),
+            StudioColor(
+              label: 'Android 12+ icon background',
+              value: design.android12IconBackground,
+              allowNone: true,
+              noneLabel: 'None',
+              onChanged: (value) =>
+                  update(() => design.android12IconBackground = value),
             ),
           ],
         ),
@@ -257,6 +409,14 @@ class _SplashTabState extends State<SplashTab> {
                 onChanged: (value) =>
                     update(() => design.darkBackground = value ?? '#000000'),
               ),
+              StudioColor(
+                label: 'Android 12+ icon background, dark',
+                value: design.darkAndroid12IconBackground,
+                allowNone: true,
+                noneLabel: 'Same as light',
+                onChanged: (value) =>
+                    update(() => design.darkAndroid12IconBackground = value),
+              ),
               XFilePickerField(
                 label: 'Dark logo (optional)',
                 value: design.darkLogo,
@@ -287,6 +447,29 @@ class _SplashTabState extends State<SplashTab> {
                 onChanged: (value) =>
                     update(() => design.darkBranding = path(value)),
               ),
+            if (design.branding != null) ...[
+              StudioSlider(
+                label: 'Width',
+                value: design.brandingWidth,
+                min: 16,
+                max: 1024,
+                unit: ' pt',
+                onChanged: (value) =>
+                    update(() => design.brandingWidth = value),
+              ),
+              StudioSlider(
+                label: 'Height above bottom',
+                value: design.brandingBottom,
+                max: 500,
+                unit: ' dp',
+                onChanged: (value) =>
+                    update(() => design.brandingBottom = value),
+              ),
+              const XNote(
+                'The height is for Android 11 and older. iOS keeps branding '
+                'inside its one image, and Android 12+ places it itself.',
+              ),
+            ],
           ],
         ),
         StudioSection(
@@ -315,25 +498,43 @@ class _SplashTabState extends State<SplashTab> {
 
   Widget _preview() {
     final design = _design;
-    final images = design.logo == null ? null : _server?.images;
     final error = _server?.error ?? _copyError;
     final invalid = design.invalid;
     final logo = design.logo;
-    final background = StudioColor.parse(
-      _dark ? (design.darkBackground ?? design.background) : design.background,
+    final content = widget.board.content();
+    final iPhone = deviceScreens.firstWhere(
+      (screen) => screen.name.contains('iPhone 16e'),
     );
-    final color = background ?? Colors.white;
-    final image = _dark
-        ? (images?['darkLogo'] ?? images?['logo'])
-        : images?['logo'];
-    final android12 = _dark
-        ? (images?['darkAndroid12'] ?? images?['android12'])
-        : images?['android12'];
-
-    // The previews show a 390 pt wide phone; the images are 2 px per point.
-    const phoneScale = SplashPhone.width / 390 / 2;
-    // Android 12's icon is 2 px per dp on a 412 dp wide phone.
-    const androidScale = SplashPhone.width / 412 / 2;
+    final android = deviceScreens.firstWhere(
+      (screen) => screen.name == 'Common large phone',
+    );
+    final iPad = deviceScreens.firstWhere(
+      (screen) => screen.name.startsWith('iPad Air 11'),
+    );
+    // What each really draws, not one image reused (AC-026-12). The All screens
+    // tab has every other size.
+    Widget phone(
+      String label,
+      DeviceScreen screen, {
+      bool android12 = true,
+      bool guides = false,
+      double scale = 0.42,
+    }) => Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        DeviceFrame(
+          key: ValueKey('splash-tab-$label'),
+          screen: screen,
+          content: content,
+          dark: _dark,
+          android12: android12,
+          guides: guides,
+          scale: scale,
+        ),
+        const SizedBox(height: XSpace.s1),
+        Text(label, style: XType.support),
+      ],
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -364,33 +565,34 @@ class _SplashTabState extends State<SplashTab> {
           spacing: XSpace.s3,
           runSpacing: XSpace.s3,
           children: [
-            if (design.ios)
-              SplashPhone(
-                label: 'iPhone',
-                color: color,
-                image: image,
-                scale: phoneScale,
-              ),
+            if (design.ios) phone('iPhone', iPhone),
+            if (design.ios && design.ipadLogoWidth != null)
+              phone('iPad', iPad, scale: 0.26),
+            if (design.android) phone('Android', android, android12: false),
             if (design.android)
-              SplashPhone(
-                label: 'Android',
-                color: color,
-                image: image,
-                scale: phoneScale,
-                radius: 18,
-              ),
-            if (design.android)
-              SplashPhone(
-                label: 'Android 12+ (safe circle)',
-                color: color,
-                image: android12,
-                scale: androidScale,
-                radius: 18,
-                overlay: const Android12Guide(
-                  diameter: 192 * SplashPhone.width / 412,
-                ),
-              ),
+              phone('Android 12+ (safe circle)', android, guides: true),
           ],
+        ),
+        const SizedBox(height: XSpace.s3),
+        // The icon next to it, as the user sees them one after the other
+        // (AC-026-14).
+        Text(
+          'The icon with this splash',
+          style: XType.body.copyWith(fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: XSpace.s2),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: DeviceFrame(
+            key: const ValueKey('splash-tab-icon'),
+            screen: deviceScreens.firstWhere(
+              (screen) => screen.name.contains('iPhone 16e'),
+            ),
+            content: widget.board.content(),
+            home: true,
+            dark: _dark,
+            scale: 0.3,
+          ),
         ),
         const SizedBox(height: XSpace.s3),
         if (_check != null) ...[
@@ -442,6 +644,13 @@ class _SplashTabState extends State<SplashTab> {
           variant: XButtonVariant.secondary,
           disabledReason: disabled,
           onPressed: running || disabled != null ? null : _exportFolder,
+        ),
+        XButton(
+          label: 'Export zip…',
+          icon: Icons.archive_outlined,
+          variant: XButtonVariant.secondary,
+          disabledReason: disabled,
+          onPressed: running || disabled != null ? null : _exportZip,
         ),
         XButton(
           label: 'Check splash',

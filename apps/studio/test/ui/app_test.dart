@@ -65,6 +65,7 @@ Future<Studio> pumpStudio(
   Size size = const Size(1500, 1000),
   bool startupChecks = true,
   Settings? settings,
+  String? authStatus,
 }) async {
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -75,6 +76,9 @@ Future<Studio> pumpStudio(
       if (command.startsWith('app info')) process.out(_appInfo);
       if (command == '--version') process.out('xcross 9.9.9-test');
       if (command == 'flutter doctor') doctor.forEach(process.out);
+      if (command == 'auth status --json' && authStatus != null) {
+        process.out(authStatus);
+      }
       await process.exit(0);
     },
   );

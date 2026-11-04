@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../app/services.dart';
 import '../../design_system/design_system.dart';
 import '../../src/cli/xcross_commands.dart';
+import '../../src/cli/xcross_events.dart';
 import '../../src/state/job.dart';
 import '../../src/state/readiness.dart';
 import '../common/job_views.dart';
@@ -42,24 +43,33 @@ class SigningPage extends StatelessWidget {
           children: [
             XCard(
               title: 'Status',
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  XStatusBadge(
-                    status: status,
-                    label: switch (auth.health) {
-                      Health.ok => 'Authenticated',
-                      Health.failed => 'Not configured',
-                      Health.warning => 'Needs attention',
-                      Health.checking => 'Checking…',
-                      Health.unknown => 'Not checked yet',
-                    },
+                  Row(
+                    children: [
+                      XStatusBadge(
+                        status: status,
+                        label: switch (auth.health) {
+                          Health.ok => 'Authenticated',
+                          Health.failed => 'Not configured',
+                          Health.warning => 'Needs attention',
+                          Health.checking => 'Checking…',
+                          Health.unknown => 'Not checked yet',
+                        },
+                      ),
+                      const SizedBox(width: XSpace.s3),
+                      Expanded(
+                        child: XNote(
+                          auth.message ?? 'Run the checks to see whether credentials are saved.',
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: XSpace.s3),
-                  Expanded(
-                    child: XNote(
-                      auth.message ?? 'Run the checks to see whether credentials are saved.',
-                    ),
-                  ),
+                  if (readiness.savedSignIn case final saved?) ...[
+                    const SizedBox(height: XSpace.s3),
+                    SavedSignInDetails(saved),
+                  ],
                 ],
               ),
             ),
@@ -69,6 +79,135 @@ class SigningPage extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+/// How the user signed in and what each kind of build uses (feature 026).
+class SavedSignInDetails extends StatelessWidget {
+  const SavedSignInDetails(this.saved, {super.key});
+
+  final AuthStatusReport saved;
+
+  static const _apiKeyLabel = 'App Store Connect API key';
+
+  static String _uses(String? credential) => switch (credential) {
+    'apple-id' => 'Apple ID',
+    'api-key' => _apiKeyLabel,
+    _ => 'Nothing yet',
+  };
+
+  static String _date(DateTime value) {
+    final local = value.toLocal();
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${local.year}-${two(local.month)}-${two(local.day)} '
+        '${two(local.hour)}:${two(local.minute)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final appleId = saved.appleId;
+    final apiKey = saved.apiKey;
+    if (appleId == null && apiKey == null) {
+      return const XNote('No sign-in is saved on this computer.');
+    }
+    final warnings = [
+      if (appleId?.problem case final problem?)
+        'The saved Apple ID session cannot be used: $problem',
+      if (appleId?.expires case final expires? when appleId!.expired)
+        'The Apple ID session expired on ${_date(expires)}. Sign in again.',
+      if (apiKey?.problem case final problem?)
+        'The saved API key cannot be used: $problem',
+      if (apiKey != null && apiKey.problem == null && !apiKey.privateKeyFound)
+        'The private key file is gone: ${apiKey.privateKeyPath}. Pick it again.',
+      if (saved.appStoreBuilds == null)
+        'App Store builds need a team key, and none is saved. Device builds '
+            'do not need it.',
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _Details([
+          ('Device builds use', _uses(saved.deviceBuilds)),
+          ('App Store builds use', _uses(saved.appStoreBuilds)),
+        ]),
+        if (appleId != null && appleId.problem == null) ...[
+          const SizedBox(height: XSpace.s3),
+          _Details(title: 'Apple ID', [
+            ('Apple ID', appleId.email ?? ''),
+            ('Team ID', appleId.teamId ?? ''),
+            (
+              'Anisette server',
+              appleId.anisetteUrl ?? 'Local libraries on this computer',
+            ),
+            if (appleId.expires case final expires?)
+              (appleId.expired ? 'Expired' : 'Session expires', _date(expires)),
+          ]),
+        ],
+        if (apiKey != null && apiKey.problem == null) ...[
+          const SizedBox(height: XSpace.s3),
+          _Details(title: _apiKeyLabel, [
+            ('Key type', apiKey.isIndividual ? 'Individual key' : 'Team key'),
+            if (apiKey.issuerId case final issuer?) ('Issuer ID', issuer),
+            ('Key ID', apiKey.keyId ?? ''),
+            ('Private key', apiKey.privateKeyPath ?? ''),
+          ]),
+        ],
+        if (warnings.isNotEmpty) ...[
+          const SizedBox(height: XSpace.s3),
+          XCallout(
+            status: XStatus.warning,
+            title: 'Needs attention',
+            children: [XNote(warnings.join('\n'))],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Labelled values, in one aligned column.
+class _Details extends StatelessWidget {
+  const _Details(this.rows, {this.title});
+
+  final String? title;
+  final List<(String, String)> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = XTheme.of(context).colors;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (title case final title?)
+          Padding(
+            padding: const EdgeInsets.only(bottom: XSpace.s1),
+            child: Text(
+              title,
+              style: TextStyle(
+                color: colors.textPrimary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        for (final (label, value) in rows)
+          Padding(
+            padding: const EdgeInsets.only(bottom: XSpace.s1),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 170,
+                  child: Text(
+                    label,
+                    style: TextStyle(color: colors.textSecondary),
+                  ),
+                ),
+                Expanded(child: Text(value)),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }
@@ -99,12 +238,65 @@ class _SigningFormState extends State<SigningForm> {
 
   bool _showAuthDetails = false;
 
+  /// studio: 026 — the user picked a method or key type themselves, so what
+  /// is saved no longer changes it.
+  bool _methodChosen = false;
+  ReadinessController? _readiness;
+  AuthStatusReport? _applied;
+
+  /// What each field was last filled with from the saved sign-in: a field
+  /// showing anything else was typed by the user and is left alone.
+  final _filled = <TextEditingController, String>{};
+  String? _filledKeyPath;
+
   void _onJob() {
     if (mounted) setState(() {});
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final readiness = Services.of(context).readiness;
+    if (identical(readiness, _readiness)) return;
+    _readiness?.removeListener(_applySaved);
+    _readiness = readiness..addListener(_applySaved);
+    _applySaved();
+  }
+
+  void _fill(TextEditingController field, String? value) {
+    if (field.text.isNotEmpty && field.text != _filled[field]) return;
+    field.text = value ?? '';
+    _filled[field] = field.text;
+  }
+
+  /// Starts the form from what is saved; the password is never saved.
+  void _applySaved() {
+    final saved = _readiness?.savedSignIn;
+    if (saved == null || identical(saved, _applied)) return;
+    _applied = saved;
+    final key = saved.apiKey;
+    final anisette = saved.appleId?.anisetteUrl;
+    _fill(_appleId, saved.appleId?.email);
+    _fill(
+      _anisette,
+      anisette == XcrossCommands.defaultAnisetteUrl ? null : anisette,
+    );
+    _fill(_issuer, key?.issuerId);
+    _fill(_keyId, key?.keyId);
+    if (_keyPath == null || _keyPath == _filledKeyPath) {
+      _keyPath = key != null && key.privateKeyFound ? key.privateKeyPath : null;
+      _filledKeyPath = _keyPath;
+    }
+    if (!_methodChosen) {
+      _useApiKey = saved.deviceBuilds == 'api-key';
+      _individualKey = key?.isIndividual ?? false;
+    }
+    if (mounted) setState(() {});
+  }
+
+  @override
   void dispose() {
+    _readiness?.removeListener(_applySaved);
     _auth?.removeListener(_onJob);
     for (final c in [_appleId, _password, _anisette, _issuer, _keyId]) {
       c.dispose();
@@ -216,7 +408,10 @@ class _SigningFormState extends State<SigningForm> {
               label: 'Use Apple ID instead',
               icon: Icons.person,
               variant: XButtonVariant.secondary,
-              onPressed: () => setState(() => _useApiKey = false),
+              onPressed: () => setState(() {
+                _methodChosen = true;
+                _useApiKey = false;
+              }),
             ),
           ],
         ),
@@ -261,7 +456,10 @@ class _SigningFormState extends State<SigningForm> {
               label: 'Use Apple ID instead',
               icon: Icons.person,
               variant: XButtonVariant.secondary,
-              onPressed: () => setState(() => _useApiKey = false),
+              onPressed: () => setState(() {
+                _methodChosen = true;
+                _useApiKey = false;
+              }),
             ),
           XButton(
             label: _showAuthDetails ? 'Hide details' : 'Show details',
@@ -295,8 +493,10 @@ class _SigningFormState extends State<SigningForm> {
               ),
             ],
             selected: {_useApiKey},
-            onSelectionChanged: (choice) =>
-                setState(() => _useApiKey = choice.first),
+            onSelectionChanged: (choice) => setState(() {
+              _methodChosen = true;
+              _useApiKey = choice.first;
+            }),
           ),
           const SizedBox(height: XSpace.s3),
           if (_useApiKey) ...[
@@ -318,8 +518,10 @@ class _SigningFormState extends State<SigningForm> {
                 ButtonSegment(value: true, label: Text('Individual key')),
               ],
               selected: {_individualKey},
-              onSelectionChanged: (choice) =>
-                  setState(() => _individualKey = choice.first),
+              onSelectionChanged: (choice) => setState(() {
+                _methodChosen = true;
+                _individualKey = choice.first;
+              }),
             ),
             const SizedBox(height: XSpace.s2),
             XNote(

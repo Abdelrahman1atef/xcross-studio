@@ -52,6 +52,13 @@ final class SplashDesign {
     this.margin = SplashMargin.none,
     this.branding,
     this.darkBranding,
+    this.ipadLogoWidth,
+    this.androidLogoWidth,
+    this.android12IconWidth,
+    this.android12IconBackground,
+    this.darkAndroid12IconBackground,
+    this.brandingWidth = SplashImages.defaultBrandingWidth,
+    this.brandingBottom = SplashImages.defaultBrandingBottom,
   });
 
   final RgbaImage logo;
@@ -62,26 +69,60 @@ final class SplashDesign {
   /// Points (iOS) and dp (Android).
   final double logoWidth;
 
-  /// Transparent space inside the logo image, in percent of its width.
+  /// Space kept clear inside the logo's width, in percent of its size, so more
+  /// padding makes the logo smaller, and uneven padding also moves it. A launch
+  /// screen centres its image, so space added around the logo would not show.
   final IconPadding padding;
   final SplashMargin margin;
   final RgbaImage? branding;
   final RgbaImage? darkBranding;
+
+  /// Sizes for one kind of device; each defaults to [logoWidth] (AC-026-19).
+  final double? ipadLogoWidth;
+  final double? androidLogoWidth;
+  final double? android12IconWidth;
+
+  /// Android 12's icon background, drawn by the system (AC-026-20).
+  final IconColor? android12IconBackground;
+  final IconColor? darkAndroid12IconBackground;
+
+  /// The branding's width in points or dp (AC-026-21).
+  final double brandingWidth;
+
+  /// How far above the bottom Android 11 and older draw the branding, in dp.
+  final double brandingBottom;
+
+  /// This design with the logo shown at [width].
+  SplashDesign withLogoWidth(double width) => SplashDesign(
+    logo: logo,
+    darkLogo: darkLogo,
+    background: background,
+    darkBackground: darkBackground,
+    logoWidth: width,
+    padding: padding,
+    margin: margin,
+    branding: branding,
+    darkBranding: darkBranding,
+    brandingWidth: brandingWidth,
+    brandingBottom: brandingBottom,
+  );
 
   bool get hasDark => darkLogo != null || darkBackground != null;
 
   /// The logo's height in points at [logoWidth].
   double get logoHeight => logoWidth * logo.height / logo.width;
 
-  /// The logo with padding and margin, in points.
-  (double, double) get canvasSize {
-    final horizontal = padding.left + padding.right;
-    final vertical = padding.top + padding.bottom;
-    return (
-      logoWidth * (1 + horizontal / 100) + margin.left + margin.right,
-      logoHeight + logoWidth * vertical / 100 + margin.top + margin.bottom,
-    );
-  }
+  /// The logo's box with its margin, in points.
+  (double, double) get canvasSize => (
+    logoWidth + margin.left + margin.right,
+    logoHeight + margin.top + margin.bottom,
+  );
+
+  /// Margins that cancel out: the image is centred, so nothing moves.
+  bool get marginHasNoEffect =>
+      margin.top == margin.bottom &&
+      margin.left == margin.right &&
+      (margin.top > 0 || margin.left > 0);
 }
 
 /// Draws a logo into its transparent canvas.
@@ -91,8 +132,11 @@ abstract final class SplashImages {
   /// the bottom of an image this tall (AC-024-7).
   static const brandedHeight = 760.0;
 
-  /// Width of the branding image, as a share of the logo canvas.
-  static const brandingWidth = 180.0;
+  /// The branding image's width unless another is chosen.
+  static const defaultBrandingWidth = 180.0;
+
+  /// How far up Android 11 and older draw it unless another is chosen.
+  static const defaultBrandingBottom = 32.0;
 
   /// [design]'s logo ([dark] for the dark one) at [scale] pixels per point.
   /// With [withBranding], the image is tall enough to hold the branding near
@@ -110,7 +154,7 @@ abstract final class SplashImages {
         : null;
     final pointsWide = branding == null
         ? canvasWidth
-        : math.max(canvasWidth, brandingWidth);
+        : math.max(canvasWidth, design.brandingWidth);
     final pointsTall = branding == null
         ? canvasHeight
         : math.max(canvasHeight, brandedHeight);
@@ -118,25 +162,22 @@ abstract final class SplashImages {
     final height = math.max(1, (pointsTall * scale).round());
     final out = RgbaImage(width, height, Uint8List(width * height * 4));
 
-    final padding = design.padding;
-    final logoLeft =
-        (pointsWide - canvasWidth) / 2 +
-        design.margin.left +
-        design.logoWidth * padding.left / 100;
-    final logoTop =
-        (pointsTall - canvasHeight) / 2 +
-        design.margin.top +
-        design.logoWidth * padding.top / 100;
-    final logoWidth = math.max(1, (design.logoWidth * scale).round());
-    final logoHeight = math.max(1, (design.logoHeight * scale).round());
+    final fitted = _fitted(design, design.logoWidth);
     _blit(
       out,
-      logo.resized(logoWidth, logoHeight),
-      (logoLeft * scale).round(),
-      (logoTop * scale).round(),
+      logo.resized(
+        math.max(1, (fitted.width * scale).round()),
+        math.max(1, (fitted.height * scale).round()),
+      ),
+      (((pointsWide - canvasWidth) / 2 + design.margin.left + fitted.left) *
+              scale)
+          .round(),
+      (((pointsTall - canvasHeight) / 2 + design.margin.top + fitted.top) *
+              scale)
+          .round(),
     );
     if (branding != null) {
-      final bandWidth = math.max(1, (brandingWidth * scale).round());
+      final bandWidth = math.max(1, (design.brandingWidth * scale).round());
       final bandHeight = math.max(
         1,
         (branding.height * bandWidth / branding.width).round(),
@@ -151,47 +192,112 @@ abstract final class SplashImages {
     return out;
   }
 
-  /// A 288 dp Android 12 icon at [pixels] wide: the logo inside the 192 dp
-  /// circle, the rest transparent.
-  static RgbaImage android12Icon(
+  /// Where the logo goes inside its box of [boxWidth], in points from the box's
+  /// corner: padding is a share of each side, and the logo keeps its shape.
+  static ({double left, double top, double width, double height}) _fitted(
     SplashDesign design,
-    int pixels, {
+    double boxWidth,
+  ) {
+    final logo = design.logo;
+    final aspect = logo.height / logo.width;
+    final boxHeight = boxWidth * aspect;
+    final padding = design.padding;
+    final innerWidth = boxWidth * (1 - (padding.left + padding.right) / 100);
+    final innerHeight = boxHeight * (1 - (padding.top + padding.bottom) / 100);
+    final width = math.min(innerWidth, innerHeight / aspect);
+    final height = width * aspect;
+    return (
+      left: boxWidth * padding.left / 100 + (innerWidth - width) / 2,
+      top: boxHeight * padding.top / 100 + (innerHeight - height) / 2,
+      width: width,
+      height: height,
+    );
+  }
+
+  /// Android 12's icon background, in light or dark.
+  static IconColor? _iconBackground(SplashDesign design, {bool dark = false}) =>
+      dark
+      ? design.darkAndroid12IconBackground ?? design.android12IconBackground
+      : design.android12IconBackground;
+
+  /// The Android 12 icon's canvas in dp: 240 with an icon background, else 288.
+  static double android12Canvas(SplashDesign design, {bool dark = false}) =>
+      _iconBackground(design, dark: dark) == null ? 288 : 240;
+
+  /// The circle Android 12 shows of it, in dp: outside this it masks the icon.
+  static double android12Circle(SplashDesign design, {bool dark = false}) =>
+      _iconBackground(design, dark: dark) == null ? 192 : 160;
+
+  /// The largest side that always fits the circle: its inscribed square.
+  static double android12SafeSide(SplashDesign design) =>
+      android12Circle(design) / math.sqrt2;
+
+  /// The logo's box in the Android 12 icon, in dp. A width chosen for Android
+  /// 12 is used as it is. The general logo width is kept inside the circle, as
+  /// nobody asked for this logo to be cut.
+  static double android12BoxWidth(SplashDesign design) {
+    if (design.android12IconWidth case final width?) return width;
+    final longest = math.max(design.logoWidth, design.logoHeight);
+    final safe = android12SafeSide(design);
+    return longest <= safe
+        ? design.logoWidth
+        : design.logoWidth * safe / longest;
+  }
+
+  /// The Android 12 icon at [scale] pixels per dp: the logo in the middle of a
+  /// transparent canvas, moved by its margin like every other splash image.
+  static RgbaImage android12Icon(
+    SplashDesign design, {
+    required double scale,
     bool dark = false,
   }) {
     final logo = dark ? (design.darkLogo ?? design.logo) : design.logo;
+    final canvas = android12Canvas(design, dark: dark);
+    final pixels = (canvas * scale).round();
     final out = RgbaImage(pixels, pixels, Uint8List(pixels * pixels * 4));
-    final scale = pixels / 288;
-    final longest = math.max(logo.width, logo.height);
-    final fit = android12FitWidth(design) * logo.width / longest;
-    final width = math.max(1, (fit * scale).round());
-    final height = math.max(
-      1,
-      (fit * logo.height / logo.width * scale).round(),
-    );
+    final box = android12BoxWidth(design);
+    final fitted = _fitted(design, box);
+    final margin = design.margin;
     _blit(
       out,
-      logo.resized(width, height),
-      (pixels - width) ~/ 2,
-      (pixels - height) ~/ 2,
+      logo.resized(
+        math.max(1, (fitted.width * scale).round()),
+        math.max(1, (fitted.height * scale).round()),
+      ),
+      (((canvas - box) / 2 + fitted.left + (margin.left - margin.right) / 2) *
+              scale)
+          .round(),
+      (((canvas - box * logo.height / logo.width) / 2 +
+                  fitted.top +
+                  (margin.top - margin.bottom) / 2) *
+              scale)
+          .round(),
     );
     return out;
   }
 
-  /// The largest side the logo may have in the Android 12 icon: the inscribed
-  /// square of the 192 dp circle, about 135 dp.
-  static const android12SafeSide = 192 / math.sqrt2;
+  /// The general logo width had to shrink to stay inside Android 12's circle.
+  static bool android12Shrunk(SplashDesign design) =>
+      design.android12IconWidth == null &&
+      math.max(design.logoWidth, design.logoHeight) > android12SafeSide(design);
 
-  /// The logo's longest side in the Android 12 icon, in dp: its chosen width,
-  /// but never beyond the safe side.
-  static double android12FitWidth(SplashDesign design) =>
-      math.min(_longestSide(design), android12SafeSide);
-
-  static double _longestSide(SplashDesign design) =>
-      math.max(design.logoWidth, design.logoHeight);
-
-  /// Whether the chosen size had to shrink to fit Android 12's circle.
-  static bool android12Clipped(SplashDesign design) =>
-      _longestSide(design) > android12SafeSide;
+  /// Part of the logo falls outside Android 12's circle, so Android cuts it.
+  static bool android12Cut(SplashDesign design) {
+    final icon = android12Icon(design, scale: 1);
+    final centre = (icon.width - 1) / 2;
+    final radius = android12Circle(design) / 2;
+    for (var y = 0; y < icon.height; y++) {
+      for (var x = 0; x < icon.width; x++) {
+        if (icon.rgba[(y * icon.width + x) * 4 + 3] < 32) continue;
+        final dx = x - centre;
+        final dy = y - centre;
+        if (dx * dx + dy * dy > radius * radius) return true;
+      }
+    }
+    // A logo so large it runs off the canvas leaves no pixel to find there.
+    final fitted = _fitted(design, android12BoxWidth(design));
+    return math.max(fitted.width, fitted.height) > android12Canvas(design);
+  }
 
   static void _blit(RgbaImage out, RgbaImage image, int left, int top) {
     for (var y = 0; y < image.height; y++) {
@@ -224,6 +330,9 @@ abstract final class SplashFiles {
   static const iosStoryboard = 'ios/Runner/Base.lproj/LaunchScreen.storyboard';
   static const iosImageSet = '$_iosCatalog/LaunchImage.imageset';
   static const iosColorSet = '$_iosCatalog/LaunchBackground.colorset';
+
+  /// What flutter_native_splash leaves: an image with the colour set's name.
+  static const iosLeftoverImageSet = '$_iosCatalog/LaunchBackground.imageset';
 
   static Map<String, Uint8List> ios(SplashDesign design) {
     final files = <String, Uint8List>{};
@@ -264,6 +373,32 @@ abstract final class SplashFiles {
           ],
         });
       }
+    }
+    // iPads have their own size; iPhones keep the universal images.
+    if (design.ipadLogoWidth case final width?) {
+      final ipad = design.withLogoWidth(width);
+      void add(String name, {required bool dark}) {
+        files['$iosImageSet/$name'] = PngEncoder.encode(
+          SplashImages.logoCanvas(
+            ipad,
+            scale: 2,
+            dark: dark,
+            withBranding: withBranding,
+          ),
+        );
+        images.add({
+          'idiom': 'ipad',
+          'filename': name,
+          'scale': '2x',
+          if (dark)
+            'appearances': [
+              {'appearance': 'luminosity', 'value': 'dark'},
+            ],
+        });
+      }
+
+      add('LaunchImage-iPad@2x.png', dark: false);
+      if (hasDarkImage) add('LaunchImageDark-iPad@2x.png', dark: true);
     }
     files['$iosImageSet/Contents.json'] = _json({
       'images': images,
@@ -312,7 +447,7 @@ abstract final class SplashFiles {
   static String storyboard(SplashDesign design) {
     final (width, height) = design.branding != null
         ? (
-            math.max(design.canvasSize.$1, SplashImages.brandingWidth),
+            math.max(design.canvasSize.$1, design.brandingWidth),
             math.max(design.canvasSize.$2, SplashImages.brandedHeight),
           )
         : design.canvasSize;
@@ -373,17 +508,20 @@ abstract final class SplashFiles {
   static Map<String, Uint8List> android(SplashDesign design) {
     final files = <String, Uint8List>{};
     final darkImages = design.darkLogo != null;
+    final logos = design.androidLogoWidth == null
+        ? design
+        : design.withLogoWidth(design.androidLogoWidth!);
     for (final (density, scale) in _densities) {
       final folder = '$_androidRes/drawable-$density';
       files['$folder/splash_logo.png'] = PngEncoder.encode(
-        SplashImages.logoCanvas(design, scale: scale),
+        SplashImages.logoCanvas(logos, scale: scale),
       );
       files['$folder/android12_splash.png'] = PngEncoder.encode(
-        SplashImages.android12Icon(design, (288 * scale).round()),
+        SplashImages.android12Icon(design, scale: scale),
       );
       if (design.branding != null) {
         final branding = design.branding!;
-        final width = (SplashImages.brandingWidth * scale).round();
+        final width = (design.brandingWidth * scale).round();
         files['$folder/splash_branding.png'] = PngEncoder.encode(
           branding.resized(
             width,
@@ -391,18 +529,21 @@ abstract final class SplashFiles {
           ),
         );
       }
+      final night = '$_androidRes/drawable-night-$density';
       if (darkImages) {
-        final night = '$_androidRes/drawable-night-$density';
         files['$night/splash_logo.png'] = PngEncoder.encode(
-          SplashImages.logoCanvas(design, scale: scale, dark: true),
+          SplashImages.logoCanvas(logos, scale: scale, dark: true),
         );
+      }
+      // A dark icon background alone also changes its canvas.
+      if (darkImages || design.darkAndroid12IconBackground != null) {
         files['$night/android12_splash.png'] = PngEncoder.encode(
-          SplashImages.android12Icon(design, (288 * scale).round(), dark: true),
+          SplashImages.android12Icon(design, scale: scale, dark: true),
         );
       }
       if (design.darkBranding != null) {
         final branding = design.darkBranding!;
-        final width = (SplashImages.brandingWidth * scale).round();
+        final width = (design.brandingWidth * scale).round();
         files['$_androidRes/drawable-night-$density/splash_branding.png'] =
             PngEncoder.encode(
               branding.resized(
@@ -413,28 +554,52 @@ abstract final class SplashFiles {
       }
     }
     final hasBranding = design.branding != null;
-    final light = _launchBackground(design.background, branding: hasBranding);
+    final bottom = design.brandingBottom;
+    final light = _launchBackground(
+      design.background,
+      branding: hasBranding,
+      bottom: bottom,
+    );
     files['$_androidRes/drawable/launch_background.xml'] = _text(light);
     files['$_androidRes/drawable-v21/launch_background.xml'] = _text(light);
     files['$_androidRes/values-v31/styles.xml'] = _text(
-      _styles31(design.background, night: false, branding: hasBranding),
+      _styles31(
+        design.background,
+        night: false,
+        branding: hasBranding,
+        iconBackground: design.android12IconBackground,
+      ),
     );
     final dark = design.darkBackground;
-    if (dark != null || darkImages) {
+    final darkIcon = design.darkAndroid12IconBackground;
+    if (dark != null || darkImages || darkIcon != null) {
       final color = dark ?? design.background;
-      final night = _launchBackground(color, branding: hasBranding);
+      final night = _launchBackground(
+        color,
+        branding: hasBranding,
+        bottom: bottom,
+      );
       files['$_androidRes/drawable-night/launch_background.xml'] = _text(night);
       files['$_androidRes/drawable-night-v21/launch_background.xml'] = _text(
         night,
       );
       files['$_androidRes/values-night-v31/styles.xml'] = _text(
-        _styles31(color, night: true, branding: hasBranding),
+        _styles31(
+          color,
+          night: true,
+          branding: hasBranding,
+          iconBackground: darkIcon ?? design.android12IconBackground,
+        ),
       );
     }
     return files;
   }
 
-  static String _launchBackground(IconColor color, {required bool branding}) =>
+  static String _launchBackground(
+    IconColor color, {
+    required bool branding,
+    required double bottom,
+  }) =>
       '<?xml version="1.0" encoding="utf-8"?>\n'
       '<layer-list xmlns:android="http://schemas.android.com/apk/res/android">\n'
       '    <item>\n'
@@ -445,13 +610,14 @@ abstract final class SplashFiles {
       '    <item>\n'
       '        <bitmap android:gravity="center" android:src="@drawable/splash_logo"/>\n'
       '    </item>\n'
-      '${branding ? '    <item android:bottom="32dp">\n        <bitmap android:gravity="bottom" android:src="@drawable/splash_branding"/>\n    </item>\n' : ''}'
+      '${branding ? '    <item android:bottom="${bottom.round()}dp">\n        <bitmap android:gravity="bottom" android:src="@drawable/splash_branding"/>\n    </item>\n' : ''}'
       '</layer-list>\n';
 
   static String _styles31(
     IconColor color, {
     required bool night,
     required bool branding,
+    IconColor? iconBackground,
   }) {
     final parent = night
         ? '@android:style/Theme.Black.NoTitleBar'
@@ -461,6 +627,7 @@ abstract final class SplashFiles {
         '    <style name="LaunchTheme" parent="$parent">\n'
         '        <item name="android:windowSplashScreenBackground">${splashHex(color)}</item>\n'
         '        <item name="android:windowSplashScreenAnimatedIcon">@drawable/android12_splash</item>\n'
+        '${iconBackground == null ? '' : '        <item name="android:windowSplashScreenIconBackgroundColor">${splashHex(iconBackground)}</item>\n'}'
         '${branding ? '        <item name="android:windowSplashScreenBrandingImage">@drawable/splash_branding</item>\n' : ''}'
         '    </style>\n'
         '    <style name="NormalTheme" parent="$parent">\n'

@@ -1,6 +1,7 @@
 @internal
 library;
 
+import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 
@@ -21,6 +22,7 @@ import 'package:build_cli_annotations/build_cli_annotations.dart';
 import 'package:cli_kit/shared/logging/logging.dart';
 import 'package:http/http.dart' as http;
 import 'package:meta/meta.dart';
+import 'package:studio_ext/shared/auth/saved_sign_in.dart'; // studio: 026
 import 'package:xcross/src/shared/auth/signing_availability.dart';
 import 'package:xcross/src/shared/cli/command_prompt.dart';
 import 'package:xcross/src/shared/cli/internal/parsed_command.dart';
@@ -125,7 +127,12 @@ final class AuthCommand extends ParsedCommand<AuthArgs, void> {
   });
   @override
   ArgParser populateOptions(ArgParser parser) =>
-      _$populateAuthArgsParser(parser);
+      // studio: 026 — not in AuthArgs, as only `status` takes it.
+      _$populateAuthArgsParser(parser)..addFlag(
+        'json',
+        negatable: false,
+        help: 'With "status": print one JSON object instead of the report.',
+      );
   @override
   AuthArgs parseOptions(ArgResults results) => _$parseAuthArgsResult(results);
 
@@ -146,17 +153,24 @@ final class AuthCommand extends ParsedCommand<AuthArgs, void> {
   @override
   String get invocation =>
       'xcross auth [arguments]\n'
+      '       xcross auth status [--json]\n'
       '       xcross auth clean';
 
   @override
   String get usageFooter =>
-      '\n"xcross auth clean" signs out: it deletes the saved App Store Connect '
+      '\n"xcross auth status" shows how you signed in, from the saved files: '
+      'never a password, token or key, and without asking Apple.\n'
+      '"xcross auth clean" signs out: it deletes the saved App Store Connect '
       'key, the Apple ID session and its machine attestation state, and every '
       'certificate, private key, and provisioning profile xcross minted.';
 
   @override
   Future<void> run() {
     final rest = argResults!.rest;
+    if (rest case ['status']) return _status(); // studio: 026
+    if (argResults!.flag('json')) {
+      throw XcrossError('--json only applies to "xcross auth status".');
+    }
     if (rest.isNotEmpty) {
       if (rest case ['clean']) return _clean();
       if (rest case ['clear']) {
@@ -174,6 +188,24 @@ final class AuthCommand extends ParsedCommand<AuthArgs, void> {
         options.keyIdWasParsed ||
         options.privateKeyWasParsed;
     return usesAscKey ? _saveAscCredentials() : _appleIdLogin();
+  }
+
+  // ----------------------------------------------------------------- status
+
+  // studio: 026 — how you signed in, for the Signing page.
+  Future<void> _status() async {
+    final given = _authOptionNames.where(argResults!.wasParsed);
+    if (given.isNotEmpty) {
+      throw XcrossError(
+        'xcross auth status takes only --json (got --${given.first}).',
+      );
+    }
+    final status = await SavedSignIn.read(hostServices);
+    commandPrompt.write(
+      argResults!.flag('json')
+          ? '${jsonEncode(status.toJson())}\n'
+          : status.render(),
+    );
   }
 
   // ------------------------------------------------------------------ clean

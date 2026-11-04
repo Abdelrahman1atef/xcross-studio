@@ -1,6 +1,7 @@
 // studio: 024 — writes generated icons and splash files into a project (after
 // a backup), a folder or an archive (specs/024-icon-splash-studio, AC-024-15,
 // AC-024-16).
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
@@ -41,6 +42,26 @@ final class AssetFilesWriter {
     file.parent.createSync(recursive: true);
     file.writeAsBytesSync(ZipEncoder().encodeBytes(archive));
   }
+
+  /// The files under [folder], as paths relative to [root] with `/` separators.
+  List<String> filesUnder(String root, String folder) {
+    final directory = fileSystem.directory(
+      p.joinAll([root, ...folder.split('/')]),
+    );
+    if (!directory.existsSync()) return const [];
+    // Relative to the listed folder: on Windows the listing's paths carry the
+    // host's `\\?\` prefix, which [root] does not.
+    return [
+      for (final entity in directory.listSync(recursive: true))
+        if (entity is File)
+          '$folder/${p.split(p.relative(entity.path, from: directory.path)).join('/')}',
+    ]..sort();
+  }
+
+  /// Deletes [folder] under [root].
+  void removeFolder(String root, String folder) => fileSystem
+      .directory(p.joinAll([root, ...folder.split('/')]))
+      .deleteSync(recursive: true);
 
   /// Copies those of [paths] that exist under
   /// `.xcross/icon-backups/<stamp>/`, keeping their paths; null when none do.
