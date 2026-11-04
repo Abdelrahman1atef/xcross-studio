@@ -26,8 +26,8 @@ final class FlutterBuildOptions {
   final FlutterBuildMode buildMode;
 
   // studio: 025
-  /// The app will carry a distribution profile (App Store), so plugins are not
-  /// built for debugging: see `SwiftPmBuildPlan.distributionArguments`.
+  /// The app will carry a distribution profile (App Store), so plugins are
+  /// built without `DEBUG`: see `SwiftPmBuildPlan.distributionArguments`.
   final bool forDistribution;
 
   /// `--[no-]tree-shake-icons`. Like `flutter build`, it only applies to

@@ -109,19 +109,16 @@ final class SwiftPmBuildPlan<T extends PlatformHostInterface> {
   }
 
   // studio: 025
-  /// A SwiftPM debug build with what an App Store build needs: these come after
-  /// SwiftPM's own `-DDEBUG=1` and `-O0`, and the last one counts.
+  /// A SwiftPM debug build without `DEBUG`: this comes after SwiftPM's own
+  /// `-DDEBUG=1`, and the last one counts.
   ///
   /// `firebase_messaging` marks the APNs token as sandbox under `#ifdef DEBUG`,
   /// and a token marked sandbox from an App Store profile cannot be delivered.
-  static const distributionArguments = [
-    '-Xcc',
-    '-UDEBUG',
-    '-Xcc',
-    '-O2',
-    '-Xswiftc',
-    '-O',
-  ];
+  ///
+  /// Not optimization: with `-Xcc -O2 -Xswiftc -O` as well, a real plugin set
+  /// failed on Windows with a Clang module cache race and then crashed
+  /// `swift-frontend` (2026-11-04), so plugins stay as every other build has them.
+  static const distributionArguments = ['-Xcc', '-UDEBUG'];
 
   /// Arguments shared by Linux and Windows SwiftPM builds. SDK-owned compiler
   /// flags stay in SDK metadata; only package-specific flags belong here.
