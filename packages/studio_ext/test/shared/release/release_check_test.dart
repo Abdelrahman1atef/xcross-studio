@@ -446,6 +446,31 @@ void main() {
       expect(reason.path, 'Runner');
     });
 
+    // fluttertoast 8.2.14 ships a manifest and an older draft left it out, so
+    // "update the plugin" sent the developer the wrong way (2026-11-05).
+    test('AC-018-12 a listed plugin without a manifest: with an override the '
+        'hint asks for a new draft, without one for an update', () {
+      String hint(String project) =>
+          check(writeApp(_appStoreApp()), project: project).issues
+              .firstWhere(
+                (i) =>
+                    i.code == 'release.privacy_manifest_missing' &&
+                    i.message.contains('fluttertoast'),
+              )
+              .hint!;
+
+      final project = writeProject(plugins: ['fluttertoast']);
+      expect(hint(project), startsWith('Update fluttertoast'));
+
+      Directory(
+        p.join(project, 'xcross_overrides', 'fluttertoast', '8.2.14'),
+      ).createSync(recursive: true);
+      expect(
+        hint(project),
+        contains('xcross plugin shim fluttertoast --force'),
+      );
+    });
+
     test('a declared category is not reported', () {
       final files = _appStoreApp(runnerBody: 'NSFileCreationDate')
         ..['PrivacyInfo.xcprivacy'] = _manifest([

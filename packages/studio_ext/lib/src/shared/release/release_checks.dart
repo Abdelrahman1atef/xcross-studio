@@ -124,6 +124,10 @@ final class ReleaseProject {
     return names;
   }();
 
+  /// Whether the project has its own `xcross_overrides/<plugin>` folder.
+  bool hasOverride(String plugin) =>
+      fileSystem.directory(_join(['xcross_overrides', plugin])).existsSync();
+
   /// Package names directly under the top-level `dependencies:` key of a
   /// pubspec (a line scan: no YAML parser is needed for names).
   @visibleForTesting
@@ -591,7 +595,12 @@ final class ReleaseChecker {
           ReleaseSeverity.warning,
           "Plugin $plugin is on Apple's list of SDKs that must ship a "
               'privacy manifest, and no bundle of it carries one.',
-          hint: 'Update $plugin to a release that includes its privacy bundle.',
+          hint: (project?.hasOverride(plugin) ?? false)
+              ? 'Drafts from older xcross versions left the manifest out: run '
+                    '`xcross plugin shim $plugin --force` (this replaces the '
+                    'draft), then build again. If it is still missing, update '
+                    '$plugin to a release that includes its privacy bundle.'
+              : 'Update $plugin to a release that includes its privacy bundle.',
         );
       }
     }

@@ -1,5 +1,11 @@
 ## Unreleased (XCross Studio)
 
+- iOS plugins that ship only a podspec lost their privacy manifest when xcross drafted their `Package.swift`, because the
+  file sat outside the source folder: for example `fluttertoast` 8.2.14, `flutter_secure_storage` 9.2.4 and
+  `permission_handler_apple` 9.4.7. New drafts copy the manifest in and ship it. **Existing drafts are not changed:** run
+  `xcross plugin shim <plugin> --force`, which replaces the draft, then build again. For a plugin with an override,
+  `release.privacy_manifest_missing` now says this, where it used to tell you to update the plugin.
+
 - Splash: padding and margin did nothing you could see, and Android 12+ ignored them and any size above about 135 dp.
   `--padding` now makes the logo smaller, where it used to add space around a centred image. **A saved design with padding
   gets a smaller logo.** Margin moves the logo by half the difference between opposite sides, also on Android 12+; equal

@@ -181,7 +181,13 @@ final class PackageSwiftDraft {
     this.splitsSwift = false,
     this.moduleRenames = const {},
     this.flatHeaderModules = const {},
+    this.resourceCopies = const {},
   });
+
+  /// Resources the draft declares that sit outside the target's folder: their
+  /// path relative to the podspec folder → where the override needs a copy,
+  /// relative to the override folder.
+  final Map<String, String> resourceCopies;
 
   /// Modules whose headers Objective-C must import as modules
   /// (see [patchFlatHeaderImports]).
@@ -469,12 +475,20 @@ PackageSwiftDraft draftPackageSwift({
   ];
 
   final resourceLines = <String>[];
+  final resourceCopies = <String, String>{};
   for (final path in [...spec.resourceBundles.values.expand((v) => v)]) {
     if (targetPath == '.' || path.startsWith('$targetPath/')) {
       final relative = targetPath == '.'
           ? path
           : path.substring(targetPath.length + 1);
       resourceLines.add('.process("$relative")');
+    } else if (path.endsWith('.xcprivacy') && files.contains(path)) {
+      // CocoaPods ships a manifest from anywhere in the pod, but a SwiftPM
+      // target only sees its own folder, so without a copy there the app has
+      // no manifest (fluttertoast 8.2.14, 2026-11-05).
+      final name = path.substring(path.lastIndexOf('/') + 1);
+      resourceCopies[path] = '$targetPath/$name';
+      resourceLines.add('.process("$name")');
     } else {
       notes.add(
         'Resource "$path" is outside "$targetPath"; copy it into the override '
@@ -552,7 +566,13 @@ PackageSwiftDraft draftPackageSwift({
           target(
             name: '${plugin}_swift',
             dependencies: productLines,
-            exclude: [...native, ...headers],
+            exclude: [
+              ...native,
+              ...headers,
+              // Declared by the Objective-C target, in this same folder.
+              for (final copy in resourceCopies.values)
+                copy.substring(targetPath.length + 1),
+            ],
           ),
           target(
             name: plugin,
@@ -603,6 +623,7 @@ PackageSwiftDraft draftPackageSwift({
     splitsSwift: mixed,
     moduleRenames: moduleRenames,
     flatHeaderModules: flatHeaderModules,
+    resourceCopies: resourceCopies,
   );
 }
 

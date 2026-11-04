@@ -63,7 +63,9 @@ configuration and coded issues (errors first), exits 1 when there is an error.
    without it, from a plugin → key table), `release.permission_placeholder` (empty, short or "TODO"),
    `release.ats_arbitrary_loads`, background modes listed with the plugin that explains them.
 4. **AC-018-12** (privacy, AC-06): `release.privacy_manifest_missing` (no app `PrivacyInfo.xcprivacy`; a bundled SDK
-   from Apple's list without one), `release.required_reason_undeclared` (a required-reason API category used by a
+   from Apple's list without one; for a plugin in `xcross_overrides/`, the hint asks for a new draft with
+   `xcross plugin shim <plugin> --force`, otherwise for an update), `release.required_reason_undeclared` (a
+   required-reason API category used by a
    binary but declared in no manifest), `release.encryption_unset`, `release.secret_in_bundle` (private keys or AWS
    keys in bundle files).
 5. **AC-018-13** (store assets, AC-07): `release.marketing_icon` (no 1024 px icon in the app icon set, or one with an

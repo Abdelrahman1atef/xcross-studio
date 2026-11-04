@@ -58,6 +58,11 @@ Writing a `Package.swift` by hand is the hard part of an override. `xcross plugi
     `xcross plugin shim <plugin> [--global] [--force]` writes `xcross_overrides/<plugin>/<version>/Package.swift`
     (or `~/.xcross/overrides/…`), refuses to overwrite without `--force`, and prints the review notes. Errors:
     `plugin.not_found`, `plugin.no_podspec`, `plugin.no_project`, `plugin.override_exists`.
+16. **AC-006-16**: A privacy manifest the podspec's `resource_bundles` names outside the target folder is copied byte
+    for byte into that folder of the override and declared as a resource, because CocoaPods ships it from anywhere in
+    the pod and a SwiftPM target only sees its own folder. A mixed plugin's Objective-C target declares it and its Swift
+    target excludes it. Other resources outside the folder, and a manifest the plugin does not have, stay review notes.
+    Existing drafts are left alone; `xcross plugin shim <plugin> --force` replaces one.
 
 ## Requirements
 

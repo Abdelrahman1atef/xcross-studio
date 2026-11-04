@@ -217,9 +217,76 @@ end
       );
       expect(text, isNot(contains('FlutterMacOS')));
       expect(text, isNot(contains('"legacy_maps_swift"')));
-      expect(draft.notes, hasLength(2));
-      expect(draft.notes.join(), contains('SomeVendorSDK'));
+      expect(draft.notes.single, contains('SomeVendorSDK'));
+    });
+
+    // fluttertoast 8.2.14 (2026-11-05): `release check` found no manifest in
+    // the app although the plugin ships one, in a folder the target can't see.
+    test('AC-006-16 a privacy manifest outside the target folder is copied '
+        'into it and declared', () {
+      final draft = draftPackageSwift(
+        plugin: 'legacy_maps',
+        spec: Podspec.parse(_objcPodspec),
+        files: const [
+          'Classes/LegacyMapsPlugin.m',
+          'Resources/PrivacyInfo.xcprivacy',
+        ],
+      );
+      expect(draft.resourceCopies, {
+        'Resources/PrivacyInfo.xcprivacy': 'Classes/PrivacyInfo.xcprivacy',
+      });
+      expect(draft.text, contains('.process("PrivacyInfo.xcprivacy")'));
+      expect(draft.notes.join(), isNot(contains('PrivacyInfo.xcprivacy')));
+    });
+
+    test('AC-006-16 a mixed plugin: the Objective-C target declares the '
+        'manifest and the Swift target excludes it', () {
+      final draft = draftPackageSwift(
+        plugin: 'old_swift_plugin',
+        spec: Podspec.parse('''
+Pod::Spec.new do |s|
+  s.name = 'old_swift_plugin'
+  s.source_files = 'Classes/**/*'
+  s.dependency 'Flutter'
+  s.resource_bundles = {'old_swift_plugin_privacy' => ['Resources/PrivacyInfo.xcprivacy']}
+end
+'''),
+        files: const [
+          'Classes/OldSwiftPlugin.m',
+          'Classes/SwiftOldSwiftPlugin.swift',
+          'Resources/PrivacyInfo.xcprivacy',
+        ],
+      );
+      final swiftTarget = draft.text.substring(
+        draft.text.indexOf('name: "old_swift_plugin_swift"'),
+        draft.text.lastIndexOf('name: "old_swift_plugin",'),
+      );
+      expect(swiftTarget, contains('"PrivacyInfo.xcprivacy"'));
+      expect(swiftTarget, isNot(contains('.process(')));
+      expect(
+        draft.text.substring(draft.text.indexOf('resources: [')),
+        contains('.process("PrivacyInfo.xcprivacy")'),
+      );
+    });
+
+    test('AC-006-16 what cannot be copied stays a review note', () {
+      final draft = draftPackageSwift(
+        plugin: 'legacy_maps',
+        spec: Podspec.parse('''
+Pod::Spec.new do |s|
+  s.name = 'legacy_maps'
+  s.source_files = 'Classes/**/*'
+  s.dependency 'Flutter'
+  s.resource_bundles = {'a' => ['Resources/PrivacyInfo.xcprivacy'], 'b' => ['Assets/logo.png']}
+end
+'''),
+        // The podspec names a manifest the plugin doesn't have.
+        files: const ['Classes/LegacyMapsPlugin.m', 'Assets/logo.png'],
+      );
+      expect(draft.resourceCopies, isEmpty);
+      expect(draft.text, isNot(contains('resources: [')));
       expect(draft.notes.join(), contains('Resources/PrivacyInfo.xcprivacy'));
+      expect(draft.notes.join(), contains('Assets/logo.png'));
     });
 
     test('Swift + Objective-C plugin: split targets with excludes', () {
@@ -842,6 +909,57 @@ end
       out.clear();
       await runner().run(['plugin', 'list', '--project', project]);
       expect(out.join(), contains('✔ legacy_maps 0.0.1  (override)'));
+    });
+
+    test('AC-006-16 shim --force gives an older draft the privacy manifest of '
+        'the plugin, byte for byte', () async {
+      // Binary plists are valid manifests, so this must not go through text.
+      const manifest = [0x62, 0x70, 0x6c, 0x69, 0x73, 0x74, 0xff, 0x00];
+      File(
+          p.join(
+            temp.path,
+            'pub',
+            'legacy_maps',
+            'ios',
+            'Resources',
+            'PrivacyInfo.xcprivacy',
+          ),
+        )
+        ..createSync(recursive: true)
+        ..writeAsBytesSync(manifest);
+      final folder = p.join(
+        project,
+        'xcross_overrides',
+        'legacy_maps',
+        '0.0.1',
+      );
+      final package = File(p.join(folder, 'Package.swift'))
+        ..createSync(recursive: true)
+        ..writeAsStringSync('// an older draft, without the manifest');
+
+      await runner().run([
+        'plugin',
+        'shim',
+        'legacy_maps',
+        '--project',
+        project,
+        '--force',
+      ]);
+
+      expect(
+        File(
+          p.join(folder, 'Classes', 'PrivacyInfo.xcprivacy'),
+        ).readAsBytesSync(),
+        manifest,
+      );
+      expect(
+        package.readAsStringSync(),
+        contains('.process("PrivacyInfo.xcprivacy")'),
+      );
+      expect(
+        out.join(),
+        contains('copied from Resources/PrivacyInfo.xcprivacy'),
+      );
     });
 
     test('--global writes under ~/.xcross/overrides', () async {

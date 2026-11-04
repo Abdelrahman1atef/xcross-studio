@@ -309,6 +309,15 @@ final class PluginDraftWriter {
         for (final module in implicitImports(original)) 'import $module',
       ].join(', ');
     }
+    for (final MapEntry(key: from, value: to) in draft.resourceCopies.entries) {
+      final source = fs.file(
+        paths.joinAll([target.platformDirectory, ...from.split('/')]),
+      );
+      final copy = fs.file(paths.joinAll([folder, ...to.split('/')]));
+      copy.parent.createSync(recursive: true);
+      copy.writeAsBytesSync(source.readAsBytesSync());
+      patched[to] = 'copied from $from';
+    }
     return WrittenDraft(shown, patched, draft.notes);
   }
 }

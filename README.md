@@ -590,8 +590,8 @@ xcross plugin shim some_plugin      # writes xcross_overrides/some_plugin/<versi
 ```
 
 The draft maps common pods (Google Maps, Firebase, Pusher, Alamofire, SDWebImage, Kingfisher) to their Swift packages,
-splits mixed Swift/Objective-C sources into two targets, and prints what still needs a human (unknown pods, resources
-outside the source folder).
+splits mixed Swift/Objective-C sources into two targets, copies in a privacy manifest kept outside the source folder, and
+prints what still needs a human (unknown pods, other resources outside the source folder).
 
 The build reports `build.plugin_override_applied` for each override it uses, and `build.plugin_override_invalid` for a
 folder it skips (no `Package.swift`, bad `override.yaml`, other plugin versions). See
