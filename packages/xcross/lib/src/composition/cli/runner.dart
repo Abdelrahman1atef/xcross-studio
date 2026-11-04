@@ -20,6 +20,7 @@ import 'package:studio_ext/shared/icons/icons_command.dart'; // studio: 023
 import 'package:studio_ext/shared/inspect/inspect_command.dart'; // studio:
 import 'package:studio_ext/shared/plugins/plugin_command.dart'; // studio: 006
 import 'package:studio_ext/shared/release/release_check_command.dart'; // studio: 018
+import 'package:studio_ext/shared/splash/splash_command.dart'; // studio: 024
 import 'package:studio_ext/target/iphone/device/app_command.dart'; // studio: 010
 import 'package:studio_ext/target/iphone/device/crashes_command.dart'; // studio: 010
 import 'package:studio_ext/target/iphone/device/device_log_backend.dart'; // studio: 010
@@ -197,6 +198,12 @@ abstract final class XcrossCli {
       ),
       // studio: 023 — `xcross icons check|generate`.
       IconsCommand(
+        fileSystem: runtime.host.fileSystem,
+        currentDirectory: () => runtime.host.paths.context.current,
+        write: runtime.log.output.write,
+      ),
+      // studio: 024 — `xcross splash check|generate`.
+      SplashCommand(
         fileSystem: runtime.host.fileSystem,
         currentDirectory: () => runtime.host.paths.context.current,
         write: runtime.log.output.write,

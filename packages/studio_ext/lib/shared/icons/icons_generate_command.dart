@@ -5,18 +5,20 @@ import 'dart:convert';
 import 'dart:io' show stdin;
 import 'dart:typed_data';
 
-import 'package:archive/archive.dart';
 import 'package:args/command_runner.dart';
 import 'package:cli_kit/shared/errors/errors.dart';
 import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:path/path.dart' as p;
+import 'package:studio_ext/shared/splash/splash_command.dart';
 import 'package:studio_ext/src/shared/assets/png_codec.dart';
+import 'package:studio_ext/src/shared/icons/asset_files_writer.dart';
 import 'package:studio_ext/src/shared/icons/icon_analysis.dart';
 import 'package:studio_ext/src/shared/icons/icon_check.dart';
 import 'package:studio_ext/src/shared/icons/icon_composer.dart';
 import 'package:studio_ext/src/shared/icons/icon_generator.dart';
 import 'package:studio_ext/src/shared/icons/icon_options.dart';
 import 'package:studio_ext/src/shared/icons/icon_targets.dart';
+import 'package:studio_ext/src/shared/splash/splash_design.dart';
 
 /// Options whose value is text, by their command-line name.
 const _textOptions = [
@@ -480,20 +482,21 @@ final class IconsGenerateCommand extends Command<void> {
       }
     }
 
+    final writer = AssetFilesWriter(_fileSystem);
     String? backup;
     final String path;
     if (zip != null) {
       path = p.isAbsolute(zip) ? zip : p.join(_currentDirectory(), zip);
-      _writeZip(path, files);
+      writer.writeZip(path, files);
     } else if (output != null) {
       path = p.isAbsolute(output)
           ? output
           : p.join(_currentDirectory(), output);
-      _writeFiles(path, files);
+      writer.writeFiles(path, files);
     } else {
       path = root;
-      backup = _backUp(root, files.keys);
-      _writeFiles(root, files);
+      backup = writer.backUp(root, files.keys, _now());
+      writer.writeFiles(root, files);
     }
 
     final errors = issues.where((i) => i.severity == 'error').length;
@@ -535,56 +538,6 @@ final class IconsGenerateCommand extends Command<void> {
       );
     }
   }
-
-  void _writeFiles(String base, Map<String, Uint8List> files) {
-    for (final MapEntry(:key, :value) in files.entries) {
-      final file = _fileSystem.file(p.joinAll([base, ...key.split('/')]));
-      file.parent.createSync(recursive: true);
-      file.writeAsBytesSync(value);
-    }
-  }
-
-  void _writeZip(String path, Map<String, Uint8List> files) {
-    final archive = Archive();
-    for (final name in files.keys.toList()..sort()) {
-      archive.add(
-        // A fixed time, so the same design gives the same archive.
-        ArchiveFile.bytes(name, files[name]!)..lastModTime = 0,
-      );
-    }
-    final file = _fileSystem.file(path);
-    file.parent.createSync(recursive: true);
-    file.writeAsBytesSync(ZipEncoder().encodeBytes(archive));
-  }
-
-  /// Copies the files about to be replaced under
-  /// `.xcross/icon-backups/<stamp>/`, keeping their paths.
-  String? _backUp(String root, Iterable<String> paths) {
-    final existing = [
-      for (final path in paths)
-        if (_fileSystem
-            .file(p.joinAll([root, ...path.split('/')]))
-            .existsSync())
-          path,
-    ];
-    if (existing.isEmpty) return null;
-    final backup = p.join(root, '.xcross', 'icon-backups', backupStamp(_now()));
-    for (final path in existing) {
-      final target = _fileSystem.file(p.joinAll([backup, ...path.split('/')]));
-      target.parent.createSync(recursive: true);
-      _fileSystem
-          .file(p.joinAll([root, ...path.split('/')]))
-          .copySync(target.path);
-    }
-    return backup;
-  }
-}
-
-/// `yyyyMMdd-HHmmss`, the backup folder's name.
-String backupStamp(DateTime now) {
-  String two(int v) => v.toString().padLeft(2, '0');
-  return '${now.year}${two(now.month)}${two(now.day)}-'
-      '${two(now.hour)}${two(now.minute)}${two(now.second)}';
 }
 
 /// The project folder: `--project`, else the current one.
@@ -700,6 +653,9 @@ final class IconsPreviewCommand extends Command<void> {
     if (source is! String) {
       throw const IconOptionError('the design has no source image');
     }
+    if (request['kind'] == 'splash') {
+      return _drawSplash(request, read(source), read, output, seq);
+    }
     final options = IconOptions.parse(request, readImage: read);
     final composer = IconComposer(read(source), options.design);
     const size = previewSize;
@@ -713,6 +669,42 @@ final class IconsPreviewCommand extends Command<void> {
     final paths = <String, Object?>{};
     for (final MapEntry(:key, :value) in variants.entries) {
       if (value == null) continue;
+      final path = p.join(output, 'preview-$seq-$key.png');
+      _fileSystem.file(path).writeAsBytesSync(PngEncoder.encode(value));
+      paths[key] = path;
+    }
+    return paths;
+  }
+
+  Map<String, Object?> _drawSplash(
+    Map<String, Object?> request,
+    RgbaImage logo,
+    RgbaImage Function(String) read,
+    String output,
+    String seq,
+  ) {
+    final design = parseSplashDesign(request, logo: logo, readImage: read);
+    final withBranding = design.branding != null;
+    final variants = <String, RgbaImage>{
+      'logo': SplashImages.logoCanvas(
+        design,
+        scale: 2,
+        withBranding: withBranding,
+      ),
+      'android12': SplashImages.android12Icon(design, 576),
+      if (design.darkLogo != null || design.darkBranding != null) ...{
+        'darkLogo': SplashImages.logoCanvas(
+          design,
+          scale: 2,
+          dark: true,
+          withBranding: withBranding,
+        ),
+        'darkAndroid12': SplashImages.android12Icon(design, 576, dark: true),
+      },
+      if (design.branding != null) 'branding': design.branding!,
+    };
+    final paths = <String, Object?>{};
+    for (final MapEntry(:key, :value) in variants.entries) {
       final path = p.join(output, 'preview-$seq-$key.png');
       _fileSystem.file(path).writeAsBytesSync(PngEncoder.encode(value));
       paths[key] = path;
