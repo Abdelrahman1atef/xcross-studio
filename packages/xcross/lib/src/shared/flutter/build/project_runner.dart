@@ -81,16 +81,6 @@ final class ProjectRunner {
       _failed('the app target has no Swift or Objective-C sources');
       return null;
     }
-    if (sources.registersPluginsAtLaunch && !sources.usesImplicitEngine) {
-      warnings.warn(
-        XcrossCodes.buildRunnerLegacyRegistration,
-        subject: _subject,
-        message:
-            'AppDelegate registers plugins with `self` at launch, before any '
-            'Flutter engine exists; xcross registers them on the window '
-            "scene's engine instead.",
-      );
-    }
     if (sources.sceneDelegateHasCode) {
       warnings.warn(
         XcrossCodes.buildRunnerSceneDelegateReplaced,
@@ -573,8 +563,15 @@ NS_ASSUME_NONNULL_END
   ///   so Flutter's `GeneratedPluginRegistrant.m` cannot be compiled);
   /// - `XcrossSceneDelegate` creates the Flutter window, which the template
   ///   gets from `Main.storyboard` (storyboards cannot be compiled without
-  ///   Xcode). Pre-UIScene app delegates get their plugins registered on the
-  ///   scene's engine.
+  ///   Xcode).
+  ///
+  /// A pre-UIScene app delegate registers plugins with `self` during launch.
+  /// Flutter keeps those plugins only for a view controller from a storyboard
+  /// and drops them for this one, so they get an engine of their own here,
+  /// which the window then uses. Registering later on the window's engine is
+  /// too late: plugins miss `UIApplicationDidFinishLaunchingNotification`, and
+  /// `firebase_messaging` connects to push on it. Without that it never gets
+  /// the APNs token, so the app has no FCM token (a client app, 2026-11-04).
   @visibleForTesting
   static String supportSource({required bool hasPlugins}) =>
       '''
@@ -584,9 +581,20 @@ NS_ASSUME_NONNULL_END
 #import "GeneratedPluginRegistrant.h"
 
 ${hasPlugins ? 'extern void ${GeneratedPluginsConstants.registrantSymbol}(NSObject<FlutterPluginRegistry>* registry);\n' : ''}
+// The engine plugins were registered on during launch; the first window uses it.
+static FlutterEngine* xcrossLaunchEngine;
+
 @implementation GeneratedPluginRegistrant
 + (void)registerWithRegistry:(NSObject<FlutterPluginRegistry>*)registry {
-${hasPlugins ? '  ${GeneratedPluginsConstants.registrantSymbol}(registry);\n' : ''}}
+${hasPlugins ? '''
+  if (![registry isKindOfClass:[FlutterEngine class]]) {
+    if (xcrossLaunchEngine != nil) return;
+    xcrossLaunchEngine = [[FlutterEngine alloc] initWithName:@"io.flutter"];
+    [xcrossLaunchEngine run];
+    registry = xcrossLaunchEngine;
+  }
+  ${GeneratedPluginsConstants.registrantSymbol}(registry);
+''' : ''}}
 @end
 
 @interface $sceneDelegateClass : FlutterSceneDelegate
@@ -596,9 +604,12 @@ ${hasPlugins ? '  ${GeneratedPluginsConstants.registrantSymbol}(registry);\n' : 
 - (void)scene:(UIScene*)scene willConnectToSession:(UISceneSession*)session options:(UISceneConnectionOptions*)connectionOptions {
   if (![scene isKindOfClass:[UIWindowScene class]]) return;
   UIWindowScene* windowScene = (UIWindowScene*)scene;
-  FlutterViewController* flutterViewController = [[FlutterViewController alloc] initWithProject:nil nibName:nil bundle:nil];
+  FlutterEngine* launchEngine = xcrossLaunchEngine.viewController == nil ? xcrossLaunchEngine : nil;
+  FlutterViewController* flutterViewController = launchEngine != nil
+      ? [[FlutterViewController alloc] initWithEngine:launchEngine nibName:nil bundle:nil]
+      : [[FlutterViewController alloc] initWithProject:nil nibName:nil bundle:nil];
   id<UIApplicationDelegate> appDelegate = UIApplication.sharedApplication.delegate;
-  if (![appDelegate conformsToProtocol:@protocol(FlutterImplicitEngineDelegate)]) {
+  if (launchEngine == nil && ![appDelegate conformsToProtocol:@protocol(FlutterImplicitEngineDelegate)]) {
     [GeneratedPluginRegistrant registerWithRegistry:flutterViewController.engine];
   }
   UIWindow* window = [[UIWindow alloc] initWithWindowScene:windowScene];

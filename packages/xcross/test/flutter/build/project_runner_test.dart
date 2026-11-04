@@ -233,7 +233,6 @@ void main() {
         p.join(project.path, 'ios', 'Runner'),
       ]);
       expect(sources.usesImplicitEngine, isTrue);
-      expect(sources.registersPluginsAtLaunch, isFalse);
       expect(sources.sceneDelegateHasCode, isFalse);
       expect(sources.hasMainFile, isFalse);
     });
@@ -255,7 +254,7 @@ void main() {
       expect(discover().isEmpty, isTrue);
     });
 
-    test('pre-UIScene registration and scene delegate code are detected', () {
+    test('a pre-UIScene app delegate and scene delegate code are detected', () {
       templateProject(appDelegate: _legacyAppDelegate);
       write(
         'ios/Runner/SceneDelegate.swift',
@@ -265,7 +264,6 @@ void main() {
       );
       final sources = discover();
       expect(sources.usesImplicitEngine, isFalse);
-      expect(sources.registersPluginsAtLaunch, isTrue);
       expect(sources.sceneDelegateHasCode, isTrue);
       expect(
         ProjectRunnerSources.isEmptySceneDelegate(_templateSceneDelegate),
@@ -409,14 +407,13 @@ void main() {
       expect(compiled, isEmpty);
     });
 
-    test('AC-007-6 legacy registration and scene delegate code warn', () async {
+    test('AC-007-6 scene delegate code warns', () async {
       templateProject(appDelegate: _legacyAppDelegate);
       write(
         'ios/Runner/SceneDelegate.swift',
         'class SceneDelegate: FlutterSceneDelegate { var x = 1 }',
       );
       expect(await runner().build(), '/out/Runner');
-      expect(text(), contains('[build.runner_legacy_registration]'));
       expect(text(), contains('[build.runner_scene_delegate_replaced]'));
     });
 
@@ -663,8 +660,40 @@ void main() {
       expect(
         source,
         contains(
-          'if (![appDelegate conformsToProtocol:@protocol(FlutterImplicitEngineDelegate)]) {\n'
+          'if (launchEngine == nil && ![appDelegate conformsToProtocol:@protocol(FlutterImplicitEngineDelegate)]) {\n'
           '    [GeneratedPluginRegistrant registerWithRegistry:flutterViewController.engine];',
+        ),
+      );
+    });
+
+    test('plugins an app delegate registers at launch get a running engine '
+        'there, which the window uses', () {
+      final source = ProjectRunnerBuilder.supportSource(hasPlugins: true);
+      // Registered during launch, a plugin hears that launch finished: that is
+      // when firebase_messaging connects to push and can get its APNs token.
+      expect(
+        source,
+        contains(
+          '  if (![registry isKindOfClass:[FlutterEngine class]]) {\n'
+          '    if (xcrossLaunchEngine != nil) return;\n'
+          '    xcrossLaunchEngine = [[FlutterEngine alloc] initWithName:@"io.flutter"];\n'
+          '    [xcrossLaunchEngine run];\n'
+          '    registry = xcrossLaunchEngine;\n'
+          '  }\n'
+          '  XcrossRegisterGeneratedPlugins(registry);',
+        ),
+      );
+      expect(
+        source,
+        contains(
+          '[[FlutterViewController alloc] initWithEngine:launchEngine nibName:nil bundle:nil]',
+        ),
+      );
+      // A second window cannot share an engine that already has one.
+      expect(
+        source,
+        contains(
+          'xcrossLaunchEngine.viewController == nil ? xcrossLaunchEngine : nil',
         ),
       );
     });

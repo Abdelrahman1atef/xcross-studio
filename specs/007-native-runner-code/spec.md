@@ -37,10 +37,11 @@ registers a channel; calling the channel from Dart returns the native value.
 5. **AC-007-5**: **Given** the sources do not compile (or there are none), **When** I build, **Then** a
    `build.runner_project_failed` warning lists the compiler's first errors with a hint, and the generic runner is used.
    The build never fails because of this feature.
-6. **AC-007-6**: Two warnings, neither of which stops the build:
-   - `build.runner_legacy_registration` when the app delegate registers plugins with `self` at launch (pre-UIScene
-     template). xcross then registers them on the scene's engine instead.
-   - `build.runner_scene_delegate_replaced` when the project's `SceneDelegate` has code, which does not run.
+6. **AC-007-6**: A warning that does not stop the build: `build.runner_scene_delegate_replaced` when the project's
+   `SceneDelegate` has code, which does not run. An app delegate that registers plugins with `self` at launch
+   (pre-UIScene template) gets them registered right then, on an engine xcross starts and the window uses, so it needs
+   no warning. `build.runner_legacy_registration` was removed on 2026-11-04: registering on the scene's engine came
+   too late for plugins that act when launch finishes, and `firebase_messaging` never got its APNs token.
 7. **AC-007-7**: On the iPhone X (iOS 16.7.16), an app whose AppDelegate registers a method channel answers it
    (`device-check.md`).
 

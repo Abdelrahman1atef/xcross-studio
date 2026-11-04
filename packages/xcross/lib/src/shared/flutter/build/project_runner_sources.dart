@@ -44,7 +44,6 @@ final class ProjectRunnerSources {
     required this.headerDirectories,
     required this.moduleName,
     required this.usesImplicitEngine,
-    required this.registersPluginsAtLaunch,
     required this.sceneDelegateHasCode,
     this.bridgingHeader,
     this.hasCustomCode = true, // studio: 016
@@ -131,12 +130,6 @@ final class ProjectRunnerSources {
       usesImplicitEngine: anySource(
         RegExp('didInitializeImplicitFlutterEngine'),
       ),
-      registersPluginsAtLaunch: anySource(
-        RegExp(
-          r'GeneratedPluginRegistrant\.register\(\s*with:\s*self\s*\)|'
-          r'\[\s*GeneratedPluginRegistrant\s+registerWithRegistry:\s*self\s*\]',
-        ),
-      ),
       sceneDelegateHasCode: texts.entries.any(
         (entry) =>
             paths.basenameWithoutExtension(entry.key) == 'SceneDelegate' &&
@@ -169,10 +162,6 @@ final class ProjectRunnerSources {
   /// The app delegate registers plugins in `didInitializeImplicitFlutterEngine`
   /// (Flutter's UIScene template).
   final bool usesImplicitEngine;
-
-  /// The app delegate registers plugins with `self` at launch (pre-UIScene
-  /// template).
-  final bool registersPluginsAtLaunch;
 
   /// The project's `SceneDelegate` has a non-empty body; xcross replaces it.
   final bool sceneDelegateHasCode;

@@ -28,7 +28,7 @@ PowerShell: `$env:XCROSS_RUNNER = 'project'` (unset with `Remove-Item Env:XCROSS
 | 3 | AC-007-7 | open the app from its icon | Flutter UI appears (window from `XcrossSceneDelegate`); the channel shows "native ok" | ⏳ |
 | 4 | AC-007-4 | `xcross app info <bundle-id>` and `xcross logs --app Runner --duration 10` while opening | plugins work (e.g. shared_preferences); no crash on launch | ⏳ |
 | 5 | AC-007-5 | add a syntax error to AppDelegate.swift and build again | `warning: [build.runner_project_failed] …` with the swiftc error line; the build succeeds with the generic runner | ⏳ |
-| 6 | AC-007-6 | an app with the old `GeneratedPluginRegistrant.register(with: self)` AppDelegate | `[build.runner_legacy_registration]`; plugins still work | ⏳ |
+| 6 | AC-007-6 | an app with the old `GeneratedPluginRegistrant.register(with: self)` AppDelegate | plugins work, and `firebase_messaging` gets an FCM token (`fcmToken` in the login request) | ⏳ |
 | — | Linux | same rows on Ubuntu 24.04 | | ⏳ deferred |
 
 Build-level evidence (Windows host, 2026-11-01, Swift 6.4.2, LLVM 23.1.4, Darwin SDK from Xcode 27.1, Flutter template app, `XCROSS_RUNNER=project xcross flutter build --debug --ipa`): `Runner: compiling the project sources (2 Swift, 0 Objective-C)`, no `build.runner_project_failed`, IPA written, so swiftc and the link accept the flags against the real SDK. Device rows remain open.

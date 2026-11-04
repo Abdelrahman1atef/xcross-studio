@@ -147,11 +147,6 @@ abstract final class XcrossCodes {
         'generic runner on purpose; until then AppDelegate code does not run '
         '(a Google Maps key it passes is still applied).',
   );
-  static const buildRunnerLegacyRegistration = DiagnosticCode(
-    'build.runner_legacy_registration',
-    'Register plugins in didInitializeImplicitFlutterEngine (Flutter UIScene '
-        'migration, as in the current app template).',
-  );
   static const buildRunnerSceneDelegateReplaced = DiagnosticCode(
     'build.runner_scene_delegate_replaced',
     'Move that code to AppDelegate (or a plugin); without Xcode the window '
@@ -239,7 +234,6 @@ abstract final class XcrossCodes {
     buildPluginOverrideApplied, // studio: 006
     buildPluginOverrideInvalid,
     buildRunnerProjectFailed, // studio: 007
-    buildRunnerLegacyRegistration,
     buildRunnerSceneDelegateReplaced,
     buildGenSnapshotUnavailable, // studio: 014
     toolchainFlutterSdkInstallFailed,
