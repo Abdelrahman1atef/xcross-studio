@@ -532,6 +532,35 @@ void main() {
       expect(args, isNot(contains('-import-objc-header')));
     });
 
+    // doctory (2026-11-04): with many plugins the clang command passed
+    // Windows' limit: "The filename or extension is too long", so the app's
+    // AppDelegate was left out. Long commands go in a response file.
+    group('long commands use a response file', () {
+      test('only past the limit', () {
+        expect(ProjectRunnerBuilder.needsResponseFile(['-c', 'a.m']), isFalse);
+        expect(
+          ProjectRunnerBuilder.needsResponseFile(
+            List.filled(2000, 'C:/some/long/plugin/search/path/framework'),
+          ),
+          isTrue,
+        );
+      });
+
+      test('quoted as each tool reads it, one argument per line', () {
+        const arguments = [r'-IC:\a b\c', '-c', r'C:\d\e.m'];
+        // clang reads GNU quoting, where a backslash escapes.
+        expect(
+          ProjectRunnerBuilder.responseFileText('clang', arguments),
+          '"-IC:\\\\a b\\\\c"\n"-c"\n"C:\\\\d\\\\e.m"\n',
+        );
+        // swiftc reads Windows quoting, where it does not.
+        expect(
+          ProjectRunnerBuilder.responseFileText('swiftc', arguments),
+          '"-IC:\\a b\\c"\n"-c"\n"C:\\d\\e.m"\n',
+        );
+      });
+    });
+
     test('clang compiles Objective-C with the Runner header folders', () {
       final args = ProjectRunnerBuilder.objcCompileArguments(
         sourcePath: '/ios/Runner/Helper.m',

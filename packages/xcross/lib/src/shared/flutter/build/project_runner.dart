@@ -13,6 +13,7 @@ import 'package:xcross/src/shared/flutter/build/swiftpm_module_map.dart'; // stu
 import 'package:xcross/src/shared/flutter/constants.dart';
 import 'package:xcross/src/shared/flutter/errors.dart';
 import 'package:xcross/src/shared/flutter/flutter_build_runtime.dart';
+import 'package:xcross/src/shared/flutter/swiftpm/response_arguments.dart';
 import 'package:xcross/src/shared/flutter/swiftpm/shared_search_paths.dart';
 
 /// Builds the Runner from [ProjectRunnerSources] and returns its path.
@@ -246,6 +247,7 @@ final class ProjectRunnerBuilder<T extends PlatformHostInterface> {
           pluginSearchArguments: clangSearchArguments,
         ),
         label: 'clang',
+        workDirectory: objectDir,
       );
       objects.add(object);
     }
@@ -284,6 +286,7 @@ final class ProjectRunnerBuilder<T extends PlatformHostInterface> {
           nativeAssetFrameworks: nativeAssetFrameworks,
         ),
         label: 'swiftc',
+        workDirectory: objectDir,
       );
     } else {
       if (!sources.hasMainFile) {
@@ -305,6 +308,7 @@ final class ProjectRunnerBuilder<T extends PlatformHostInterface> {
           nativeAssetFrameworks: nativeAssetFrameworks,
         ),
         label: 'ld64.lld',
+        workDirectory: objectDir,
       );
     }
 
@@ -315,13 +319,45 @@ final class ProjectRunnerBuilder<T extends PlatformHostInterface> {
     return outputPath;
   }
 
+  /// Windows refuses a command line of 32,767 characters or more; an app with
+  /// many plugins passes that in search paths alone (doctory, 2026-11-04).
+  @visibleForTesting
+  static bool needsResponseFile(List<String> arguments) =>
+      arguments.fold<int>(0, (sum, argument) => sum + argument.length + 3) >
+      24000;
+
+  /// [arguments] for a `@file` of [tool]: swiftc reads Windows quoting, clang
+  /// and the linker GNU quoting.
+  @visibleForTesting
+  static String responseFileText(String tool, List<String> arguments) {
+    final quote = tool == 'swiftc'
+        ? SwiftPmResponseArguments.quoteWindowsArgument
+        : SwiftPmResponseArguments.quoteGnuArgument;
+    return '${arguments.map(quote).join('\n')}\n';
+  }
+
   /// Captured (not streamed), so a failure's message carries the compiler
   /// errors that [ProjectRunner] puts in its warning.
   Future<void> _run(
     String executable,
     List<String> arguments, {
     required String label,
-  }) => runtime.runner.runChecked(executable, arguments, label: label);
+    required String workDirectory,
+  }) async {
+    if (!needsResponseFile(arguments)) {
+      await runtime.runner.runChecked(executable, arguments, label: label);
+      return;
+    }
+    final file = runtime.host.fileSystem.file(
+      p.join(workDirectory, '$label-${_responseFiles++}.rsp'),
+    );
+    await file.writeAsString(responseFileText(label, arguments));
+    await runtime.runner.runChecked(executable, [
+      '@${p.absolute(file.path)}',
+    ], label: label);
+  }
+
+  int _responseFiles = 0;
 
   Future<String> _swiftc() async {
     try {
