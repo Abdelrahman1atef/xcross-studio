@@ -171,6 +171,7 @@ final class GeneratedPluginsPackage<T extends PlatformHostInterface> {
     bool packageLocalArtifactJunctionCapability = false,
     ArtifactJunctionCapabilityResolver? artifactJunctionCapabilityResolver,
     bool distribution = false,
+    String? flutterEngineRevision,
   }) => runtime.runner.log.logStep(
     'Building Flutter plugins (Swift Package Manager)',
     () async {
@@ -204,6 +205,8 @@ final class GeneratedPluginsPackage<T extends PlatformHostInterface> {
         verbose: verbose,
         toolchainIdentity: toolchainIdentity,
         sdkIdentity: sdkIdentity,
+        flutterEngineRevision: flutterEngineRevision,
+        distribution: distribution,
       );
       final fingerprintFile = runtime.artifactFileSystem.file(
         p.join(outputDir, '.xcross-build-fingerprint'),

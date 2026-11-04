@@ -213,7 +213,16 @@ flutter:
             ..writeAsStringSync('let value = 1\n');
       final framework = Directory(p.join(tmp.path, 'Flutter.xcframework'))
         ..createSync();
-      File(p.join(framework.path, 'Info.plist')).writeAsStringSync('<plist/>');
+      final frameworkFile = File(
+        p.join(
+          framework.path,
+          'ios-arm64',
+          'Flutter.framework',
+          'Headers',
+          'Flutter.h',
+        ),
+      )..createSync(recursive: true);
+      frameworkFile.writeAsStringSync('// one\n');
 
       Future<String> fingerprint() =>
           _swiftPmRuntime.discovery.incrementalBuildFingerprint(
@@ -230,16 +239,15 @@ flutter:
 
       final first = await fingerprint();
       expect(await fingerprint(), first);
-      final frameworkFile = File(p.join(framework.path, 'Info.plist'));
       final modified = frameworkFile.lastModifiedSync();
       frameworkFile.setLastModifiedSync(
         modified.subtract(const Duration(days: 1)),
       );
       expect(await fingerprint(), first);
-      frameworkFile.writeAsStringSync('<PLIST/>');
+      frameworkFile.writeAsStringSync('// two\n');
       frameworkFile.setLastModifiedSync(modified);
       expect(await fingerprint(), isNot(first));
-      frameworkFile.writeAsStringSync('<plist/>');
+      frameworkFile.writeAsStringSync('// one\n');
       source.writeAsStringSync('let value = 2\n');
       expect(await fingerprint(), isNot(first));
     });
@@ -249,23 +257,69 @@ flutter:
       final framework = Directory(p.join(tmp.path, 'Flutter.xcframework'))
         ..createSync();
 
-      Future<String> fingerprint({required bool verbose}) =>
-          _swiftPmRuntime.discovery.incrementalBuildFingerprint(
-            plugins: [plugin],
-            flutterXcframework: framework.path,
-            deploymentTarget: const IosDeploymentTarget(
-              '15.0',
-              platform: IPhoneBuildPlatform(),
-            ),
-            verbose: verbose,
-            toolchainIdentity: 'swift',
-            sdkIdentity: 'sdk',
-          );
-
-      expect(
-        await fingerprint(verbose: true),
-        isNot(await fingerprint(verbose: false)),
+      Future<String> fingerprint({
+        bool verbose = false,
+        bool distribution = false,
+        String? flutterEngineRevision,
+      }) => _swiftPmRuntime.discovery.incrementalBuildFingerprint(
+        plugins: [plugin],
+        flutterXcframework: framework.path,
+        deploymentTarget: const IosDeploymentTarget(
+          '15.0',
+          platform: IPhoneBuildPlatform(),
+        ),
+        verbose: verbose,
+        toolchainIdentity: 'swift',
+        sdkIdentity: 'sdk',
+        distribution: distribution,
+        flutterEngineRevision: flutterEngineRevision,
       );
+
+      final plain = await fingerprint();
+      expect(await fingerprint(verbose: true), isNot(plain));
+      // studio: 025 — flags compile differently, so a change in them must
+      // not reuse what the old flags compiled.
+      expect(await fingerprint(distribution: true), isNot(plain));
+      expect(await fingerprint(flutterEngineRevision: 'abc'), isNot(plain));
+      expect(
+        await fingerprint(flutterEngineRevision: 'abc'),
+        isNot(await fingerprint(flutterEngineRevision: 'def')),
+      );
+    });
+
+    test('a switch between debug and release keeps it', () async {
+      final plugin = makePlugin('plugin');
+      Future<String> engine(String binary) {
+        final framework = Directory(
+          p.join(tmp.path, binary, 'Flutter.xcframework'),
+        );
+        final slice = p.join(framework.path, 'ios-arm64', 'Flutter.framework');
+        File(p.join(slice, 'Headers', 'Flutter.h'))
+          ..createSync(recursive: true)
+          ..writeAsStringSync('// the same in every mode\n');
+        File(p.join(slice, 'Modules', 'module.modulemap'))
+          ..createSync(recursive: true)
+          ..writeAsStringSync('framework module Flutter {}\n');
+        File(p.join(slice, 'Flutter')).writeAsStringSync(binary);
+        File(p.join(slice, 'Info.plist')).writeAsStringSync(binary);
+        File(p.join(framework.path, '_CodeSignature', 'CodeResources'))
+          ..createSync(recursive: true)
+          ..writeAsStringSync(binary);
+        return _swiftPmRuntime.discovery.incrementalBuildFingerprint(
+          plugins: [plugin],
+          flutterXcframework: framework.path,
+          deploymentTarget: const IosDeploymentTarget(
+            '15.0',
+            platform: IPhoneBuildPlatform(),
+          ),
+          verbose: false,
+          toolchainIdentity: 'swift',
+          sdkIdentity: 'sdk',
+          flutterEngineRevision: 'abc',
+        );
+      }
+
+      expect(await engine('debug'), await engine('release'));
     });
   });
 

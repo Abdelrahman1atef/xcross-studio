@@ -1,5 +1,11 @@
 ## Unreleased (XCross Studio)
 
+- Plugin builds: switching between debug and release threw away every compiled plugin and compiled them all again, because
+  the build's cache key included the Flutter engine's binary, which differs per mode. The key now holds what plugins compile
+  against (the engine's headers and modules, and its revision), and each build still embeds the engine of its own mode. The
+  App Store compiler flags are in the key too, so a change in them no longer reuses what the old flags compiled. The key
+  changed, so the next build in each project compiles its plugins once.
+
 - App Store uploads: App Store Connect rejected builds with "91111 Missing app icon", because `Assets.car` left out the
   1024 px App Store icon to save about 4 MB. It is now in the catalog, from the set's App Store icon or from a single-size
   set's only image. An icon of the wrong size is left out with `build.asset_invalid`.

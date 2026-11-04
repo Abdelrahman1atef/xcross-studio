@@ -268,9 +268,8 @@ final class FlutterArtifactCompiler<T extends PlatformHostInterface>
     }
     if (spmPlugins.isEmpty) return null;
 
-    final xcframework = runtime
-        .engineCache(flutterRoot, mode: options.buildMode)
-        .flutterXcframework;
+    final engine = runtime.engineCache(flutterRoot, mode: options.buildMode);
+    final xcframework = engine.flutterXcframework;
     final capabilities =
         await artifactJunctionCapabilityResolver?.call() ??
         (
@@ -288,6 +287,7 @@ final class FlutterArtifactCompiler<T extends PlatformHostInterface>
       swiftPmArtifactJunctionCapability: capabilities.swiftPmArtifact,
       packageLocalArtifactJunctionCapability: capabilities.packageLocalArtifact,
       distribution: distribution,
+      flutterEngineRevision: engine.engineHash,
     );
     return builtPlugins;
   }
