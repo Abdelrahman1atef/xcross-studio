@@ -1,5 +1,6 @@
 // studio: 006 — draft a Package.swift override from a plugin's podspec.
 import 'package:meta/meta.dart';
+import 'package:path/path.dart' as p;
 import 'package:studio_ext/src/shared/plugins/podspec.dart';
 
 /// A pod with a known Swift package.
@@ -304,6 +305,35 @@ int _firstCodeOffset(String source) {
     offset += line.length + 1;
   }
   return source.length;
+}
+
+/// [source], the header [file], with bare-name imports of headers in another
+/// folder given their relative path, or null when nothing changed. CocoaPods
+/// flattens a pod's headers, so `#import "X.h"` finds X.h in any folder; under
+/// SwiftPM a module built for another target only finds what the path says.
+/// [file] and [headers] are relative to one folder, with `/` separators. A
+/// name that is unknown or in several folders is left alone.
+@internal
+String? patchHeaderPaths(
+  String source, {
+  required String file,
+  required List<String> headers,
+}) {
+  final folder = p.posix.dirname(file);
+  final patched = source.replaceAllMapped(
+    RegExp(
+      r'^([ \t]*#[ \t]*(?:import|include)[ \t]*)"([^"/\\]+\.h)"',
+      multiLine: true,
+    ),
+    (match) {
+      final name = match[2]!;
+      if (headers.contains(p.posix.join(folder, name))) return match[0]!;
+      final found = headers.where((h) => p.posix.basename(h) == name).toList();
+      if (found.length != 1) return match[0]!;
+      return '${match[1]}"${p.posix.relative(found.single, from: folder)}"';
+    },
+  );
+  return patched == source ? null : patched;
 }
 
 /// [source] with `#import <Module/…>` replaced by `@import Module;` for each

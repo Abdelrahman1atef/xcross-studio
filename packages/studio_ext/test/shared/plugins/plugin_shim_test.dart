@@ -623,6 +623,49 @@ end
       );
     });
 
+    // permission_handler_apple (doctory, 2026-11-04): "'AudioVideoPermission
+    // Strategy.h' file not found" when another module imports the plugin.
+    // CocoaPods flattens a pod's headers, so a bare name finds any of them.
+    test('AC-006-15 headers importing a header in another folder get its '
+        'relative path', () {
+      const headers = [
+        'Classes/Manager.h',
+        'Classes/Base.h',
+        'Classes/strategies/Strategy.h',
+        'Classes/strategies/Near.h',
+        'Classes/one/Same.h',
+        'Classes/two/Same.h',
+      ];
+      expect(
+        patchHeaderPaths(
+          '#import "Strategy.h"\n#import "Base.h"\n'
+          '  #include "Near.h" // near\n#import <Flutter/Flutter.h>\n',
+          file: 'Classes/Manager.h',
+          headers: headers,
+        ),
+        '#import "strategies/Strategy.h"\n#import "Base.h"\n'
+        '  #include "strategies/Near.h" // near\n#import <Flutter/Flutter.h>\n',
+      );
+      expect(
+        patchHeaderPaths(
+          '#import "Base.h"\n#import "Near.h"\n',
+          file: 'Classes/strategies/Strategy.h',
+          headers: headers,
+        ),
+        '#import "../Base.h"\n#import "Near.h"\n',
+      );
+      // Unknown, ambiguous, already a path, or next to the file: unchanged.
+      expect(
+        patchHeaderPaths(
+          '#import "Other.h"\n#import "Same.h"\n#import "strategies/Near.h"\n'
+          '#import "Base.h"\n',
+          file: 'Classes/Manager.h',
+          headers: headers,
+        ),
+        isNull,
+      );
+    });
+
     test('implicit Objective-C imports: what counts as imported and used', () {
       // Flutter's header brings UIKit; a comment is not a use.
       for (final source in [

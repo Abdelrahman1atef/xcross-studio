@@ -346,6 +346,20 @@ final class PluginShimCommand extends Command<void> {
             reasons.add('@import ${name}_swift;');
           }
         }
+        if (extension == '.h') {
+          final located = patchHeaderPaths(
+            text,
+            file: relative,
+            headers: [
+              for (final other in draft.objcSources)
+                if (other.endsWith('.h')) other,
+            ],
+          );
+          if (located != null) {
+            reasons.add('header paths');
+            text = located;
+          }
+        }
         final flat = patchFlatHeaderImports(text, draft.flatHeaderModules);
         if (flat != null) {
           reasons.add(
