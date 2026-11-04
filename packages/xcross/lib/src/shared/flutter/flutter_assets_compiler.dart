@@ -7,6 +7,8 @@ import 'package:meta/meta.dart';
 import 'package:package_config/package_config.dart';
 import 'package:path/path.dart' as p;
 import 'package:standard_message_codec/standard_message_codec.dart';
+import 'package:xcross/src/shared/diagnostics/xcross_diagnostics.dart';
+import 'package:xcross/src/shared/flutter/build/flutter_asset_catalogs.dart';
 import 'package:xcross/src/shared/flutter/build/icon_tree_shaker.dart';
 import 'package:xcross/src/shared/flutter/build/impeller_shader_compiler.dart';
 import 'package:xcross/src/shared/flutter/errors.dart';
@@ -22,6 +24,7 @@ final class FlutterAssetsCompiler {
     required this.projectRoot,
     required this.flutterRoot,
     this.flavor,
+    this.warn,
   }) : packageConfigs = PackageConfigResolver(
          fileSystem: fileSystem,
          paths: paths,
@@ -34,6 +37,9 @@ final class FlutterAssetsCompiler {
 
   /// `--flavor`, which selects flavored `shaders:` entries.
   final String? flavor;
+
+  /// studio: 026 — reports what is left out of the bundle.
+  final AssetWarning? warn;
 
   /// Fragment programs Flutter bundles for every app, as asset key to the
   /// framework source, mirroring flutter_tools' `_getFrameworkShaders`.
@@ -129,7 +135,8 @@ final class FlutterAssetsCompiler {
     for (final MapEntry(:key, :value) in sources.entries) {
       await compiler.compile(
         source: value,
-        output: paths.joinAll([assetsDir, ...p.url.split(key)]),
+        // studio: 026 — the name the engine is asked for.
+        output: paths.joinAll([assetsDir, ...p.url.split(fileNameOf(key))]),
       );
     }
   }
@@ -228,8 +235,19 @@ final class FlutterAssetsCompiler {
         .copy(paths.join(assetsDir, 'isolate_snapshot_data'));
   }
 
-  /// Copy `flutter: assets:` entries into `flutter_assets/`, preserving their
-  /// pubspec-relative paths, and build the `AssetManifest` key → variants map.
+  /// studio: 026 — the name asset [key] has in `flutter_assets/`.
+  ///
+  /// Flutter's bundle asks the engine for `Uri(path: Uri.encodeFull(key)).path`
+  /// and the engine opens that name as it is, so `a b.json` has to be on disk
+  /// as `a%20b.json` or it cannot load (flutter_tools writes it the same way).
+  /// `AssetManifest` keeps the plain [key].
+  @visibleForTesting
+  static String fileNameOf(String key) => Uri(path: Uri.encodeFull(key)).path;
+
+  /// Copy the `flutter: assets:` entries of the app and of its dependencies
+  /// into `flutter_assets/`, and build the `AssetManifest` key → variants map.
+  /// An app's assets keep their pubspec-relative paths; a dependency's go under
+  /// `packages/<name>/` (studio: 026, as flutter_tools does).
   ///
   /// ponytail: no density-variant grouping (2x/3x sibling dirs) — every asset
   /// resolves to exactly its declared path. Add `_AssetDirectoryCache`-style
@@ -239,31 +257,68 @@ final class FlutterAssetsCompiler {
     PubspecInfo pubspec,
   ) async {
     final manifest = <String, List<String>>{};
-    for (final entry in pubspec.assets) {
+    await _copyDeclaredAssets(
+      assetsDir,
+      pubspec.assets,
+      projectRoot,
+      null,
+      manifest,
+    );
+    for (final (:name, :root, :info) in await _dependencyPubspecs(pubspec)) {
+      await _copyDeclaredAssets(assetsDir, info.assets, root, name, manifest);
+    }
+    return manifest;
+  }
+
+  /// Copies [entries], declared by [package] (`null` for the app) rooted at
+  /// [root]. An app's missing asset stops the build. A dependency's only warns:
+  /// the list holds packages only dev dependencies need, which must not fail a
+  /// build the app does not need them for.
+  Future<void> _copyDeclaredAssets(
+    String assetsDir,
+    List<String> entries,
+    String root,
+    String? package,
+    Map<String, List<String>> manifest,
+  ) async {
+    Future<void> copy(String source, String key) async {
+      await _copyAssetFile(source, assetsDir, fileNameOf(key));
+      manifest[key] = [key];
+    }
+
+    void missing(String entry) => warn?.call(
+      XcrossCodes.buildAssetInvalid,
+      subject: '$package/$entry',
+      message:
+          '$package lists the asset $entry, which does not exist, so it is not '
+          'in the app.',
+    );
+
+    for (final entry in entries) {
+      final (:key, :source) = await _resolveEntry(entry, root, package);
       if (entry.endsWith('/')) {
-        final dir = fileSystem.directory(paths.join(projectRoot, entry));
+        final dir = fileSystem.directory(source);
         if (!dir.existsSync()) {
-          throw FlutterBuildError(
-            'pubspec.yaml: asset directory not found: $entry',
-          );
+          if (package == null) {
+            throw FlutterBuildError(
+              'pubspec.yaml: asset directory not found: $entry',
+            );
+          }
+          missing(entry);
+          continue;
         }
         // Non-recursive, matching flutter_tools' folder-entry semantics.
         for (final file in dir.listSync().whereType<File>()) {
-          final key = '$entry${paths.basename(file.path)}';
-          await _copyAssetFile(file.path, assetsDir, key);
-          manifest[key] = [key];
+          await copy(file.path, '$key${paths.basename(file.path)}');
         }
+      } else if (fileSystem.file(source).existsSync()) {
+        await copy(source, key);
+      } else if (package == null) {
+        throw FlutterBuildError('pubspec.yaml: asset not found: $entry');
       } else {
-        final src = paths.join(projectRoot, entry);
-        final srcExists = fileSystem.file(src).existsSync();
-        if (!srcExists) {
-          throw FlutterBuildError('pubspec.yaml: asset not found: $entry');
-        }
-        await _copyAssetFile(src, assetsDir, entry);
-        manifest[entry] = [entry];
+        missing(entry);
       }
     }
-    return manifest;
   }
 
   /// Copy `MaterialIcons-Regular.otf` (if material design is used) and any

@@ -116,6 +116,7 @@ final class FlutterArtifactCompiler<T extends PlatformHostInterface>
         projectRoot: projectRoot,
         flutterRoot: flutterRoot,
         flavor: options.flavor,
+        warn: runtime.warnings.warn, // studio: 026
       ),
       kernel: FlutterKernelCompiler(
         runtime: runtime,
