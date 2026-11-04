@@ -72,7 +72,11 @@ final class SwiftPmPlanReader {
             throw const FormatException('Invalid generated header path');
           }
           if (!p.isWithin(buildDir, header)) {
-            if (p.isWithin(scratch, header)) continue;
+            // `<triple>/<configuration>/…`, not any file under the scratch.
+            if (p.isWithin(scratch, header) &&
+                p.split(p.relative(header, from: scratch)).length > 2) {
+              continue;
+            }
             throw const FormatException('Invalid generated header path');
           }
           includes.add(p.dirname(header));
