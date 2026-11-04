@@ -168,12 +168,17 @@ final class PackageSwiftDraft {
     this.text,
     this.notes, {
     this.objcSources = const [],
+    this.swiftSources = const [],
     this.splitsSwift = false,
     this.moduleRenames = const {},
   });
 
   final String text;
   final List<String> notes;
+
+  /// Swift sources (relative to the podspec folder) that may need patched
+  /// copies: see [patchImplicitImports].
+  final List<String> swiftSources;
 
   /// Objective-C sources and headers (relative to the podspec folder) that
   /// may need patched copies: see [splitsSwift] and [moduleRenames].
@@ -187,6 +192,72 @@ final class PackageSwiftDraft {
   /// `@import` renames for the Swift packages' Objective-C modules
   /// (see [patchModuleImports]).
   final Map<String, String> moduleRenames;
+}
+
+/// The modules a Swift file relied on CocoaPods for, or empty when it needs
+/// none: a pod's Swift files see its umbrella header (Foundation, UIKit and
+/// the plugin's own headers, so Flutter) without importing them. SwiftPM has
+/// no such thing, so each file must import what it uses.
+@internal
+List<String> implicitImports(String source) {
+  bool imported(String module) => RegExp(
+    '^[ \\t]*(?:@\\w+[ \\t]+)*import[ \\t]+(?:\\w+[ \\t]+)?$module\\b',
+    multiLine: true,
+  ).hasMatch(source);
+  final code = _withoutComments(source);
+  if (code.trim().isEmpty) return const [];
+  final flutter =
+      !imported('Flutter') && RegExp(r'\bFlutter[A-Z]\w*').hasMatch(code);
+  final uiKit =
+      !imported('UIKit') && RegExp(r'\bUI[A-Z][a-z]\w*').hasMatch(code);
+  return [
+    if (flutter) 'Flutter',
+    if (uiKit) 'UIKit',
+    // Flutter and UIKit bring Foundation.
+    if (!flutter &&
+        !uiKit &&
+        !imported('Foundation') &&
+        !imported('UIKit') &&
+        !imported('Flutter'))
+      'Foundation',
+  ];
+}
+
+/// [source] with [implicitImports] added before its first line of code, or
+/// null when it needs none.
+@internal
+String? patchImplicitImports(String source) {
+  final missing = implicitImports(source);
+  if (missing.isEmpty) return null;
+  final eol = source.contains('\r\n') ? '\r\n' : '\n';
+  final at = _firstCodeOffset(source);
+  return source.replaceRange(
+    at,
+    at,
+    [for (final module in missing) 'import $module$eol'].join(),
+  );
+}
+
+String _withoutComments(String source) => source
+    .replaceAll(RegExp(r'/\*[\s\S]*?\*/'), '')
+    .replaceAll(RegExp(r'//[^\n]*'), '');
+
+/// Where the first line that is neither blank nor a comment starts.
+int _firstCodeOffset(String source) {
+  var offset = 0;
+  var inBlock = false;
+  for (final line in source.split('\n')) {
+    final trimmed = line.trim();
+    if (inBlock) {
+      if (trimmed.contains('*/')) inBlock = false;
+    } else if (trimmed.startsWith('/*')) {
+      inBlock = !trimmed.contains('*/');
+    } else if (trimmed.isNotEmpty && !trimmed.startsWith('//')) {
+      return offset;
+    }
+    offset += line.length + 1;
+  }
+  return source.length;
 }
 
 /// [source] with `@import <from>;` replaced by `@import <to>;` for every
@@ -429,6 +500,10 @@ PackageSwiftDraft draftPackageSwift({
       if (mixed || moduleRenames.isNotEmpty)
         for (final file in [...native, ...headers])
           if (targetPath == '.') file else '$targetPath/$file',
+    ],
+    swiftSources: [
+      for (final file in swift)
+        if (targetPath == '.') file else '$targetPath/$file',
     ],
     splitsSwift: mixed,
     moduleRenames: moduleRenames,

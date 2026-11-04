@@ -455,6 +455,88 @@ end
       expect(out.join(), contains('✔ Patched Classes/MixedPlugin.m'));
     });
 
+    // audio_waveforms and video_compress (doctory, 2026-11-04): a pod's Swift
+    // files see its umbrella header (Foundation, UIKit, Flutter) without
+    // importing it; under SwiftPM "cannot find type 'FlutterResult' in scope".
+    test('AC-006-13 Swift files get the imports CocoaPods gave them', () async {
+      final root = p.join(temp.path, 'pub', 'pod_swift');
+      File(p.join(root, 'pubspec.yaml'))
+        ..createSync(recursive: true)
+        ..writeAsStringSync('name: pod_swift\nversion: 1.0.0\n');
+      void ios(String path, String text) => File(p.join(root, 'ios', path))
+        ..createSync(recursive: true)
+        ..writeAsStringSync(text);
+      ios(
+        'pod_swift.podspec',
+        "Pod::Spec.new do |s|\n  s.source_files = 'Classes/**/*'\n"
+            "  s.dependency 'Flutter'\nend\n",
+      );
+      ios(
+        'Classes/Plugin.swift',
+        'import Flutter\nclass P: FlutterPlugin {}\n',
+      );
+      ios(
+        'Classes/Player.swift',
+        '// Copyright\nimport AVKit\n\nvar r: FlutterResult?\n',
+      );
+      ios('Classes/Utility.swift', 'class U { let u: URL? = nil }\n');
+      File(p.join(project, '.flutter-plugins-dependencies')).writeAsStringSync(
+        jsonEncode({
+          'plugins': {
+            'ios': [
+              {'name': 'pod_swift', 'path': root},
+            ],
+          },
+        }),
+      );
+      await runner().run(['plugin', 'shim', 'pod_swift', '--project', project]);
+      final folder = p.join(
+        project,
+        'xcross_overrides',
+        'pod_swift',
+        '1.0.0',
+        'Classes',
+      );
+      expect(
+        File(p.join(folder, 'Player.swift')).readAsStringSync(),
+        '// Copyright\nimport Flutter\nimport AVKit\n\nvar r: FlutterResult?\n',
+      );
+      expect(
+        File(p.join(folder, 'Utility.swift')).readAsStringSync(),
+        'import Foundation\nclass U { let u: URL? = nil }\n',
+      );
+      expect(File(p.join(folder, 'Plugin.swift')).existsSync(), isFalse);
+      expect(
+        out.join(),
+        contains('✔ Patched Classes/Player.swift (import Flutter)'),
+      );
+    });
+
+    test('implicit imports: what counts as imported and used', () {
+      // UIKit and Flutter bring Foundation; only what is used is added.
+      expect(patchImplicitImports('import UIKit\nlet u: URL? = nil\n'), isNull);
+      expect(patchImplicitImports('import Foundation\nlet x = 1\n'), isNull);
+      expect(
+        patchImplicitImports('import Foundation\nlet v: UIView? = nil\n'),
+        'import UIKit\nimport Foundation\nlet v: UIView? = nil\n',
+      );
+      // No code, nothing to add; an import inside #if counts.
+      expect(patchImplicitImports('// nothing here\n'), isNull);
+      expect(
+        patchImplicitImports(
+          '#if os(iOS)\n  import Flutter\n#endif\nvar r: FlutterResult?\n',
+        ),
+        isNull,
+      );
+      // After a block comment, and with CRLF files keeping their line ends.
+      expect(
+        patchImplicitImports(
+          '/* License\n text */\r\nvar r: FlutterResult?\r\n',
+        ),
+        '/* License\n text */\r\nimport Flutter\r\nvar r: FlutterResult?\r\n',
+      );
+    });
+
     test('AC-006-12 a pod whose Objective-C module is renamed in its Swift '
         'package gets patched imports', () async {
       // google_maps_flutter_ios: `@import GoogleMapsUtils;` must become

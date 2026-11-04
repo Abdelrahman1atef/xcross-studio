@@ -346,6 +346,22 @@ final class PluginShimCommand extends Command<void> {
         copy.writeAsStringSync(text);
         patched[relative] = reasons.join('; ');
       }
+      // Swift files get the imports a pod's umbrella header gave them.
+      for (final relative in draft.swiftSources) {
+        final source = fs.file(
+          paths.joinAll([target.platformDirectory, ...relative.split('/')]),
+        );
+        if (!source.existsSync()) continue;
+        final original = source.readAsStringSync();
+        final text = patchImplicitImports(original);
+        if (text == null) continue;
+        final copy = fs.file(paths.joinAll([folder, ...relative.split('/')]));
+        copy.parent.createSync(recursive: true);
+        copy.writeAsStringSync(text);
+        patched[relative] = [
+          for (final module in implicitImports(original)) 'import $module',
+        ].join(', ');
+      }
       final message = StringBuffer()
         ..writeln('✔ Wrote $shown')
         ..writeln(
