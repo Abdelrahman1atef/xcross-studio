@@ -14,7 +14,7 @@ import 'package:xcross/src/target/shared/flutter/flutter_target_build_policy.dar
 ///
 /// Packages rely on it. Google's ios-maps-sdk `GoogleMapsCoreTarget` depends
 /// only on `GoogleMapsCore` yet compiles `@import GoogleMaps;`, which a plain
-/// `swift build` rejects with "module 'GoogleMaps' not found" (gazayr,
+/// `swift build` rejects with "module 'GoogleMaps' not found" (a client app,
 /// 2026-11-02).
 @internal
 final class SwiftPmSharedSearchPaths<T extends PlatformHostInterface> {

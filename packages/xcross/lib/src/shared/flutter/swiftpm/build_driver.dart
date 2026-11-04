@@ -361,7 +361,7 @@ final class SwiftPmBuildDriver<T extends PlatformHostInterface> {
     // studio: 006 — static libraries of binary targets (GoogleMaps.a, …)
     // that the plan copies but never links: SwiftPM only finds `lib*.a`
     // through its `-L`, so the plugins dylib failed with undefined `GMS…`
-    // symbols (gazayr, 2026-11-02). Link them by path, as Xcode does.
+    // symbols (a client app, 2026-11-02). Link them by path, as Xcode does.
     final archives = planReader.plannedBinaryArchives(
       scratchPath,
       targetBuildDir,

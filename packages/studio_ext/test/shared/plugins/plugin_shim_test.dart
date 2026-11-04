@@ -82,7 +82,7 @@ void main() {
       expect(swiftRequirement('>= 10.1'), 'from: "10.1.0"');
       expect(swiftRequirement('2.3'), 'exact: "2.3.0"');
       expect(swiftRequirement(null), contains('TODO'));
-      // No version in the podspec: the known package's own (doctory's
+      // No version in the podspec: the known package's own (a client app's
       // `from: "1.0.0"` SDWebImage clashed with file_picker's 5.x).
       expect(
         swiftRequirement(
@@ -110,7 +110,7 @@ void main() {
       expect(knownPackageFor('SomeVendorSDK'), isNull);
     });
 
-    // flutter_facebook_auth (doctory, 2026-11-04): "no such module
+    // flutter_facebook_auth (a client app, 2026-11-04): "no such module
     // 'FBSDKLoginKit'". The Swift package's products have other names, and it
     // needs a newer iOS than the podspec's, which SwiftPM refuses.
     test('Facebook pods use the facebook-ios-sdk products and raise the '
@@ -455,7 +455,7 @@ end
       expect(out.join(), contains('✔ Patched Classes/MixedPlugin.m'));
     });
 
-    // audio_waveforms and video_compress (doctory, 2026-11-04): a pod's Swift
+    // audio_waveforms and video_compress (a client app, 2026-11-04): a pod's Swift
     // files see its umbrella header (Foundation, UIKit, Flutter) without
     // importing it; under SwiftPM "cannot find type 'FlutterResult' in scope".
     test('AC-006-13 Swift files get the imports CocoaPods gave them', () async {
@@ -512,7 +512,7 @@ end
       );
     });
 
-    // permission_handler_apple (doctory, 2026-11-04): "use of undeclared
+    // permission_handler_apple (a client app, 2026-11-04): "use of undeclared
     // identifier 'UIApplication'". A pod's prefix header gave each Objective-C
     // file UIKit.
     test('AC-006-13 Objective-C files get the UIKit their prefix header '
@@ -562,7 +562,7 @@ end
       expect(out.join(), contains('✔ Patched Classes/Phone.m (import UIKit)'));
     });
 
-    // flutter_image_compress_common (doctory, 2026-11-04): "'Mantle/Mantle.h'
+    // flutter_image_compress_common (a client app, 2026-11-04): "'Mantle/Mantle.h'
     // file not found". Mantle and SDWebImageWebPCoder keep flat headers in
     // their Swift packages, so only their modules can be imported.
     test('AC-006-14 pods with flat headers in their Swift package are '
@@ -623,7 +623,7 @@ end
       );
     });
 
-    // permission_handler_apple (doctory, 2026-11-04): "'AudioVideoPermission
+    // permission_handler_apple (a client app, 2026-11-04): "'AudioVideoPermission
     // Strategy.h' file not found" when another module imports the plugin.
     // CocoaPods flattens a pod's headers, so a bare name finds any of them.
     test('AC-006-15 headers importing a header in another folder get its '

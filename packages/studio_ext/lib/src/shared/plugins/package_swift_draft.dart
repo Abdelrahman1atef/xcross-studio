@@ -31,7 +31,7 @@ final class KnownPackage {
   /// The lowest version to ask for when the podspec names none: CocoaPods
   /// then takes the newest release, and a placeholder `from: "1.0.0"` asked
   /// SDWebImage for 1.x, which conflicts with every other user of it
-  /// (doctory, 2026-11-03).
+  /// (a client app, 2026-11-03).
   final String? defaultVersion;
 
   /// The iOS version the package needs, when it can be above a podspec's:
@@ -92,7 +92,7 @@ KnownPackage? knownPackageFor(String pod) {
       'https://github.com/googlemaps/google-maps-ios-utils',
       'google-maps-ios-utils',
       'GoogleMapsUtils',
-      // google_maps_flutter_ios: "unknown type name 'GMUGradient'" (gazayr,
+      // google_maps_flutter_ios: "unknown type name 'GMUGradient'" (a client app,
       // 2026-11-02).
       objectiveCModules: {'GoogleMapsUtils': 'GoogleMapsUtilsObjC'},
     ),

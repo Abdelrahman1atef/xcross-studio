@@ -354,7 +354,7 @@ final class PluginOverrides {
     // the root. google_maps_flutter_ios 2.18 ships `ios/<name>/Sources/…`
     // without a manifest; staging just that folder put every path of a
     // `xcross plugin shim` draft (relative to `ios/`) one level off:
-    // "invalid custom path" (gazayr, 2026-11-02).
+    // "invalid custom path" (a client app, 2026-11-02).
     if (plugin.usesSwiftPackageManager) {
       _plan(planned, plugin.swiftPackageDir, packageDir);
     } else {

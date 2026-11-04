@@ -532,7 +532,7 @@ void main() {
       expect(args, isNot(contains('-import-objc-header')));
     });
 
-    // doctory (2026-11-04): with many plugins the clang command passed
+    // A client app (2026-11-04): with many plugins the clang command passed
     // Windows' limit: "The filename or extension is too long", so the app's
     // AppDelegate was left out. Long commands go in a response file.
     group('long commands use a response file', () {

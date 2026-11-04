@@ -320,7 +320,7 @@ final class ProjectRunnerBuilder<T extends PlatformHostInterface> {
   }
 
   /// Windows refuses a command line of 32,767 characters or more; an app with
-  /// many plugins passes that in search paths alone (doctory, 2026-11-04).
+  /// many plugins passes that in search paths alone (a client app, 2026-11-04).
   @visibleForTesting
   static bool needsResponseFile(List<String> arguments) =>
       arguments.fold<int>(0, (sum, argument) => sum + argument.length + 3) >
