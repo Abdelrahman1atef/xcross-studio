@@ -268,7 +268,7 @@ String? patchImplicitObjcImports(String source, {bool header = false}) {
       !imported('UIKit') &&
       !imported('Flutter')) {
     module = 'UIKit';
-  } else if (RegExp(r'\bNS[A-Z]\w*').hasMatch(code) &&
+  } else if (RegExp(r'\bNS(?:[A-Z]|_[A-Z])\w*').hasMatch(code) &&
       !RegExp(r'#\s*(?:import|include)\b|@import\b').hasMatch(code)) {
     module = 'Foundation';
   } else {

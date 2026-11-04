@@ -640,6 +640,18 @@ end
         patchImplicitObjcImports('NSString *s;\n'),
         '#import <Foundation/Foundation.h>\nNSString *s;\n',
       );
+      // And its NS_ macros: permission_handler_apple's enums header, as a
+      // module, "type specifier missing" at `typedef NS_ENUM(int, Group)`.
+      expect(
+        patchImplicitObjcImports(
+          '#ifndef X\n#define X 0\n#endif\n'
+          'typedef NS_ENUM(int, Group) { GroupA };\n',
+          header: true,
+        ),
+        '#ifdef __OBJC__\n#import <Foundation/Foundation.h>\n#endif\n'
+        '#ifndef X\n#define X 0\n#endif\n'
+        'typedef NS_ENUM(int, Group) { GroupA };\n',
+      );
       // A header can be included from plain C: guarded.
       expect(
         patchImplicitObjcImports(
