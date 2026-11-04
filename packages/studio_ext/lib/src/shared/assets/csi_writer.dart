@@ -29,6 +29,9 @@ abstract final class CsiWriter {
   /// Bit 4: generic-image category (`.imageset`); cleared for app icons.
   static const flagImage = 0x10;
 
+  /// Bit 3: every pixel is opaque.
+  static const flagOpaque = 0x08;
+
   static Uint8List bitmap(BitmapBody body, {required int scaleFactor}) {
     final tvl = AssetByteWriter();
     TvlEntries.bitmapDescriptor(tvl, body.width, body.height);
@@ -45,7 +48,9 @@ abstract final class CsiWriter {
     return (AssetByteWriter()
           ..bytes(
             header(
-              renditionFlags: body.kind == BitmapKind.image ? flagImage : 0,
+              renditionFlags:
+                  (body.kind == BitmapKind.image ? flagImage : 0) |
+                  (body.opaque ? flagOpaque : 0),
               width: body.width,
               height: body.height,
               scaleFactor: scaleFactor,

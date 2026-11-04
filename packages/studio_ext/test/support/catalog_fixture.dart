@@ -60,11 +60,10 @@ String writeFlutterCatalog(String root) {
       'scale': '${scale}x',
     });
     final pixels = (points * scale).round();
-    // The 1024 icon stays small: it is never decoded (marketing only).
     writeBytes(
       '$catalog/AppIcon.appiconset/$file',
       idiom == 'ios-marketing'
-          ? solidPng(1, 1, (0, 0, 0, 255))
+          ? solidPng(pixels, pixels, (0, 0, 0, 255))
           : gradientPng(pixels, pixels),
     );
   }

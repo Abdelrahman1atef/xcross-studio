@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:path/path.dart' as p;
 import 'package:studio_ext/shared/assets/asset_catalog_compiler.dart';
+import 'package:studio_ext/src/shared/assets/csi_writer.dart';
 import 'package:studio_ext/src/shared/assets/png_codec.dart';
 import 'package:test/test.dart';
 
@@ -96,7 +97,100 @@ void main() {
     final icons = csis.where((r) => r.$1[8] == 220).toList();
     final iphone2x = icons.singleWhere((r) => r.$1[3] == 1 && r.$1[2] == 2);
     expect(iphone2x.$2.width, 120);
-    expect(icons.map((r) => (r.$1[3], r.$1[2])).toSet(), hasLength(5));
+    expect(icons.map((r) => (r.$1[3], r.$1[2])).toSet(), hasLength(6));
+    // App Store Connect reads the large icon from here (error 91111).
+    final store = icons.singleWhere((r) => r.$1[3] == 6).$2;
+    expect(icons.singleWhere((r) => r.$1[3] == 6).$1[2], 1);
+    expect((store.width, store.height), (1024, 1024));
+    expect(store.name, 'Icon-App-1024x1024@1x.png');
+    expect(store.flags & CsiWriter.flagOpaque, CsiWriter.flagOpaque);
+    expect(iphone2x.$2.flags & CsiWriter.flagOpaque, 0);
+    expect(
+      store.mlecPixels,
+      PngDecoder.decode(
+        File(
+          '$catalog/AppIcon.appiconset/Icon-App-1024x1024@1x.png',
+        ).readAsBytesSync(),
+      ).toPremultipliedBgra(),
+    );
+  });
+
+  group('App Store icon', () {
+    String iconSet(Uint8List png, {String size = '1024x1024'}) {
+      final catalog = '${temp.path}/Assets.xcassets';
+      writeBytes('$catalog/AppIcon.appiconset/store.png', png);
+      writeBytes(
+        '$catalog/AppIcon.appiconset/phone.png',
+        solidPng(120, 120, (9, 9, 9, 255)),
+      );
+      writeJson('$catalog/AppIcon.appiconset/Contents.json', {
+        'images': [
+          {
+            'idiom': 'iphone',
+            'size': '60x60',
+            'scale': '2x',
+            'filename': 'phone.png',
+          },
+          {
+            'idiom': 'ios-marketing',
+            'size': size,
+            'scale': '1x',
+            'filename': 'store.png',
+          },
+        ],
+      });
+      return catalog;
+    }
+
+    Iterable<(List<int>, Csi)> storeRenditions(CompiledAssetCatalog result) => [
+      for (final (key, csi) in CarFile(result.car).renditions)
+        if (key[8] == 220 && key[3] == 6) (key, Csi(csi)),
+    ];
+
+    test('with transparency it is not marked opaque', () {
+      final result = compiler.compile([
+        iconSet(solidPng(1024, 1024, (9, 9, 9, 200))),
+      ], deploymentTarget: '16.0');
+      expect(result.issues, isEmpty);
+      expect(storeRenditions(result).single.$2.flags & CsiWriter.flagOpaque, 0);
+    });
+
+    test('of the wrong size is reported and left out', () {
+      final result = compiler.compile([
+        iconSet(solidPng(512, 512, (9, 9, 9, 255))),
+      ], deploymentTarget: '16.0');
+      expect(storeRenditions(result), isEmpty);
+      final issue = result.issues.single;
+      expect(issue.kind, AssetCatalogIssueKind.invalid);
+      expect(issue.subject, 'AppIcon/store.png');
+      expect(issue.message, allOf(contains('512×512'), contains('1024×1024')));
+      expect(result.looseFiles.single.name, 'AppIcon60x60@2x.png');
+    });
+
+    test('with a broken file is reported once and left out', () {
+      final result = compiler.compile([
+        iconSet(Uint8List.fromList([1, 2, 3])),
+      ], deploymentTarget: '16.0');
+      expect(storeRenditions(result), isEmpty);
+      expect(result.issues.single.subject, 'AppIcon/store.png');
+    });
+
+    test('a set without one still compiles', () {
+      final catalog = iconSet(solidPng(1024, 1024, (9, 9, 9, 255)));
+      writeJson('$catalog/AppIcon.appiconset/Contents.json', {
+        'images': [
+          {
+            'idiom': 'iphone',
+            'size': '60x60',
+            'scale': '2x',
+            'filename': 'phone.png',
+          },
+        ],
+      });
+      final result = compiler.compile([catalog], deploymentTarget: '16.0');
+      expect(result.issues, isEmpty);
+      expect(storeRenditions(result), isEmpty);
+    });
   });
 
   test('AC-004-5 single-size 1024 icon is scaled to every slot', () {
@@ -131,6 +225,14 @@ void main() {
       )['CFBundleIconFiles'],
       contains('AppIcon60x60'),
     );
+    // The source itself is the App Store icon, and only in the catalog.
+    expect(loose.keys.where((name) => name.contains('1024')), isEmpty);
+    final store = [
+      for (final (key, csi) in CarFile(result.car).renditions)
+        if (key[8] == 220 && key[3] == 6) Csi(csi),
+    ].single;
+    expect((store.width, store.height), (1024, 1024));
+    expect(store.name, 'icon.png');
   });
 
   test('AC-004-3 unsupported and broken assets are reported, the rest '

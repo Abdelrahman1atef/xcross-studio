@@ -186,7 +186,8 @@ final class AssetCatalogCompiler {
     final appIcon = _pickAppIcon(loaded.appIcons, issues);
     var files = const <AppIconFile>[];
     if (appIcon != null) {
-      files = _appIconFiles(appIcon, issues);
+      final decode = _iconDecoder(appIcon, issues);
+      files = _appIconFiles(appIcon, decode, issues);
       // One rendition per (idiom, scale) fits the rendition key; keep the
       // largest size, the one the home screen asks for.
       final bySize = [...files]
@@ -207,6 +208,9 @@ final class AssetCatalogCompiler {
             ),
           ),
         );
+      }
+      if (_appStoreIcon(appIcon, decode, issues) case final icon?) {
+        renditions.add(icon);
       }
     }
 
@@ -381,10 +385,12 @@ final class AssetCatalogCompiler {
     return chosen;
   }
 
-  List<AppIconFile> _appIconFiles(
+  /// Reads the icons of [set], each once, so a bad file is reported once.
+  RgbaImage? Function(AppIconImage) _iconDecoder(
     LoadedAppIcon set,
     List<AssetCatalogIssue> issues,
   ) {
+    final decoded = <String, RgbaImage?>{};
     RgbaImage? decode(AppIconImage image) {
       void report(AssetCatalogIssueKind kind, String message) => issues.add(
         AssetCatalogIssue(kind, '${set.name}/${image.filename}', message),
@@ -415,6 +421,64 @@ final class AssetCatalogCompiler {
       }
     }
 
+    return (image) => decoded.putIfAbsent(image.path, () => decode(image));
+  }
+
+  /// The 1024 px icon, in the marketing slot App Store Connect reads it from:
+  /// without it the upload fails with error 91111. It never reaches the home
+  /// screen, so it has no loose file and no `CFBundleIconFiles` entry.
+  ///
+  /// A set without one still builds: an app for a device does not need it, and
+  /// `release.marketing_icon` stops the release.
+  Rendition? _appStoreIcon(
+    LoadedAppIcon set,
+    RgbaImage? Function(AppIconImage) decode,
+    List<AssetCatalogIssue> issues,
+  ) {
+    final source =
+        AppIconPlist.singleSizeSource(set) ??
+        set.images
+            .where(
+              (image) =>
+                  image.idiom == AssetIdiom.marketing && !image.hasAppearance,
+            )
+            .firstOrNull;
+    if (source == null) return null;
+    final image = decode(source);
+    if (image == null) return null;
+    if (image.width != 1024 || image.height != 1024) {
+      issues.add(
+        AssetCatalogIssue(
+          AssetCatalogIssueKind.invalid,
+          '${set.name}/${source.filename}',
+          'App Store icon ${source.filename} is '
+              '${image.width}×${image.height}; App Store Connect needs a '
+              '1024×1024 PNG, so it is not in the app.',
+        ),
+      );
+      return null;
+    }
+    return Rendition(
+      name: set.name,
+      idiom: AssetIdiom.marketing,
+      scale: AssetScale.x1,
+      body: BitmapBody(
+        width: image.width,
+        height: image.height,
+        pixelsBgra: image.toPremultipliedBgra(),
+        colorSpaceId: AssetGamut.srgb.colorSpaceId,
+        kind: BitmapKind.appIcon,
+        renditionName: source.filename,
+        opaque: image.isOpaque,
+      ),
+    );
+  }
+
+  List<AppIconFile> _appIconFiles(
+    LoadedAppIcon set,
+    RgbaImage? Function(AppIconImage) decode,
+    List<AssetCatalogIssue> issues,
+  ) {
     final single = AppIconPlist.singleSizeSource(set);
     if (single != null) {
       final source = decode(single);
@@ -433,8 +497,8 @@ final class AssetCatalogCompiler {
     for (final image in set.images) {
       final size = image.size;
       final scale = image.scale;
-      // The 1024-point App Store icon (ios-marketing) is not used on the
-      // device; leaving it out keeps the catalog about 4 MB smaller.
+      // The App Store icon (ios-marketing) is not used on the device; see
+      // [_appStoreIcon] for where it goes.
       if (image.idiom != AssetIdiom.iphone && image.idiom != AssetIdiom.ipad) {
         continue;
       }

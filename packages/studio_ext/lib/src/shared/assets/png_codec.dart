@@ -30,6 +30,14 @@ final class RgbaImage {
     return out;
   }
 
+  /// Whether no pixel has any transparency.
+  bool get isOpaque {
+    for (var i = 3; i < rgba.length; i += 4) {
+      if (rgba[i] != 255) return false;
+    }
+    return true;
+  }
+
   /// The single colour of the image, or `null` when pixels differ.
   (int, int, int, int)? get uniformColor {
     if (rgba.isEmpty) return null;

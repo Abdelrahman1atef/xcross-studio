@@ -1,5 +1,9 @@
 ## Unreleased (XCross Studio)
 
+- App Store uploads: App Store Connect rejected builds with "91111 Missing app icon", because `Assets.car` left out the
+  1024 px App Store icon to save about 4 MB. It is now in the catalog, from the set's App Store icon or from a single-size
+  set's only image. An icon of the wrong size is left out with `build.asset_invalid`.
+
 - The release quality gate only fails on what stops a release: analyzer errors and failing tests. Warnings and infos are
   listed and do not fail it, unless you pass `--fatal-warnings` or `--fatal-infos`. A project without tests passes, where
   `flutter test` failed with "Test directory "test" not found". An issue an analyzer plugin reports twice is listed once.

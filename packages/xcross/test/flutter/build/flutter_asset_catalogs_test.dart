@@ -67,11 +67,12 @@ void main() {
         'scale': '${scale}x',
         'filename': name,
       });
-      png(
-        p.join(catalog, 'AppIcon.appiconset', name),
-        idiom == 'ios-marketing' ? 1 : size * scale,
-        (0, 120, 255, 255),
-      );
+      png(p.join(catalog, 'AppIcon.appiconset', name), size * scale, (
+        0,
+        120,
+        255,
+        255,
+      ));
     }
     json(p.join(catalog, 'AppIcon.appiconset', 'Contents.json'), {
       'images': images,

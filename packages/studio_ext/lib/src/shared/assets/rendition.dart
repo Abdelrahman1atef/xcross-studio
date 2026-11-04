@@ -85,6 +85,7 @@ final class BitmapBody extends RenditionBody {
     required this.colorSpaceId,
     required this.kind,
     required this.renditionName,
+    this.opaque = false,
   });
 
   final int width;
@@ -95,6 +96,9 @@ final class BitmapBody extends RenditionBody {
 
   /// The source file name; actool stores it in the CSI name field.
   final String renditionName;
+
+  /// Marks every pixel opaque, as actool does for an image without alpha.
+  final bool opaque;
 }
 
 @internal
