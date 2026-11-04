@@ -19,6 +19,7 @@ void main() {
   setUp(() {
     root = Directory.systemTemp.createTempSync('release-gate-');
     File(p.join(root.path, 'pubspec.yaml')).writeAsStringSync('name: app\n');
+    File(p.join(root.path, 'test', 'a_test.dart')).createSync(recursive: true);
     out = StringBuffer();
     ran = [];
   });
@@ -61,7 +62,13 @@ void main() {
     test('runs analyze and test in the project', () async {
       await run(['gate', '--json']);
       expect(ran, [
-        ['/sdk/bin/flutter', 'analyze', '--no-fatal-infos', root.path],
+        [
+          '/sdk/bin/flutter',
+          'analyze',
+          '--no-fatal-warnings',
+          '--no-fatal-infos',
+          root.path,
+        ],
         ['/sdk/bin/flutter', 'test', root.path],
       ]);
       final json = jsonDecode(out.toString().trim()) as Map;
@@ -152,8 +159,72 @@ Analyzing app...
         ),
         throwsA(isA<CommandExit>()),
       );
-      expect(ran.single.sublist(1, 3), ['analyze', '--fatal-infos']);
+      expect(ran.single.sublist(1, 4), [
+        'analyze',
+        '--fatal-warnings',
+        '--fatal-infos',
+      ]);
       expect(out.toString(), contains('✗ flutter analyze (1 info)'));
+    });
+
+    test('a warning does not fail the gate, and is listed once', () async {
+      const output = '''
+warning - Unused import - lib/a.dart:1:8 - unused_import
+warning - Unused import - lib/a.dart:1:8 - unused_import
+''';
+      await run(['gate', '--json'], analyzeOutput: output);
+      final json = jsonDecode(out.toString().trim()) as Map;
+      final analyze = (json['steps'] as List).first as Map;
+      expect(analyze['passed'], isTrue);
+      expect(analyze['warnings'], 1);
+      expect(analyze['issues'], hasLength(1));
+    });
+
+    test('--fatal-warnings asks flutter analyze to fail on them', () async {
+      await run(['gate', '--fatal-warnings', '--skip-tests']);
+      expect(ran.single.sublist(1, 4), [
+        'analyze',
+        '--fatal-warnings',
+        '--no-fatal-infos',
+      ]);
+    });
+
+    test('analyzer errors still fail the gate', () async {
+      await expectLater(
+        run(
+          ['gate', '--skip-tests'],
+          analyze: 1,
+          analyzeOutput:
+              'error - Undefined - lib/a.dart:1:8 - undefined_name\n',
+        ),
+        throwsA(isA<CommandExit>()),
+      );
+      expect(out.toString(), contains('✗ flutter analyze (1 error)'));
+    });
+
+    group('a project without tests has nothing to fail', () {
+      void withoutTests({bool emptyFolder = false}) {
+        Directory(p.join(root.path, 'test')).deleteSync(recursive: true);
+        if (emptyFolder) Directory(p.join(root.path, 'test')).createSync();
+      }
+
+      test('no test folder: flutter test is not run', () async {
+        withoutTests();
+        await run(['gate', '--json']);
+        expect(ran.map((command) => command[1]), ['analyze']);
+        final json = jsonDecode(out.toString().trim()) as Map;
+        final step = (json['steps'] as List).last as Map;
+        expect(step['name'], 'flutter test');
+        expect(step['passed'], isTrue);
+        expect(step['skipped'], isTrue);
+      });
+
+      test('a test folder with no test files', () async {
+        withoutTests(emptyFolder: true);
+        await run(['gate']);
+        expect(ran.map((command) => command[1]), ['analyze']);
+        expect(out.toString(), contains('flutter test: No tests in this'));
+      });
     });
 
     test('older bullet output, dart analyze order and errors are read', () {

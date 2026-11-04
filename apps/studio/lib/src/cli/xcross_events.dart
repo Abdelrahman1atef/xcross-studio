@@ -608,6 +608,7 @@ class ReleaseGateResult extends XcrossEvent {
           (
             name: _string(step['name']) ?? '',
             passed: step['passed'] == true,
+            skipped: step['skipped'] == true,
             tail: [
               if (step['tail'] case final List<Object?> lines)
                 for (final line in lines) '$line',
@@ -619,13 +620,19 @@ class ReleaseGateResult extends XcrossEvent {
           ),
       ]);
 
-  final List<
-    ({String name, bool passed, List<String> tail, List<GateIssue> issues})
-  >
-  steps;
+  final List<GateStep> steps;
 
   bool get passed => steps.isNotEmpty && steps.every((s) => s.passed);
 }
+
+/// One step of `release_gate`. [skipped]: nothing to run (no tests).
+typedef GateStep = ({
+  String name,
+  bool passed,
+  bool skipped,
+  List<String> tail,
+  List<GateIssue> issues,
+});
 
 /// One `flutter analyze` issue in a `release_gate` step.
 class GateIssue {

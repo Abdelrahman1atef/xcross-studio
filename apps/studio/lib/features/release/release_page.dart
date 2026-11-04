@@ -392,7 +392,8 @@ class _ReleasePageState extends State<ReleasePage> {
             : (_gate!.passed ? XStatus.ready : XStatus.failed),
         description:
             'flutter analyze and flutter test in the project. Analyzer errors '
-            'and warnings fail the gate; infos are listed but do not.',
+            'and failing tests fail the gate; warnings and infos are listed '
+            'but do not. A project without tests passes.',
         command: XcrossCommands.releaseGate(),
         job: _jobs[4],
         actions: [
@@ -417,24 +418,11 @@ class _ReleasePageState extends State<ReleasePage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   for (final step in _gate!.steps)
-                    XCheckRow(
-                      // Passed with infos: listed, not blocking.
-                      status: !step.passed
-                          ? XStatus.failed
-                          : step.issues.isEmpty
-                          ? XStatus.ready
-                          : XStatus.warning,
-                      label: step.issues.isEmpty
-                          ? step.name
-                          : '${step.name} (${_issueCount(step.issues)}'
-                                '${step.passed ? ', not blocking' : ''})',
-                      // The issues when the analyzer listed them, else the
-                      // last lines of a failed step.
-                      detail: step.issues.isNotEmpty
-                          ? '\n${step.issues.map((i) => i.render()).join('\n')}'
-                          : step.passed
+                    _GateStepResult(
+                      step: step,
+                      issueCount: step.issues.isEmpty
                           ? null
-                          : '\n${step.tail.join('\n')}',
+                          : _issueCount(step.issues),
                     ),
                 ],
               ),
@@ -757,13 +745,27 @@ class _CheckReport extends StatelessWidget {
       for (final severity in const ['error', 'warning', 'info'])
         ...report.issues.where((issue) => issue.severity == severity),
     ];
+    final summary =
+        '${report.errors} errors, ${report.warnings} warnings · '
+        '${report.configuration['bundleId'] ?? ''} '
+        '${report.configuration['version'] ?? ''}';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        XNote(
-          '${report.errors} errors, ${report.warnings} warnings · '
-          '${report.configuration['bundleId'] ?? ''} '
-          '${report.configuration['version'] ?? ''}',
+        Row(
+          children: [
+            Expanded(child: XNote(summary)),
+            if (ordered.isNotEmpty)
+              XCopyButton(
+                tooltip: 'Copy the release check',
+                text: [
+                  summary,
+                  for (final issue in ordered)
+                    '${issue.severity}: [${issue.code}] ${issue.message}'
+                        '${issue.hint == null ? '' : '  ${issue.hint}'}',
+                ].join('\n'),
+              ),
+          ],
         ),
         for (final issue in ordered)
           XCheckRow(
@@ -774,6 +776,78 @@ class _CheckReport extends StatelessWidget {
             },
             label: '[${issue.code}] ${issue.message}',
             detail: issue.hint,
+          ),
+      ],
+    );
+  }
+}
+
+/// One step of the quality gate: how it went, a button to copy it, and what it
+/// listed in a box of its own, so a long list does not push the page away.
+class _GateStepResult extends StatelessWidget {
+  const _GateStepResult({required this.step, required this.issueCount});
+
+  final GateStep step;
+
+  /// `2 warnings, 1 info`, when the analyzer listed issues.
+  final String? issueCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = XTheme.of(context).colors;
+    // The issues when the analyzer listed them, else the last lines of a step
+    // that failed.
+    final lines = [
+      if (step.issues.isNotEmpty)
+        for (final issue in step.issues) issue.render()
+      else if (!step.passed)
+        ...step.tail,
+    ];
+    final label = step.skipped
+        ? '${step.name} (no tests in this project)'
+        : issueCount == null
+        ? step.name
+        : '${step.name} ($issueCount${step.passed ? ', not blocking' : ''})';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: XCheckRow(
+                status: !step.passed
+                    ? XStatus.failed
+                    : step.skipped
+                    ? XStatus.idle
+                    : step.issues.isEmpty
+                    ? XStatus.ready
+                    : XStatus.warning,
+                label: label,
+              ),
+            ),
+            if (lines.isNotEmpty)
+              XCopyButton(
+                tooltip: 'Copy ${step.name}',
+                text: [label, ...lines].join('\n'),
+              ),
+          ],
+        ),
+        if (lines.isNotEmpty)
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 280),
+            child: Container(
+              padding: const EdgeInsets.all(XSpace.s2),
+              decoration: BoxDecoration(
+                border: Border.all(color: c.border),
+                borderRadius: BorderRadius.circular(XRadius.md),
+              ),
+              child: SingleChildScrollView(
+                child: Text(
+                  lines.join('\n'),
+                  style: XType.support.copyWith(color: c.textSecondary),
+                ),
+              ),
+            ),
           ),
       ],
     );

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xcross_studio/app/app.dart';
 import 'package:xcross_studio/app/services.dart';
@@ -273,14 +274,37 @@ void main() {
       (w) =>
           w is XCheckRow &&
           w.label == 'flutter analyze (1 info, not blocking)' &&
-          w.status == XStatus.warning &&
-          (w.detail?.contains(
-                'lib/core/cache/secure_storage.dart:7:30 '
-                '(deprecated_member_use)',
-              ) ??
-              false),
+          w.status == XStatus.warning,
     );
     expect(analyze, findsOneWidget);
+    expect(
+      find.textContaining(
+        'lib/core/cache/secure_storage.dart:7:30 (deprecated_member_use)',
+      ),
+      findsOneWidget,
+    );
+    // The list can be copied in one go.
+    final copied = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied.add((call.arguments as Map)['text'] as String);
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    await tester.tap(find.byTooltip('Copy flutter analyze'));
+    await settle(tester, 2);
+    expect(copied.single, contains('flutter analyze (1 info, not blocking)'));
+    expect(copied.single, contains('(deprecated_member_use)'));
+    expect(find.byTooltip('Copied'), findsOneWidget);
     expect(
       find.byWidgetPredicate(
         (w) =>

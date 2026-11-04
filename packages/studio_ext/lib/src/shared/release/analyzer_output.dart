@@ -71,27 +71,31 @@ abstract final class AnalyzerOutput {
     RegExp(r'^\s*Try `(flutter|dart) pub outdated`'),
   ];
 
-  static List<AnalyzerIssue> issues(Iterable<String> lines) => [
-    for (final line in lines)
-      if (_locationFirst.firstMatch(line) case final match?)
-        AnalyzerIssue(
-          severity: match[1]!,
-          message: match[5]!.trim(),
-          file: match[2]!,
-          line: int.parse(match[3]!),
-          column: int.parse(match[4]!),
-          code: match[6]!,
-        )
-      else if (_messageFirst.firstMatch(line) case final match?)
-        AnalyzerIssue(
-          severity: match[1]!,
-          message: match[2]!.trim(),
-          file: match[3]!,
-          line: int.parse(match[4]!),
-          column: int.parse(match[5]!),
-          code: match[6]!,
-        ),
-  ];
+  static List<AnalyzerIssue> issues(Iterable<String> lines) {
+    // An analyzer plugin can report the same issue again: once is enough.
+    final seen = <String>{};
+    return [
+      for (final line in lines)
+        if (_locationFirst.firstMatch(line) case final match?)
+          AnalyzerIssue(
+            severity: match[1]!,
+            message: match[5]!.trim(),
+            file: match[2]!,
+            line: int.parse(match[3]!),
+            column: int.parse(match[4]!),
+            code: match[6]!,
+          )
+        else if (_messageFirst.firstMatch(line) case final match?)
+          AnalyzerIssue(
+            severity: match[1]!,
+            message: match[2]!.trim(),
+            file: match[3]!,
+            line: int.parse(match[4]!),
+            column: int.parse(match[5]!),
+            code: match[6]!,
+          ),
+    ].where((issue) => seen.add(issue.render())).toList();
+  }
 
   /// [lines] without the package resolution `flutter analyze` prints first.
   static List<String> withoutPubNoise(Iterable<String> lines) => [

@@ -33,11 +33,13 @@ commands the app needs (`release gate`, `release ci`) keep the GUI a thin shell 
 
 ### User Story 2 - Quality gate and CI from the CLI (Priority: P1)
 
-1. **AC-022-5**: `xcross release gate [--json] [--skip-tests] [--fatal-infos]` runs `flutter analyze` and
+1. **AC-022-5**: `xcross release gate [--json] [--skip-tests] [--fatal-warnings] [--fatal-infos]` runs `flutter analyze` and
    `flutter test` (the Flutter xcross builds with) in the project and reports each as passed/failed with the last
    lines of its output (without the package resolution `flutter analyze` prints first); exit 1 when one fails.
-   Analyzer errors and warnings fail the gate; infos (a deprecation, a style lint) are listed but only fail it with
-   `--fatal-infos` (`flutter analyze --no-fatal-infos` by default). The analyze step lists each issue it parsed.
+   Analyzer errors and failing tests fail the gate. Warnings and infos are listed but only fail it with
+   `--fatal-warnings` or `--fatal-infos` (`flutter analyze --no-fatal-warnings --no-fatal-infos` by default;
+   `--fatal-infos` includes warnings). A project with no `*_test.dart` under `test/` does not run `flutter test`: the
+   step passes with `"skipped":true`. The analyze step lists each issue it parsed, once.
    JSON: `{"v":1,"type":"release_gate","steps":[{"name","passed","exitCode","tail"}]}`; the analyze step adds
    `"issues":[{"severity","message","file","line","column","code"}]` and `"errors"`, `"warnings"`, `"infos"`.
    The Release page's step 4 runs it and shows a step that passed with issues as a warning with the issues listed.

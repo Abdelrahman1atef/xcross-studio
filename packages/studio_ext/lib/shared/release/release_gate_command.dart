@@ -17,10 +17,11 @@ typedef RunTool =
       required String workingDirectory,
     });
 
-/// `xcross release gate [--json] [--skip-tests] [--fatal-infos]`: `flutter
-/// analyze` and `flutter test` as the release's quality gate. Analyzer errors
-/// and warnings fail it; infos (a deprecation, a style lint) are reported and
-/// only fail it with `--fatal-infos`.
+/// `xcross release gate [--json] [--skip-tests] [--fatal-warnings]
+/// [--fatal-infos]`: `flutter analyze` and `flutter test` as the release's
+/// quality gate. Analyzer errors and failing tests fail it. Warnings and infos
+/// are reported and only fail it with the flags. A project without tests has
+/// nothing to fail.
 final class ReleaseGateCommand extends Command<void> {
   ReleaseGateCommand({
     required Future<String> Function(String projectRoot) flutter,
@@ -41,11 +42,14 @@ final class ReleaseGateCommand extends Command<void> {
         help: 'Run flutter analyze only.',
       )
       ..addFlag(
+        'fatal-warnings',
+        negatable: false,
+        help: 'Fail on analyzer warnings too (errors always fail).',
+      )
+      ..addFlag(
         'fatal-infos',
         negatable: false,
-        help:
-            'Fail on info-level analyzer issues too (errors and warnings '
-            'always fail).',
+        help: 'Fail on analyzer warnings and infos too.',
       );
   }
 
@@ -66,6 +70,18 @@ final class ReleaseGateCommand extends Command<void> {
   /// Lines of output kept per step.
   static const tailLines = 15;
 
+  static const _noTests = 'No tests in this project.';
+
+  /// Whether `flutter test` has anything to run: without a test file it fails
+  /// with "Test directory "test" not found", which says nothing about the app.
+  bool _hasTests(String root) {
+    final folder = _fileSystem.directory(p.join(root, 'test'));
+    return folder.existsSync() &&
+        folder
+            .listSync(recursive: true, followLinks: false)
+            .any((entry) => entry.path.endsWith('_test.dart'));
+  }
+
   @override
   Future<void> run() async {
     final root = _cwd();
@@ -78,14 +94,30 @@ final class ReleaseGateCommand extends Command<void> {
     final json = argResults!.flag('json');
     final flutter = await _flutter(root);
     final fatalInfos = argResults!.flag('fatal-infos');
+    final fatalWarnings = fatalInfos || argResults!.flag('fatal-warnings');
     final steps = <Map<String, Object?>>[];
     for (final (name, arguments) in [
       (
         'flutter analyze',
-        ['analyze', if (fatalInfos) '--fatal-infos' else '--no-fatal-infos'],
+        [
+          'analyze',
+          if (fatalWarnings) '--fatal-warnings' else '--no-fatal-warnings',
+          if (fatalInfos) '--fatal-infos' else '--no-fatal-infos',
+        ],
       ),
       if (!argResults!.flag('skip-tests')) ('flutter test', ['test']),
     ]) {
+      if (arguments.first == 'test' && !_hasTests(root)) {
+        steps.add({
+          'name': name,
+          'passed': true,
+          'skipped': true,
+          'exitCode': 0,
+          'tail': const [_noTests],
+        });
+        if (!json) _write('- $name: $_noTests\n');
+        continue;
+      }
       if (!json) _write('Running $name…\n');
       final result = await _runTool(flutter, arguments, workingDirectory: root);
       final lines = AnalyzerOutput.withoutPubNoise(
@@ -122,8 +154,8 @@ final class ReleaseGateCommand extends Command<void> {
           _write('${issues.map((i) => '  ${i.render()}').join('\n')}\n');
           if (passed) {
             _write(
-              '  Infos do not fail the gate; pass --fatal-infos to make '
-              'them.\n',
+              '  Warnings and infos do not fail the gate; pass '
+              '--fatal-warnings or --fatal-infos to make them.\n',
             );
           }
         } else if (!passed) {

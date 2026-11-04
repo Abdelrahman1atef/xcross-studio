@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../theme/x_theme.dart';
 import '../tokens/spacing.dart';
@@ -75,11 +78,16 @@ class XButton extends StatelessWidget {
       ),
     };
     final reason = !enabled && !loading ? disabledReason : null;
-    return Semantics(
-      button: true,
-      enabled: enabled,
-      label: loading ? (loadingLabel ?? label) : label,
-      child: reason == null ? button : Tooltip(message: reason, child: button),
+    // Page text can be selected; a button's label is for clicking.
+    return SelectionContainer.disabled(
+      child: Semantics(
+        button: true,
+        enabled: enabled,
+        label: loading ? (loadingLabel ?? label) : label,
+        child: reason == null
+            ? button
+            : Tooltip(message: reason, child: button),
+      ),
     );
   }
 }
@@ -117,4 +125,43 @@ class XIconButton extends StatelessWidget {
       icon: Icon(icon),
     );
   }
+}
+
+/// Copies [text], and shows that it did for a moment.
+class XCopyButton extends StatefulWidget {
+  const XCopyButton({super.key, required this.text, this.tooltip = 'Copy'});
+
+  final String text;
+  final String tooltip;
+
+  @override
+  State<XCopyButton> createState() => _XCopyButtonState();
+}
+
+class _XCopyButtonState extends State<XCopyButton> {
+  Timer? _reset;
+
+  Future<void> _copy() async {
+    await Clipboard.setData(ClipboardData(text: widget.text));
+    if (!mounted) return;
+    _reset?.cancel();
+    setState(() {
+      _reset = Timer(const Duration(seconds: 2), () {
+        if (mounted) setState(() => _reset = null);
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _reset?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => XIconButton(
+    icon: _reset == null ? Icons.copy : Icons.check,
+    tooltip: _reset == null ? widget.tooltip : 'Copied',
+    onPressed: _copy,
+  );
 }

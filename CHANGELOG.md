@@ -1,5 +1,12 @@
 ## Unreleased (XCross Studio)
 
+- The release quality gate only fails on what stops a release: analyzer errors and failing tests. Warnings and infos are
+  listed and do not fail it, unless you pass `--fatal-warnings` or `--fatal-infos`. A project without tests passes, where
+  `flutter test` failed with "Test directory "test" not found". An issue an analyzer plugin reports twice is listed once.
+
+- XCross Studio: page text can be selected and copied with the mouse and Ctrl+C. Quality gate results, the release check
+  and the app icon checks have a copy button, and a long list of gate results scrolls in its own box.
+
 - Firebase Cloud Messaging on the device: apps had no FCM token, while Firebase features that only need the network
   worked. `firebase_messaging` connects to push when launch finishes, and xcross registered plugins later, on the
   engine of the window it makes in code. Plugins now register during launch, on an engine the window then uses.
@@ -72,8 +79,7 @@
   next App Store Connect build number, signing, quality gate, App Store archive and IPA, release check, upload and
   processing, TestFlight groups and notes, App Store submission with a dry run and a confirmation, the release record
   and a CI workflow), and an **Archives** destination listing the `.xcarchive`s xcross built. New CLI commands for
-  it: `xcross release gate` (`flutter analyze` and `flutter test` as the release gate; analyzer errors and warnings
-  fail it, infos such as a deprecation are listed and only fail it with `--fatal-infos`) and `xcross release ci`
+  it: `xcross release gate` (`flutter analyze` and `flutter test` as the release gate) and `xcross release ci`
   (writes a GitHub Actions workflow that builds, signs and uploads from `ubuntu-latest`, also in
   `docs/ci/github-testflight.yml`). ([specs/022-studio-release-flow](specs/022-studio-release-flow/spec.md))
 

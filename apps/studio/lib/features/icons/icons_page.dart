@@ -110,14 +110,16 @@ class _IconsPageState extends State<IconsPage> {
         if (_making) {
           return Padding(
             padding: const EdgeInsets.all(XSpace.s4),
-            child: StudioPanel(
-              // A project's saved design loads when the panel is made.
-              key: ValueKey(project),
-              project: project,
-              onClose: () => _showStudio(services, show: false),
-              onResult: (result) {
-                if (result.toProject && project != null) _check(project);
-              },
+            child: SelectionArea(
+              child: StudioPanel(
+                // A project's saved design loads when the panel is made.
+                key: ValueKey(project),
+                project: project,
+                onClose: () => _showStudio(services, show: false),
+                onResult: (result) {
+                  if (result.toProject && project != null) _check(project);
+                },
+              ),
             ),
           );
         }
@@ -332,15 +334,29 @@ class _IconsPageState extends State<IconsPage> {
     return XCard(
       title: 'Checks',
       subtitle: _placementText(report.placement),
-      trailing: XStatusBadge(
-        status: report.errors > 0
-            ? XStatus.failed
-            : report.warnings > 0
-            ? XStatus.warning
-            : XStatus.ready,
-        label: report.errors == 0 && report.warnings == 0
-            ? 'Ready'
-            : '${report.errors} errors, ${report.warnings} warnings',
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (ordered.isNotEmpty)
+            XCopyButton(
+              tooltip: 'Copy the checks',
+              text: [
+                for (final issue in ordered)
+                  '${issue.severity}: [${issue.code}] ${issue.message}'
+                      '${issue.hint == null ? '' : '  ${issue.hint}'}',
+              ].join('\n'),
+            ),
+          XStatusBadge(
+            status: report.errors > 0
+                ? XStatus.failed
+                : report.warnings > 0
+                ? XStatus.warning
+                : XStatus.ready,
+            label: report.errors == 0 && report.warnings == 0
+                ? 'Ready'
+                : '${report.errors} errors, ${report.warnings} warnings',
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
