@@ -109,6 +109,66 @@ void main() {
       expect(knownPackageFor('FirebaseCore')?.package, 'firebase-ios-sdk');
       expect(knownPackageFor('SomeVendorSDK'), isNull);
     });
+
+    // flutter_facebook_auth (doctory, 2026-11-04): "no such module
+    // 'FBSDKLoginKit'". The Swift package's products have other names, and it
+    // needs a newer iOS than the podspec's, which SwiftPM refuses.
+    test('Facebook pods use the facebook-ios-sdk products and raise the '
+        'iOS minimum to what the package needs', () {
+      final draft = draftPackageSwift(
+        plugin: 'flutter_facebook_auth',
+        spec: Podspec.parse('''
+Pod::Spec.new do |s|
+  s.name = 'flutter_facebook_auth'
+  s.source_files = 'Classes/**/*'
+  s.dependency 'Flutter'
+  s.dependency 'FBSDKLoginKit', '18.0.2'
+  s.dependency 'FBSDKCoreKit', '18.0.2'
+  s.platform = :ios, '11.0'
+end
+'''),
+        files: const ['Classes/FacebookAuth.swift'],
+      );
+      expect(draft.text, contains('platforms: [.iOS("12.0")]'));
+      expect(
+        RegExp('facebook-ios-sdk"').allMatches(draft.text).length,
+        3,
+        reason: 'one package line, two products',
+      );
+      expect(
+        draft.text,
+        contains(
+          '.package(url: "https://github.com/facebook/facebook-ios-sdk", '
+          'exact: "18.0.2")',
+        ),
+      );
+      expect(
+        draft.text,
+        contains(
+          '.product(name: "FacebookLogin", package: "facebook-ios-sdk")',
+        ),
+      );
+      expect(
+        draft.text,
+        contains('.product(name: "FacebookCore", package: "facebook-ios-sdk")'),
+      );
+      expect(draft.text, isNot(contains('TODO')));
+    });
+
+    test('a podspec above the package minimum keeps its own iOS version', () {
+      final draft = draftPackageSwift(
+        plugin: 'newer',
+        spec: Podspec.parse('''
+Pod::Spec.new do |s|
+  s.source_files = 'Classes/**/*'
+  s.dependency 'FBSDKLoginKit', '18.0.2'
+  s.platform = :ios, '15.5'
+end
+'''),
+        files: const ['Classes/A.swift'],
+      );
+      expect(draft.text, contains('platforms: [.iOS("15.5")]'));
+    });
   });
 
   group('AC-006-9 Package.swift draft', () {

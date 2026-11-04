@@ -11,6 +11,7 @@ final class KnownPackage {
     this.product, {
     this.objectiveCModules = const {},
     this.defaultVersion,
+    this.minimumIos,
   });
 
   final String url;
@@ -30,6 +31,34 @@ final class KnownPackage {
   /// SDWebImage for 1.x, which conflicts with every other user of it
   /// (doctory, 2026-11-03).
   final String? defaultVersion;
+
+  /// The iOS version the package needs, when it can be above a podspec's:
+  /// SwiftPM refuses a dependency with a higher minimum than its user.
+  final String? minimumIos;
+}
+
+/// The Facebook SDK's Swift package names its products differently from the
+/// pods (`FBSDKLoginKit` comes with `FacebookLogin`).
+KnownPackage _facebook(String product) => KnownPackage(
+  'https://github.com/facebook/facebook-ios-sdk',
+  'facebook-ios-sdk',
+  product,
+  minimumIos: '12.0',
+);
+
+/// The higher of two dotted versions.
+String _higherVersion(String a, String b) {
+  List<int> parts(String v) => [
+    for (final part in v.split('.')) int.tryParse(part) ?? 0,
+  ];
+  final left = parts(a);
+  final right = parts(b);
+  for (var i = 0; i < left.length || i < right.length; i++) {
+    final x = i < left.length ? left[i] : 0;
+    final y = i < right.length ? right[i] : 0;
+    if (x != y) return x > y ? a : b;
+  }
+  return a;
 }
 
 /// Swift packages for pods that plugins commonly depend on.
@@ -83,6 +112,9 @@ KnownPackage? knownPackageFor(String pod) {
       'SDWebImageWebPCoder',
       defaultVersion: '0.14.0',
     ),
+    'FBSDKLoginKit' => _facebook('FacebookLogin'),
+    'FBSDKCoreKit' => _facebook('FacebookCore'),
+    'FBSDKShareKit' => _facebook('FacebookShare'),
     'Mantle' => const KnownPackage(
       'https://github.com/Mantle/Mantle',
       'Mantle',
@@ -296,7 +328,11 @@ PackageSwiftDraft draftPackageSwift({
   }
 
   final product = plugin.replaceAll('_', '-');
-  final platform = spec.deploymentTarget ?? '13.0';
+  var platform = spec.deploymentTarget ?? '13.0';
+  for (final dependency in spec.dependencies) {
+    final minimum = knownPackageFor(dependency.name)?.minimumIos;
+    if (minimum != null) platform = _higherVersion(platform, minimum);
+  }
   String list(List<String> items, String indent) =>
       items.map((i) => '$indent$i,').join('\n');
 
