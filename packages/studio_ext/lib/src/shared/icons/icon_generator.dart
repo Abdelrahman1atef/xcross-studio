@@ -8,6 +8,8 @@ import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
 import 'package:studio_ext/src/shared/assets/png_codec.dart';
 import 'package:studio_ext/src/shared/icons/icon_analysis.dart';
+import 'package:studio_ext/src/shared/icons/icon_composer.dart';
+import 'package:studio_ext/src/shared/icons/icon_design.dart';
 import 'package:studio_ext/src/shared/icons/icon_slots.dart';
 
 /// The 1024 px icon every size is made from.
@@ -52,46 +54,8 @@ abstract final class IconGenerator {
   }
 
   /// The colour of [image]'s outer border when it is one opaque colour.
-  static IconColor? borderColor(RgbaImage image) {
-    final band =
-        (image.width < image.height ? image.width : image.height) ~/ 64;
-    final depth = band < 1 ? 1 : band;
-    final samples = <IconColor>[];
-    for (var y = 0; y < image.height; y++) {
-      for (var x = 0; x < image.width; x++) {
-        final edge =
-            x < depth ||
-            y < depth ||
-            x >= image.width - depth ||
-            y >= image.height - depth;
-        if (!edge) continue;
-        final i = (y * image.width + x) * 4;
-        if (image.rgba[i + 3] < 250) return null;
-        samples.add((image.rgba[i], image.rgba[i + 1], image.rgba[i + 2]));
-      }
-    }
-    if (samples.isEmpty) return null;
-    var r = 0;
-    var g = 0;
-    var b = 0;
-    for (final (sr, sg, sb) in samples) {
-      r += sr;
-      g += sg;
-      b += sb;
-    }
-    final mean = (
-      r ~/ samples.length,
-      g ~/ samples.length,
-      b ~/ samples.length,
-    );
-    final near = samples.where((c) {
-      final dr = c.$1 - mean.$1;
-      final dg = c.$2 - mean.$2;
-      final db = c.$3 - mean.$3;
-      return dr * dr + dg * dg + db * db <= 24 * 24;
-    }).length;
-    return near >= samples.length * 0.9 ? mean : null;
-  }
+  static IconColor? borderColor(RgbaImage image) =>
+      IconComposer.borderColorOf(image);
 
   /// [source] fitted (aspect kept) and centred inside a margin of
   /// [padding] percent of the side, over [background] (default: the
@@ -102,33 +66,15 @@ abstract final class IconGenerator {
     IconColor? background,
     double padding = 0,
   }) {
-    final color = background ?? borderColor(source) ?? (255, 255, 255);
-    final inner = (side * (1 - 2 * padding / 100)).round().clamp(1, side);
-    final longest = source.width > source.height ? source.width : source.height;
-    final scale = inner / longest;
-    final width = (source.width * scale).round().clamp(1, side);
-    final height = (source.height * scale).round().clamp(1, side);
-    final fitted = source.resized(width, height);
-    final out = Uint8List(side * side * 4);
-    for (var i = 0; i < out.length; i += 4) {
-      out[i] = color.$1;
-      out[i + 1] = color.$2;
-      out[i + 2] = color.$3;
-      out[i + 3] = 255;
-    }
-    final left = (side - width) ~/ 2;
-    final top = (side - height) ~/ 2;
-    for (var y = 0; y < height; y++) {
-      for (var x = 0; x < width; x++) {
-        final s = (y * width + x) * 4;
-        final o = ((top + y) * side + left + x) * 4;
-        final a = fitted.rgba[s + 3];
-        for (var c = 0; c < 3; c++) {
-          out[o + c] = (fitted.rgba[s + c] * a + out[o + c] * (255 - a)) ~/ 255;
-        }
-      }
-    }
-    return IconMaster(RgbaImage(side, side, out), color, upscaled: scale > 1);
+    final composer = IconComposer(
+      source,
+      IconDesign(padding: IconPadding.all(padding), colors: [?background]),
+    );
+    return IconMaster(
+      composer.draw(side, side),
+      composer.colors.first,
+      upscaled: composer.upscaledAt(side),
+    );
   }
 
   /// Every file of the Flutter template set as RGB PNG bytes.

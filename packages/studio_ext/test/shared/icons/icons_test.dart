@@ -410,7 +410,7 @@ void main() {
       );
       final source = writeSource(logo);
       await expectLater(
-        run(['icons', 'generate', source, '--padding', '40']),
+        run(['icons', 'generate', source, '--padding', '46']),
         throwsA(isA<UsageException>()),
       );
       await expectLater(
