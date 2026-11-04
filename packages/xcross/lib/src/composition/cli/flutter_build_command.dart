@@ -197,6 +197,7 @@ final class FlutterBuildCommand<T extends PlatformHostInterface>
       buildNumber: buildNumber,
       flavor: options.flavor,
       buildMode: mode,
+      forDistribution: appStore,
       treeShakeIcons: options.treeShakeIcons,
       splitDebugInfo: options.splitDebugInfo,
       obfuscate: options.obfuscate,

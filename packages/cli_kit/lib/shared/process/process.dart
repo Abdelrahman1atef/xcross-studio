@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:cli_kit/shared/errors/errors.dart';
 import 'package:cli_kit/shared/logging/logging.dart';
 import 'package:cli_kit/shared/platform/platform_host.dart';
+import 'package:cli_kit/shared/process/error_stall_watchdog.dart';
 import 'package:cli_kit/shared/process/process_executor.dart';
 import 'package:cli_kit/shared/process/process_models.dart';
 import 'package:cli_kit/shared/process/tool_lookup.dart';
@@ -159,6 +160,9 @@ final class ProcessRunner<T extends PlatformHostInterface> {
     Step? tail,
     bool forwardStdin = true,
     Duration? timeout,
+    // With [captureAndEcho]: ends a tool that printed an error and then nothing
+    // for this long, and does not wait on pipes something else still holds.
+    Duration? stallAfterError,
   }) {
     log.logTrace(
       '[${label ?? executable}] running: '
@@ -183,6 +187,7 @@ final class ProcessRunner<T extends PlatformHostInterface> {
         workingDirectory: workingDirectory,
         environment: environment,
         timeout: timeout,
+        stallAfterError: stallAfterError,
       );
     }
     if (inheritStdio) {
@@ -284,6 +289,7 @@ final class ProcessRunner<T extends PlatformHostInterface> {
     String? workingDirectory,
     Map<String, String>? environment,
     Duration? timeout,
+    Duration? stallAfterError,
   }) async {
     final process = await start(
       executable,
@@ -292,20 +298,47 @@ final class ProcessRunner<T extends PlatformHostInterface> {
       environment: environment,
     );
     final captured = StringBuffer();
+    final watchdog = stallAfterError == null
+        ? null
+        : ErrorStallWatchdog(
+            limit: stallAfterError,
+            onStall: () => unawaited(killTree(process)),
+          );
+    void saw(String chunk) {
+      captured.write(chunk);
+      watchdog?.saw(chunk);
+    }
+
     final drained = Future.wait([
-      _captureAndEchoStream(process.stdout, captured, _stdout),
-      _captureAndEchoStream(process.stderr, captured, _stderr),
+      _captureAndEchoStream(process.stdout, saw, _stdout),
+      _captureAndEchoStream(process.stderr, saw, _stderr),
     ]);
     try {
       await process.stdin.close();
     } on Object catch (_) {}
-    final code = await executor.awaitExitWithin(
-      process,
-      timeout,
-      executable,
-      arguments,
-    );
-    await drained;
+    final int code;
+    try {
+      code = await executor.awaitExitWithin(
+        process,
+        timeout,
+        executable,
+        arguments,
+      );
+    } finally {
+      watchdog?.stop();
+    }
+    if (watchdog == null) {
+      await drained;
+    } else {
+      // A compiler left behind can keep the pipes open after the tool ended.
+      await drained.timeout(_drainGrace, onTimeout: () => const []);
+    }
+    if (watchdog?.stalled ?? false) {
+      captured.writeln(
+        '\n$executable printed an error and then nothing for '
+        '${stallAfterError!.inSeconds}s, so it was ended.',
+      );
+    }
     if (code != 0) {
       throw _commandFailed(executable, arguments, code, output: '$captured');
     }
@@ -328,14 +361,17 @@ final class ProcessRunner<T extends PlatformHostInterface> {
     ),
   );
 
+  /// How long to wait for a tool's output once it has ended.
+  static const _drainGrace = Duration(seconds: 10);
+
   Future<void> _captureAndEchoStream(
     Stream<List<int>> source,
-    StringBuffer captured,
+    void Function(String) captured,
     IOSink echo,
   ) => source.transform(const Utf8Decoder(allowMalformed: true)).forEach((
     chunk,
   ) {
-    captured.write(chunk);
+    captured(chunk);
     echo.write(chunk);
   });
 

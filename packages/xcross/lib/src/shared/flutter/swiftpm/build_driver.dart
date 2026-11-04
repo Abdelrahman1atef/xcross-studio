@@ -99,6 +99,7 @@ final class SwiftPmBuildDriver<T extends PlatformHostInterface> {
     bool packageLocalArtifactJunctionCapability = false,
     Map<String, Set<String>> consumedProducts = const {},
     SwiftPmDependencyReconciler? reconcileDependencies,
+    bool distribution = false,
   }) async {
     final outputDir = workspace.packages;
     final sdk = await _requireCompatibleSdk();
@@ -185,6 +186,7 @@ final class SwiftPmBuildDriver<T extends PlatformHostInterface> {
       toolsetPath: toolsetPath,
       linkerPath: linker,
       macroServerArguments: macroServerArguments,
+      distribution: distribution,
       // studio: 006 — every resolved xcframework visible to every target, as
       // in Xcode (packages compile `@import` of frameworks they only reach
       // indirectly).

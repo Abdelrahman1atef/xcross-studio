@@ -61,7 +61,15 @@ final class FlutterCleanCommand extends Command<void> {
       );
       paths
         ..add(policy.buildDirectory(projectRoot, 'xcross-native-assets'))
-        ..add(workspace.root);
+        ..add(workspace.root)
+        ..add(
+          SwiftPmWorkspace.forProject(
+            projectRoot,
+            environment: environment,
+            policy: policy,
+            distribution: true,
+          ).root,
+        );
     }
     return paths.toList();
   }

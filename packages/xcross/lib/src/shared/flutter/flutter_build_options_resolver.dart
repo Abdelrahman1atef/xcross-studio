@@ -24,6 +24,7 @@ final class FlutterBuildOptionsResolver {
     String? buildNumber,
     String? flavor,
     FlutterBuildMode buildMode = FlutterBuildMode.debug,
+    bool forDistribution = false,
     bool treeShakeIcons = true,
     String? splitDebugInfo,
     bool obfuscate = false,
@@ -36,6 +37,7 @@ final class FlutterBuildOptionsResolver {
     buildNumber: buildNumber,
     flavor: flavor,
     buildMode: buildMode,
+    forDistribution: forDistribution,
     treeShakeIcons: treeShakeIcons,
     splitDebugInfo: splitDebugInfo == null
         ? null

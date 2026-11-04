@@ -15,6 +15,7 @@ final class FlutterBuildOptions {
     this.buildNumber,
     this.flavor,
     this.buildMode = FlutterBuildMode.debug,
+    this.forDistribution = false,
     this.treeShakeIcons = true,
     this.splitDebugInfo,
     this.obfuscate = false,
@@ -23,6 +24,11 @@ final class FlutterBuildOptions {
   /// `-t/--target` entrypoint.
   final String target;
   final FlutterBuildMode buildMode;
+
+  // studio: 025
+  /// The app will carry a distribution profile (App Store), so plugins are not
+  /// built for debugging: see `SwiftPmBuildPlan.distributionArguments`.
+  final bool forDistribution;
 
   /// `--[no-]tree-shake-icons`. Like `flutter build`, it only applies to
   /// precompiled (profile/release) builds; debug keeps whole icon fonts so

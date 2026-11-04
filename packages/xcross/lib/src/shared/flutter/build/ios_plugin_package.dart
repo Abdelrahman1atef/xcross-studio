@@ -170,6 +170,7 @@ final class GeneratedPluginsPackage<T extends PlatformHostInterface> {
     bool swiftPmArtifactJunctionCapability = false,
     bool packageLocalArtifactJunctionCapability = false,
     ArtifactJunctionCapabilityResolver? artifactJunctionCapabilityResolver,
+    bool distribution = false,
   }) => runtime.runner.log.logStep(
     'Building Flutter plugins (Swift Package Manager)',
     () async {
@@ -271,6 +272,7 @@ final class GeneratedPluginsPackage<T extends PlatformHostInterface> {
         'Flutter.xcframework',
       );
       await runtime.buildDriver.runSwiftBuild(
+        distribution: distribution,
         workspace: workspace,
         pluginsDir: pluginsDir,
         scratchPath: scratchPath,

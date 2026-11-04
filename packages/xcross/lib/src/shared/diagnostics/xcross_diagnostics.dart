@@ -134,6 +134,18 @@ abstract final class XcrossCodes {
     'Review the override when you upgrade the plugin; delete the folder to '
         "build the plugin's own package.",
   );
+  static const buildPluginDrafted = DiagnosticCode(
+    'build.plugin_drafted',
+    'Review it and commit it with the project. If it does not compile, edit it '
+        'or delete its folder; set XCROSS_PLUGIN_DRAFTS=off to leave '
+        'podspec-only plugins out instead.',
+  );
+  static const buildPluginUnknownPods = DiagnosticCode(
+    'build.plugin_unknown_pods',
+    'Run xcross plugin shim <plugin> and add a Swift package for each pod to '
+        'the draft, or use a plugin version that ships Package.swift. See them '
+        'all without building: xcross plugin check.',
+  );
   static const buildPluginOverrideInvalid = DiagnosticCode(
     'build.plugin_override_invalid',
     'An override folder needs a Package.swift; an override.yaml may only set '
@@ -233,6 +245,8 @@ abstract final class XcrossCodes {
     buildEntitlementsUnreadable,
     buildPluginOverrideApplied, // studio: 006
     buildPluginOverrideInvalid,
+    buildPluginDrafted, // studio: 025
+    buildPluginUnknownPods,
     buildRunnerProjectFailed, // studio: 007
     buildRunnerSceneDelegateReplaced,
     buildGenSnapshotUnavailable, // studio: 014

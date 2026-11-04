@@ -35,8 +35,9 @@ class PluginStatus {
           'builds the plugin from it.',
     'podspec only' =>
       'The plugin describes its iOS code only for CocoaPods, which xcross '
-          'does not use. Without an override its iOS part is left out and '
-          'the app fails when it calls the plugin.',
+          'does not use. The next build drafts a Package.swift for it in '
+          'xcross_overrides/. If a pod has no known Swift package, its iOS '
+          'part is left out and the app fails when it calls the plugin.',
     'no iOS code' => 'Pure Dart on iOS; nothing native to build.',
     _ => 'xcross could not tell how this plugin is built.',
   };

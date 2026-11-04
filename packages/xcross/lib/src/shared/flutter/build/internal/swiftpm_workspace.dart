@@ -12,6 +12,9 @@ final class SwiftPmWorkspace {
     String projectRoot, {
     required FlutterTargetBuildPolicy policy,
     Map<String, String>? environment,
+    // studio: 025 — its compiler flags differ, so it gets its own folder and a
+    // distribution build does not throw away the everyday one.
+    bool distribution = false,
   }) {
     final host = policy.target.host;
     final env = environment ?? host.environment.values;
@@ -27,7 +30,11 @@ final class SwiftPmWorkspace {
     return SwiftPmWorkspace._(
       cacheRoot: base,
       policy: policy,
-      root: p.join(base, 'swiftpm', '$key${policy.workspaceSuffix}'),
+      root: p.join(
+        base,
+        'swiftpm',
+        '$key${policy.workspaceSuffix}${distribution ? '-distribution' : ''}',
+      ),
     );
   }
   const SwiftPmWorkspace._({

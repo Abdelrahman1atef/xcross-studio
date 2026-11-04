@@ -1,4 +1,5 @@
 // studio: 006 — `xcross plugin list` and `xcross plugin shim <plugin>`.
+// studio: 025 — `xcross plugin check`; builds write drafts too.
 import 'dart:convert';
 
 import 'package:args/command_runner.dart';
@@ -18,6 +19,7 @@ final class PluginCommand extends Command<void> {
   }) {
     final plugins = ProjectPlugins(fileSystem, paths);
     addSubcommand(PluginListCommand(plugins: plugins, write: write));
+    addSubcommand(PluginCheckCommand(plugins: plugins, write: write));
     addSubcommand(
       PluginShimCommand(plugins: plugins, write: write, home: home),
     );
@@ -152,6 +154,239 @@ final class ProjectPlugins {
   }
 }
 
+/// What drafting a plugin wrote.
+final class WrittenDraft {
+  const WrittenDraft(this.path, this.patched, this.notes);
+
+  /// The `Package.swift`.
+  final String path;
+
+  /// Patched copies of the plugin's files: relative path to why.
+  final Map<String, String> patched;
+
+  /// What to review.
+  final List<String> notes;
+}
+
+/// Writes `<base>/<plugin>/<version>/Package.swift` from a plugin's podspec,
+/// with patched copies of the sources that need them.
+final class PluginDraftWriter {
+  PluginDraftWriter(this.plugins);
+
+  final ProjectPlugins plugins;
+
+  Podspec _spec(ProjectPlugin target) => Podspec.parse(
+    plugins.fileSystem.file(plugins.podspecPath(target)).readAsStringSync(),
+  );
+
+  /// The pods of [target] with no known Swift package, which a draft cannot
+  /// link.
+  List<String> unknownPods(ProjectPlugin target) => [
+    for (final dependency in _spec(target).dependencies)
+      if (dependency.name != 'Flutter' &&
+          knownPackageFor(dependency.name) == null)
+        dependency.name,
+  ];
+
+  /// Where the draft of [target] goes under [base].
+  String packagePath(ProjectPlugin target, String base) {
+    final paths = plugins.paths;
+    final version = target.version;
+    return version == null
+        ? paths.join(base, target.name, 'Package.swift')
+        : paths.join(base, target.name, version, 'Package.swift');
+  }
+
+  /// Writes the draft of [target] under [base], replacing one already there.
+  WrittenDraft write(ProjectPlugin target, {required String base}) {
+    final fs = plugins.fileSystem;
+    final paths = plugins.paths;
+    final name = target.name;
+    final draft = draftPackageSwift(
+      plugin: name,
+      spec: _spec(target),
+      files: plugins.platformFiles(target),
+      pluginVersion: target.version,
+    );
+    // The logical path, for messages: the host file's path carries the
+    // Windows long-path prefix ("✔ Wrote \\?\D:\…").
+    final shown = packagePath(target, base);
+    final folder = paths.dirname(shown);
+    final out = fs.file(shown);
+    out.parent.createSync(recursive: true);
+    out.writeAsStringSync(draft.text);
+    // Write patched copies of Objective-C files into the override folder
+    // (laid over the plugin's sources at build time): mixed plugins import
+    // the split Swift target, and pods whose Objective-C module has another
+    // name in its Swift package import that name.
+    final patched = <String, String>{};
+    for (final relative in draft.objcSources) {
+      final source = fs.file(
+        paths.joinAll([target.platformDirectory, ...relative.split('/')]),
+      );
+      if (!source.existsSync()) continue;
+      final original = source.readAsStringSync();
+      var text = original;
+      final reasons = <String>[];
+      // Not plain C or C++: UIKit is Objective-C, and CocoaPods' prefix
+      // header only imports it for Objective-C.
+      final extension = paths.extension(relative);
+      if (const {'.m', '.mm', '.h'}.contains(extension)) {
+        final implicit = patchImplicitObjcImports(
+          text,
+          header: extension == '.h',
+        );
+        if (implicit != null) {
+          reasons.add(
+            implicit.contains('<UIKit/UIKit.h>')
+                ? 'import UIKit'
+                : 'import Foundation',
+          );
+          text = implicit;
+        }
+      }
+      if (draft.splitsSwift) {
+        final swift = patchSwiftHeaderImports(text, name);
+        if (swift != null) {
+          text = swift;
+          reasons.add('@import ${name}_swift;');
+        }
+      }
+      if (extension == '.h') {
+        final located = patchHeaderPaths(
+          text,
+          file: relative,
+          headers: [
+            for (final other in draft.objcSources)
+              if (other.endsWith('.h')) other,
+          ],
+        );
+        if (located != null) {
+          reasons.add('header paths');
+          text = located;
+        }
+      }
+      final flat = patchFlatHeaderImports(text, draft.flatHeaderModules);
+      if (flat != null) {
+        reasons.add(
+          [
+            for (final module in draft.flatHeaderModules)
+              if (flat.contains('@import $module;')) '@import $module;',
+          ].join(', '),
+        );
+        text = flat;
+      }
+      final renamed = patchModuleImports(text, draft.moduleRenames);
+      if (renamed != null) {
+        text = renamed;
+        reasons.add(
+          [
+            for (final MapEntry(key: from, value: to)
+                in draft.moduleRenames.entries)
+              if (original.contains(from)) '@import $to; for $from',
+          ].join(', '),
+        );
+      }
+      if (text == original) continue;
+      final copy = fs.file(paths.joinAll([folder, ...relative.split('/')]));
+      copy.parent.createSync(recursive: true);
+      copy.writeAsStringSync(text);
+      patched[relative] = reasons.join('; ');
+    }
+    // Swift files get the imports a pod's umbrella header gave them.
+    for (final relative in draft.swiftSources) {
+      final source = fs.file(
+        paths.joinAll([target.platformDirectory, ...relative.split('/')]),
+      );
+      if (!source.existsSync()) continue;
+      final original = source.readAsStringSync();
+      final text = patchImplicitImports(original);
+      if (text == null) continue;
+      final copy = fs.file(paths.joinAll([folder, ...relative.split('/')]));
+      copy.parent.createSync(recursive: true);
+      copy.writeAsStringSync(text);
+      patched[relative] = [
+        for (final module in implicitImports(original)) 'import $module',
+      ].join(', ');
+    }
+    return WrittenDraft(shown, patched, draft.notes);
+  }
+}
+
+/// `xcross plugin check`: what a build will do with each plugin, in seconds.
+final class PluginCheckCommand extends Command<void> {
+  PluginCheckCommand({required this.plugins, required this.write}) {
+    argParser.addOption(
+      'project',
+      defaultsTo: '.',
+      help: 'Flutter project folder.',
+    );
+  }
+
+  final ProjectPlugins plugins;
+  final void Function(String) write;
+
+  @override
+  String get name => 'check';
+
+  @override
+  String get description =>
+      'Say what a build will do with each iOS plugin, without compiling.';
+
+  @override
+  String get invocation => 'xcross plugin check [--project <dir>]';
+
+  @override
+  Future<void> run() async {
+    final project = argResults!.option('project')!;
+    final writer = PluginDraftWriter(plugins);
+    try {
+      final out = StringBuffer();
+      final problems = <String>[];
+      final all = plugins.read(project);
+      for (final plugin in all) {
+        final label = '${plugin.name} ${plugin.version ?? ''}'.trimRight();
+        final overridden = plugins.fileSystem
+            .directory(
+              plugins.paths.join(project, 'xcross_overrides', plugin.name),
+            )
+            .existsSync();
+        if (overridden) {
+          out.writeln('✔ $label  (override)');
+        } else if (plugins.hasSwiftPackage(plugin)) {
+          out.writeln('✔ $label  (swiftpm)');
+        } else if (!plugins.hasPodspec(plugin)) {
+          out.writeln('✔ $label  (no iOS code)');
+        } else {
+          final unknown = writer.unknownPods(plugin);
+          if (unknown.isEmpty) {
+            out.writeln('✔ $label  (podspec only: the next build drafts it)');
+          } else {
+            problems.add(plugin.name);
+            out.writeln(
+              '✖ $label  (podspec only, no Swift package for: '
+              '${unknown.join(', ')})',
+            );
+          }
+        }
+      }
+      if (all.isEmpty) out.writeln('No iOS plugins.');
+      write(out.toString());
+      if (problems.isNotEmpty) {
+        throw PluginFailure(
+          'plugin.unknown_pods',
+          'A build will leave out the native code of ${problems.join(', ')}.',
+          'Run xcross plugin shim <plugin> and add a Swift package for each '
+              'pod to the draft, or use a plugin version that ships '
+              'Package.swift.',
+        );
+      }
+    } on PluginFailure catch (failure) {
+      throw failure.toCliError();
+    }
+  }
+}
+
 /// `xcross plugin list`: each iOS plugin and how xcross builds it.
 final class PluginListCommand extends Command<void> {
   PluginListCommand({required this.plugins, required this.write}) {
@@ -270,15 +505,6 @@ final class PluginShimCommand extends Command<void> {
               'section "Plugin overrides").',
         );
       }
-      final spec = Podspec.parse(
-        fs.file(plugins.podspecPath(target)).readAsStringSync(),
-      );
-      final draft = draftPackageSwift(
-        plugin: name,
-        spec: spec,
-        files: plugins.platformFiles(target),
-        pluginVersion: target.version,
-      );
       final String base;
       if (args.flag('global')) {
         if (home == null) {
@@ -292,130 +518,30 @@ final class PluginShimCommand extends Command<void> {
       } else {
         base = paths.join(project, 'xcross_overrides');
       }
-      final version = target.version;
-      final folder = version == null
-          ? paths.join(base, name)
-          : paths.join(base, name, version);
-      // The logical path, for messages: the host file's path carries the
-      // Windows long-path prefix ("✔ Wrote \\?\D:\…").
-      final shown = paths.join(folder, 'Package.swift');
-      final out = fs.file(shown);
-      if (out.existsSync() && !args.flag('force')) {
+      final writer = PluginDraftWriter(plugins);
+      final existing = writer.packagePath(target, base);
+      if (fs.file(existing).existsSync() && !args.flag('force')) {
         throw PluginFailure(
           'plugin.override_exists',
-          '$shown already exists.',
+          '$existing already exists.',
           'Edit it, or pass --force to replace it with a new draft.',
         );
       }
-      out.parent.createSync(recursive: true);
-      out.writeAsStringSync(draft.text);
-      // Write patched copies of Objective-C files into the override folder
-      // (laid over the plugin's sources at build time): mixed plugins import
-      // the split Swift target, and pods whose Objective-C module has another
-      // name in its Swift package import that name.
-      final patched = <String, String>{};
-      for (final relative in draft.objcSources) {
-        final source = fs.file(
-          paths.joinAll([target.platformDirectory, ...relative.split('/')]),
-        );
-        if (!source.existsSync()) continue;
-        final original = source.readAsStringSync();
-        var text = original;
-        final reasons = <String>[];
-        // Not plain C or C++: UIKit is Objective-C, and CocoaPods' prefix
-        // header only imports it for Objective-C.
-        final extension = paths.extension(relative);
-        if (const {'.m', '.mm', '.h'}.contains(extension)) {
-          final implicit = patchImplicitObjcImports(
-            text,
-            header: extension == '.h',
-          );
-          if (implicit != null) {
-            reasons.add(
-              implicit.contains('<UIKit/UIKit.h>')
-                  ? 'import UIKit'
-                  : 'import Foundation',
-            );
-            text = implicit;
-          }
-        }
-        if (draft.splitsSwift) {
-          final swift = patchSwiftHeaderImports(text, name);
-          if (swift != null) {
-            text = swift;
-            reasons.add('@import ${name}_swift;');
-          }
-        }
-        if (extension == '.h') {
-          final located = patchHeaderPaths(
-            text,
-            file: relative,
-            headers: [
-              for (final other in draft.objcSources)
-                if (other.endsWith('.h')) other,
-            ],
-          );
-          if (located != null) {
-            reasons.add('header paths');
-            text = located;
-          }
-        }
-        final flat = patchFlatHeaderImports(text, draft.flatHeaderModules);
-        if (flat != null) {
-          reasons.add(
-            [
-              for (final module in draft.flatHeaderModules)
-                if (flat.contains('@import $module;')) '@import $module;',
-            ].join(', '),
-          );
-          text = flat;
-        }
-        final renamed = patchModuleImports(text, draft.moduleRenames);
-        if (renamed != null) {
-          text = renamed;
-          reasons.add(
-            [
-              for (final MapEntry(key: from, value: to)
-                  in draft.moduleRenames.entries)
-                if (original.contains(from)) '@import $to; for $from',
-            ].join(', '),
-          );
-        }
-        if (text == original) continue;
-        final copy = fs.file(paths.joinAll([folder, ...relative.split('/')]));
-        copy.parent.createSync(recursive: true);
-        copy.writeAsStringSync(text);
-        patched[relative] = reasons.join('; ');
-      }
-      // Swift files get the imports a pod's umbrella header gave them.
-      for (final relative in draft.swiftSources) {
-        final source = fs.file(
-          paths.joinAll([target.platformDirectory, ...relative.split('/')]),
-        );
-        if (!source.existsSync()) continue;
-        final original = source.readAsStringSync();
-        final text = patchImplicitImports(original);
-        if (text == null) continue;
-        final copy = fs.file(paths.joinAll([folder, ...relative.split('/')]));
-        copy.parent.createSync(recursive: true);
-        copy.writeAsStringSync(text);
-        patched[relative] = [
-          for (final module in implicitImports(original)) 'import $module',
-        ].join(', ');
-      }
+      final written = writer.write(target, base: base);
       final message = StringBuffer()
-        ..writeln('✔ Wrote $shown')
+        ..writeln('✔ Wrote ${written.path}')
         ..writeln(
           plugins.hasSwiftPackage(target)
               ? '  (overrides the Package.swift $name ships)'
               : '  ($name ships only a podspec)',
         );
-      for (final MapEntry(key: relative, value: reason) in patched.entries) {
+      for (final MapEntry(key: relative, value: reason)
+          in written.patched.entries) {
         message.writeln('✔ Patched $relative ($reason)');
       }
-      if (draft.notes.isNotEmpty) {
+      if (written.notes.isNotEmpty) {
         message.writeln('Review before building:');
-        for (final note in draft.notes) {
+        for (final note in written.notes) {
           message.writeln('  • $note');
         }
       }

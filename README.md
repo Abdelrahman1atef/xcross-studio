@@ -541,6 +541,11 @@ Plugins that only ship a CocoaPods podspec are currently **skipped with a warnin
 <!-- studio: 006 -->
 ### Plugin overrides
 
+A build drafts the `Package.swift` of a plugin that only ships a podspec, into `xcross_overrides/<plugin>/<version>/`
+in the project, and says so with `[build.plugin_drafted]`. Review it and commit it. A plugin needing a pod with no known
+Swift package is left out and named by `[build.plugin_unknown_pods]`. See what a build will do without compiling:
+`xcross plugin check`. `XCROSS_PLUGIN_DRAFTS=off` turns drafting off.
+
 Give xcross your own `Package.swift` for a plugin: for one that only ships a podspec, or one whose manifest does not
 build. Put it in the project (or in `~/.xcross/overrides/` for all projects):
 

@@ -1,5 +1,24 @@
 ## Unreleased (XCross Studio)
 
+- Firebase Cloud Messaging on the device: apps had no FCM token, while Firebase features that only need the network
+  worked. `firebase_messaging` connects to push when launch finishes, and xcross registered plugins later, on the
+  engine of the window it makes in code. Plugins now register during launch, on an engine the window then uses.
+  `build.runner_legacy_registration` is gone with the behaviour it warned about.
+  ([specs/025-plugin-drafts-check](specs/025-plugin-drafts-check/spec.md), AC-025-7)
+
+- App Store builds: `--export-method app-store` builds plugins without `DEBUG` and with optimization. Plugins were
+  always built for debugging, so `firebase_messaging` marked the APNs token as sandbox, which cannot be delivered to an
+  App Store install. These builds use a workspace of their own, so everyday builds are kept.
+  `XCROSS_PLUGIN_BUILD=distribution` does the same for an app signed for distribution outside xcross. (AC-025-6)
+
+- Podspec-only plugins build without a manual step: a build drafts
+  `xcross_overrides/<plugin>/<version>/Package.swift`, the files `xcross plugin shim` writes, and says so with
+  `[build.plugin_drafted]`. A pod with no known Swift package is named by `[build.plugin_unknown_pods]`, before anything
+  compiles. `xcross plugin check` says what a build will do with each plugin without compiling. (AC-025-1 to AC-025-4)
+
+- A build no longer stays stuck after a compile error. On Windows, `swift build` that printed an error and then nothing
+  for 5 minutes is ended with its compilers, and the build fails showing the errors. (AC-025-5)
+
 - Apps using FlutterFire plugins whose `Package.swift` reads the plugin's own `pubspec.yaml` (firebase_core 3.x,
   firebase_analytics 11.x, firebase_messaging 15.x, firebase_crashlytics 4.x, firebase_remote_config 5.x) build on
   Windows again. Their manifest found its folder with `URL(string: #file)`, which reads `C:` as a URL scheme, and

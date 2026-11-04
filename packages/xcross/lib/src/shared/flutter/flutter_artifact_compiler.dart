@@ -9,6 +9,7 @@ import 'package:xcross/src/shared/flutter/build/ios_deployment_target.dart';
 import 'package:xcross/src/shared/flutter/build/ios_native_assets.dart';
 import 'package:xcross/src/shared/flutter/build/ios_plugin_package.dart';
 import 'package:xcross/src/shared/flutter/build/ios_plugins.dart';
+import 'package:xcross/src/shared/flutter/build/plugin_auto_draft.dart'; // studio: 025
 import 'package:xcross/src/shared/flutter/build/plugin_overrides.dart'; // studio: 006
 import 'package:xcross/src/shared/flutter/errors.dart';
 import 'package:xcross/src/shared/flutter/flutter_assets_compiler.dart';
@@ -36,6 +37,7 @@ final class FlutterArtifactCompiler<T extends PlatformHostInterface>
   @override
   @override
   Future<FlutterCompiledArtifacts> compile() async {
+    await _draftPlugins();
     final flutterRoot = context.flutterRoot;
     final deploymentTarget = context.deploymentTarget;
     final appFramework = await _buildAppFramework(
@@ -167,6 +169,31 @@ final class FlutterArtifactCompiler<T extends PlatformHostInterface>
     );
   }
 
+  /// Plugins [_draftPlugins] could not draft and has warned about.
+  Set<String> _undraftable = const {};
+
+  PluginOverrideLocator get _overrideLocator => PluginOverrideLocator(
+    fileSystem: runtime.host.fileSystem,
+    paths: runtime.host.paths.context,
+    projectRoot: projectRoot,
+    environment: runtime.host.environment.values,
+  );
+
+  // studio: 025 — first, so a plugin that will be left out is said in seconds.
+  Future<void> _draftPlugins() async {
+    _undraftable =
+        PluginAutoDraft(
+          fileSystem: runtime.host.fileSystem,
+          paths: runtime.host.paths.context,
+          projectRoot: projectRoot,
+          locator: _overrideLocator,
+          warnings: runtime.warnings,
+          environment: runtime.host.environment.values,
+        ).draftMissing(
+          await PluginDiscovery(runtime.host.fileSystem).discover(projectRoot),
+        );
+  }
+
   /// Discover the project's iOS plugins and build the aggregate Swift
   /// Package Manager plugins library, if any exist.
   ///
@@ -179,20 +206,22 @@ final class FlutterArtifactCompiler<T extends PlatformHostInterface>
     required IosDeploymentTarget deploymentTarget,
     required bool verbose,
   }) async {
+    // studio: 025 — the environment switch is for an app signed for
+    // distribution outside xcross.
+    final distribution =
+        options.forDistribution ||
+        runtime.host.environment.values['XCROSS_PLUGIN_BUILD'] ==
+            'distribution';
     final workspace = SwiftPmWorkspace.forProject(
       projectRoot,
       policy: runtime.policy,
+      distribution: distribution,
     );
     // studio: 006 — plugins with an xcross_overrides/ folder are re-rooted at
     // a staged copy that carries the user's Package.swift.
     final plugins =
         PluginOverrides(
-          locator: PluginOverrideLocator(
-            fileSystem: runtime.host.fileSystem,
-            paths: runtime.host.paths.context,
-            projectRoot: projectRoot,
-            environment: runtime.host.environment.values,
-          ),
+          locator: _overrideLocator,
           warnings: runtime.warnings,
         ).apply(
           await PluginDiscovery(runtime.host.fileSystem).discover(projectRoot),
@@ -206,6 +235,8 @@ final class FlutterArtifactCompiler<T extends PlatformHostInterface>
       final dir = plugin.platformDirectoryName;
       if (plugin.usesSwiftPackageManager) {
         spmPlugins.add(plugin);
+      } else if (_undraftable.contains(plugin.name)) {
+        continue;
       } else if (plugin.usesCocoaPods) {
         // studio: 002 — coded, deduplicated warning with a fix hint.
         runtime.warnings.warn(
@@ -256,6 +287,7 @@ final class FlutterArtifactCompiler<T extends PlatformHostInterface>
       verbose: verbose,
       swiftPmArtifactJunctionCapability: capabilities.swiftPmArtifact,
       packageLocalArtifactJunctionCapability: capabilities.packageLocalArtifact,
+      distribution: distribution,
     );
     return builtPlugins;
   }

@@ -4731,6 +4731,31 @@ let package = Package(
       );
     });
 
+    test('AC-025-6 only a distribution build drops DEBUG and optimizes', () {
+      List<String> arguments({required bool distribution}) =>
+          _swiftPmRuntime.buildPlan.swiftBuildArguments(
+            pluginsDir: 'plugins',
+            scratchPath: 'scratch',
+            swiftSdksPath: 'xcross-swift-sdks',
+            iosSdk: 'iPhoneOS.sdk',
+            flutterFrameworkSlice: 'Flutter.xcframework/ios-arm64',
+            distribution: distribution,
+          );
+
+      expect(arguments(distribution: false), isNot(contains('-UDEBUG')));
+      expect(
+        arguments(distribution: true),
+        containsAllInOrder([
+          '-Xcc',
+          '-UDEBUG',
+          '-Xcc',
+          '-O2',
+          '-Xswiftc',
+          '-O',
+        ]),
+      );
+    });
+
     test(
       'repairs transitive imports exposed by generated Swift headers',
       () async {

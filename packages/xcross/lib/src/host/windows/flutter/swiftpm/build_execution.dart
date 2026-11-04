@@ -14,6 +14,7 @@ final class WindowsSwiftPmBuildExecution<T extends PlatformHostInterface>
     required this.repair,
     required this.consumerRepair,
     this.moduleCacheRaceAttempts = 3,
+    this.stallAfterError = const Duration(minutes: 5),
   });
   final ProcessRunner<T> runner;
   final WindowsSwiftPlanRepair repair;
@@ -22,6 +23,11 @@ final class WindowsSwiftPmBuildExecution<T extends PlatformHostInterface>
   /// How many times one `swift build` runs when it keeps losing a Clang
   /// module cache race (see [isModuleCacheRace]).
   final int moduleCacheRaceAttempts;
+
+  /// How long `swift build` may stay silent after printing an error. Running
+  /// compilers may still finish and print; one that never does held the build
+  /// for hours, with its pipes open and nothing left to do.
+  final Duration stallAfterError;
 
   /// Whether a failed `swift build` lost a race on the shared implicit Clang
   /// module cache rather than hitting a genuine compile error.
@@ -76,6 +82,7 @@ final class WindowsSwiftPmBuildExecution<T extends PlatformHostInterface>
           environment: command.environment,
           captureAndEcho: true,
           label: 'swift build',
+          stallAfterError: stallAfterError,
         );
       } on Object catch (error) {
         if (attempt >= moduleCacheRaceAttempts || !isModuleCacheRace(error)) {

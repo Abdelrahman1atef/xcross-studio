@@ -108,6 +108,21 @@ final class SwiftPmBuildPlan<T extends PlatformHostInterface> {
     return path;
   }
 
+  // studio: 025
+  /// A SwiftPM debug build with what an App Store build needs: these come after
+  /// SwiftPM's own `-DDEBUG=1` and `-O0`, and the last one counts.
+  ///
+  /// `firebase_messaging` marks the APNs token as sandbox under `#ifdef DEBUG`,
+  /// and a token marked sandbox from an App Store profile cannot be delivered.
+  static const distributionArguments = [
+    '-Xcc',
+    '-UDEBUG',
+    '-Xcc',
+    '-O2',
+    '-Xswiftc',
+    '-O',
+  ];
+
   /// Arguments shared by Linux and Windows SwiftPM builds. SDK-owned compiler
   /// flags stay in SDK metadata; only package-specific flags belong here.
   List<String> swiftBuildArguments({
@@ -122,6 +137,7 @@ final class SwiftPmBuildPlan<T extends PlatformHostInterface> {
     String? linkerPath,
     List<String> interopSearchPaths = const [],
     List<String> macroServerArguments = const [],
+    bool distribution = false,
   }) => [
     ...hostPolicy.buildPrefix,
     '--package-path',
@@ -154,6 +170,7 @@ final class SwiftPmBuildPlan<T extends PlatformHostInterface> {
     ...hostPolicy.buildArguments,
     ...interopSearchPaths,
     ...macroServerArguments,
+    if (distribution) ...distributionArguments,
     // On macOS, SwiftPM's host toolchain can override the Swift SDK bundle's
     // sdkRootPath with the host MacOSX SDK. Pin the installed iPhoneOS SDK for
     // Swift imports and every C/Objective-C target so UIKit and Foundation are

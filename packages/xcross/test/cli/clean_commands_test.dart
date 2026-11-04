@@ -74,6 +74,16 @@ void main() {
                   environment: env,
                 ).root,
               )..createSync(recursive: true),
+            )
+            ..add(
+              Directory(
+                SwiftPmWorkspace.forProject(
+                  project.path,
+                  policy: policy,
+                  environment: env,
+                  distribution: true,
+                ).root,
+              )..createSync(recursive: true),
             );
         }
 
