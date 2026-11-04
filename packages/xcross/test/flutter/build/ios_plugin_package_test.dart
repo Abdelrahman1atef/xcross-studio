@@ -541,6 +541,42 @@ import MSVCRT
       expect(out, isNot(contains('import Darwin.C\n#elseif canImport(CRT)')));
     });
 
+    // facebook-ios-sdk 18: "no such module 'Darwin.C'" on Windows, where the
+    // manifest gets getenv from the CRT module xcross imports.
+    test('guards an unconditional Darwin import in a final #else', () {
+      for (final eol in ['\n', '\r\n']) {
+        final input = [
+          '#if os(Linux)',
+          'import Glibc',
+          '#else',
+          'import Darwin.C',
+          '#endif',
+          'let local = getenv("X") != nil',
+        ].join(eol);
+        final out = _windowsRuntime.checkoutManifestNormalizer.policy
+            .normalizeHostManifest(input);
+        expect(
+          out,
+          contains('#elseif canImport(Darwin)${eol}import Darwin.C$eol#endif'),
+        );
+        expect(out, isNot(contains('#else$eol')));
+      }
+      // Already guarded, or a real else branch: left alone.
+      const guarded = '''
+#if canImport(Darwin)
+import Darwin.C
+#else
+import Glibc
+#endif
+''';
+      expect(
+        _windowsRuntime.checkoutManifestNormalizer.policy.normalizeHostManifest(
+          guarded,
+        ),
+        guarded,
+      );
+    });
+
     test('handles CRLF MSVCRT import blocks', () {
       const input =
           '#elseif canImport(MSVCRT)\r\n'

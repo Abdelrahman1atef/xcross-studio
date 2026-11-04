@@ -17,7 +17,16 @@ final class WindowsSwiftPmVendoredManifestPolicy<
   final SwiftPmSourceFallback<T> sourceFallback;
   @override
   String normalizeHostManifest(String manifest) {
-    final normalized = sourceNormalizer.normalizeHostManifest(manifest);
+    // studio: `#if os(Linux) … #else import Darwin.C #endif` assumes everything
+    // but Linux is Darwin (facebook-ios-sdk 18). On Windows the manifest gets
+    // getenv from the CRT module xcross imports into every manifest.
+    final normalized = sourceNormalizer
+        .normalizeHostManifest(manifest)
+        .replaceAllMapped(
+          RegExp(r'#else(\r?\n)(import Darwin(?:\.C)?)(\r?\n)#endif'),
+          (match) =>
+              '#elseif canImport(Darwin)${match[1]}${match[2]}${match[3]}#endif',
+        );
     return normalized.replaceAllMapped(
       RegExp(r'#elseif\s+canImport\(MSVCRT\)\r?\nimport MSVCRT'),
       (match) {
