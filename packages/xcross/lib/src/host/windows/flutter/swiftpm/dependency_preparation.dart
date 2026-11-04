@@ -1,6 +1,8 @@
 import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:cli_kit/shared/process/process.dart';
 import 'package:meta/meta.dart';
+import 'package:path/path.dart' as p;
+import 'package:xcross/src/host/windows/flutter/swiftpm/damaged_repositories.dart';
 import 'package:xcross/src/shared/flutter/build/ios_plugin_package.dart';
 import 'package:xcross/src/shared/flutter/swiftpm/binary_recovery.dart';
 import 'package:xcross/src/shared/flutter/swiftpm/checkout.dart';
@@ -31,7 +33,7 @@ final class WindowsSwiftPmDependencyPreparation<T extends PlatformHostInterface>
   final SwiftPmExtractedArtifactRecovery<T> extractedArtifacts;
   @override
   Future<void> prepare(SwiftPmDependencyCommand command) async {
-    Future<void> resolve() => runner.runChecked(
+    Future<void> resolveOnce() => runner.runChecked(
       command.swift,
       processPolicy
           .swiftResolveArguments(
@@ -46,6 +48,18 @@ final class WindowsSwiftPmDependencyPreparation<T extends PlatformHostInterface>
       inheritStdio: runner.log.isVerbose,
       label: 'swift package resolve',
     );
+    Future<void> resolve() async {
+      try {
+        await resolveOnce();
+      } on Object catch (error) {
+        if (!SwiftPmDamagedRepositories.explains(error) ||
+            !await _removeDamagedRepositories(command.scratchPath)) {
+          rethrow;
+        }
+        await resolveOnce();
+      }
+    }
+
     Future<void> resolveWithRetries() =>
         networkRetry.retryingTransientNetworkFailure(
           resolve,
@@ -75,5 +89,28 @@ final class WindowsSwiftPmDependencyPreparation<T extends PlatformHostInterface>
         recover: recover,
       );
     }
+  }
+
+  /// Removes what SwiftPM cannot read versions from, so it fetches them again.
+  /// Returns whether there was anything to remove.
+  Future<bool> _removeDamagedRepositories(String scratchPath) async {
+    final repositories = SwiftPmDamagedRepositories(runner.host.fileSystem);
+    final home = runner.environmentValue(
+      runner.effectiveEnvironment,
+      'USERPROFILE',
+    );
+    final removed = [
+      ...await repositories.removeFrom(p.join(scratchPath, 'repositories')),
+      if (home != null)
+        ...await repositories.removeFrom(
+          SwiftPmDamagedRepositories.sharedCache(home),
+          minimumAge: SwiftPmDamagedRepositories.sharedCacheMinimumAge,
+        ),
+    ];
+    runner.log.logTrace(
+      '[swift package resolve] removed unusable repositories: '
+      '${removed.join(', ')}',
+    );
+    return removed.isNotEmpty;
   }
 }

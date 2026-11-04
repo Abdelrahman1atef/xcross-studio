@@ -31,7 +31,12 @@
 - [X] T013 [US5] Engine started during launch in packages/xcross/lib/src/shared/flutter/build/runner_shim.dart and packages/xcross/lib/src/shared/flutter/build/project_runner.dart
 - [X] T014 [US5] Tests in packages/xcross/test/flutter/build/runner_shim_source_test.dart and packages/xcross/test/flutter/build/project_runner_test.dart
 
-## Phase 6: Polish
+## Phase 6: User Story 6 - Damaged download cache
+
+- [X] T018 [US6] `SwiftPmDamagedRepositories` in packages/xcross/lib/src/host/windows/flutter/swiftpm/damaged_repositories.dart, used by packages/xcross/lib/src/host/windows/flutter/swiftpm/dependency_preparation.dart
+- [X] T019 [US6] Tests in packages/xcross/test/flutter/build/damaged_repositories_test.dart
+
+## Phase 7: Polish
 
 - [X] T015 CHANGELOG, README, specs/025-plugin-drafts-check/device-check.md, the codes in specs/002-quick-wins/contracts/diagnostics.md
 - [X] T016 Compile checks on a test project (device-check.md rows 1 to 4)

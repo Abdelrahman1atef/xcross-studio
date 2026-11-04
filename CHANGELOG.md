@@ -16,6 +16,9 @@
   `[build.plugin_drafted]`. A pod with no known Swift package is named by `[build.plugin_unknown_pods]`, before anything
   compiles. `xcross plugin check` says what a build will do with each plugin without compiling. (AC-025-1 to AC-025-4)
 
+- A new workspace no longer fails with "no versions of" a package when SwiftPM's shared download cache holds an unusable
+  copy of it. xcross removes what git cannot read and resolves again. (AC-025-9)
+
 - A build no longer stays stuck after a compile error. On Windows, `swift build` that printed an error and then nothing
   for 5 minutes is ended with its compilers, and the build fails showing the errors. (AC-025-5)
 

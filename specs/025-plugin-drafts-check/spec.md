@@ -47,6 +47,18 @@ After a compile error, `swift build` could stay alive with a compiler still runn
    compilers, and the build fails showing the errors and saying why it was ended. Output that keeps coming means it is
    still working. Once it has exited, a compiler left holding its pipes does not keep the build waiting.
 
+### User Story 6 - A new workspace resolves despite a damaged download cache (Priority: P2)
+
+On Windows, SwiftPM's shared repository cache was found holding unusable entries, most with only `objects` left. A new
+workspace copies from it, finds no versions of a package, and cannot resolve. An existing workspace has its own copy and
+never notices, so the first App Store build, which makes a new workspace, is the first to fail.
+
+**Acceptance Scenarios**:
+
+1. **AC-025-9**: When a resolve fails with "no versions of", xcross removes the repositories git cannot read from the
+   workspace and from the shared cache, leaving cache entries under 10 minutes old as they may be another build's clone
+   in progress, and resolves again. With nothing to remove, the failure stands as it was.
+
 ### User Story 4 - Push works from App Store builds (Priority: P1)
 
 xcross builds plugins with SwiftPM's debug configuration, which defines `DEBUG` and turns optimization off.
