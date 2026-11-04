@@ -6,9 +6,9 @@
   `build.runner_legacy_registration` is gone with the behaviour it warned about.
   ([specs/025-plugin-drafts-check](specs/025-plugin-drafts-check/spec.md), AC-025-7)
 
-- App Store builds: `--export-method app-store` builds plugins without `DEBUG` and with optimization. Plugins were
-  always built for debugging, so `firebase_messaging` marked the APNs token as sandbox, which cannot be delivered to an
-  App Store install. These builds use a workspace of their own, so everyday builds are kept.
+- App Store builds: `--export-method app-store` builds plugins without `DEBUG`. It was always defined, so
+  `firebase_messaging` marked the APNs token as sandbox, which cannot be delivered to an App Store install. These builds
+  use a workspace of their own, so everyday builds are kept.
   `XCROSS_PLUGIN_BUILD=distribution` does the same for an app signed for distribution outside xcross. (AC-025-6)
 
 - Podspec-only plugins build without a manual step: a build drafts

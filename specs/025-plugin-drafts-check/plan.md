@@ -23,7 +23,7 @@ CLI first; the desktop app only updates a tooltip. Nothing new leaves the machin
   alive; output is no longer awaited forever after it exits. The ending message avoids the words that mark a timeout, so
   a module cache race that stalled is still retried.
 - **Distribution**: `FlutterBuildOptions.forDistribution` flows to `SwiftPmBuildPlan.swiftBuildArguments`. The flags come
-  after SwiftPM's own, and for `-D`/`-U` and `-O` the last one counts. `SwiftPmWorkspace` gets a `-distribution` suffix.
+  after SwiftPM's own, and for `-D`/`-U` the last one counts. `SwiftPmWorkspace` gets a `-distribution` suffix.
 - **Registration**: the generic runner and `XcrossRunnerSupport.m` start the engine during launch. It is Flutter's
   documented order for an engine made ahead of its view controller: run, register, then `initWithEngine:`.
 
@@ -31,5 +31,5 @@ CLI first; the desktop app only updates a tooltip. Nothing new leaves the machin
 
 - The engine now starts before `super.application(_:didFinishLaunchingWithOptions:)` in every generic-runner app. Needs
   the device check; the desktop app is packaged with it, so a failure there is visible at once.
-- `-O2`/`-O` plugin builds cannot be run on a device (an App Store profile does not install). They are compile-checked
-  through `XCROSS_PLUGIN_BUILD=distribution`.
+- A distribution build cannot be run on a device (an App Store profile does not install). It is compile-checked through
+  `XCROSS_PLUGIN_BUILD=distribution`, and the push itself needs a TestFlight install.

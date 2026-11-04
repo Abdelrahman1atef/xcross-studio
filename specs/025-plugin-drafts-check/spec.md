@@ -61,15 +61,15 @@ never notices, so the first App Store build, which makes a new workspace, is the
 
 ### User Story 4 - Push works from App Store builds (Priority: P1)
 
-xcross builds plugins with SwiftPM's debug configuration, which defines `DEBUG` and turns optimization off.
-`firebase_messaging` marks the APNs token as sandbox under `#ifdef DEBUG`, which is wrong for an App Store profile.
+xcross builds plugins with SwiftPM's debug configuration, which defines `DEBUG`. `firebase_messaging` marks the APNs token as sandbox under `#ifdef DEBUG`, which is wrong for an App Store profile.
 
 **Acceptance Scenarios**:
 
-1. **AC-025-6**: `--export-method app-store` builds plugins without `DEBUG` and with optimization (`-UDEBUG -O2` for C
-   languages, `-O` for Swift), in a workspace of their own, so the everyday build is not thrown away. `xcross flutter
-   clean` removes it. `XCROSS_PLUGIN_BUILD=distribution` does the same for an app signed for distribution outside
-   xcross. Other builds are unchanged: they are signed for development, whose tokens are sandbox tokens.
+1. **AC-025-6**: `--export-method app-store` builds plugins without `DEBUG` (`-UDEBUG`), in a workspace of their own,
+   so the everyday build is not thrown away. `xcross flutter clean` removes it. `XCROSS_PLUGIN_BUILD=distribution` does
+   the same for an app signed for distribution outside xcross. Other builds are unchanged: they are signed for
+   development, whose tokens are sandbox tokens. Plugins stay unoptimized, as in every other build: with `-O2` and `-O`
+   as well, a real plugin set failed with a module cache race and then crashed `swift-frontend`.
 
 ### User Story 5 - Plugins are registered in time (Priority: P1)
 

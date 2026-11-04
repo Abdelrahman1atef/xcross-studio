@@ -4731,7 +4731,7 @@ let package = Package(
       );
     });
 
-    test('AC-025-6 only a distribution build drops DEBUG and optimizes', () {
+    test('AC-025-6 only a distribution build drops DEBUG', () {
       List<String> arguments({required bool distribution}) =>
           _swiftPmRuntime.buildPlan.swiftBuildArguments(
             pluginsDir: 'plugins',
@@ -4745,15 +4745,11 @@ let package = Package(
       expect(arguments(distribution: false), isNot(contains('-UDEBUG')));
       expect(
         arguments(distribution: true),
-        containsAllInOrder([
-          '-Xcc',
-          '-UDEBUG',
-          '-Xcc',
-          '-O2',
-          '-Xswiftc',
-          '-O',
-        ]),
+        containsAllInOrder(['-Xcc', '-UDEBUG']),
       );
+      // Optimization crashed the compiler on a real plugin set (2026-11-04).
+      expect(arguments(distribution: true), isNot(contains('-O2')));
+      expect(arguments(distribution: true), isNot(contains('-O')));
     });
 
     test(

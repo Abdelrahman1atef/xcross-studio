@@ -26,4 +26,4 @@ Removed: `build.runner_legacy_registration`. A pre-UIScene app delegate no longe
 | Variable | Value | Effect |
 |----------|-------|--------|
 | `XCROSS_PLUGIN_DRAFTS` | `off` | Builds do not draft; podspec-only plugins are left out with `build.podspec_only_plugin` |
-| `XCROSS_PLUGIN_BUILD` | `distribution` | Plugins build without `DEBUG` and with optimization, as for `--export-method app-store` |
+| `XCROSS_PLUGIN_BUILD` | `distribution` | Plugins build without `DEBUG`, as for `--export-method app-store` |
