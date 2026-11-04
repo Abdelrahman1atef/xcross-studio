@@ -267,10 +267,8 @@ final class RunnerShim<T extends PlatformHostInterface> {
 
   /// Minimal ObjC Runner that boots Flutter via FlutterAppDelegate.
   ///
-  /// When [hasPlugins] is false (the common, today's-behaviour case), this is
-  /// byte-identical to the original hardcoded template: a local, empty
-  /// `GeneratedPluginRegistrant` stub, so projects without Swift Package
-  /// Manager plugins are entirely unaffected.
+  /// When [hasPlugins] is false, a local, empty `GeneratedPluginRegistrant`
+  /// stub takes the registrant's place.
   ///
   /// When [hasPlugins] is true, the local stub is replaced by a plain
   /// `extern` forward declaration of the `@_cdecl`-exported registrant
@@ -278,6 +276,11 @@ final class RunnerShim<T extends PlatformHostInterface> {
   /// `GeneratedPluginsPackage` in ios_plugin_package.dart) — no
   /// generated-header or clang-modules setup needed, just a normal C symbol
   /// resolved at link time by [_linkBinary].
+  ///
+  /// The engine starts during launch and the window uses it, because plugins
+  /// have to be registered before launch finishes: `firebase_messaging`
+  /// connects to push on `UIApplicationDidFinishLaunchingNotification`, and
+  /// without that the app never has an FCM token (studio: 025).
   @visibleForTesting
   static String runnerObjcSource({
     required bool hasPlugins,
@@ -289,20 +292,28 @@ final class RunnerShim<T extends PlatformHostInterface> {
 #import <Flutter/Flutter.h>
 
 ${hasPlugins ? _pluginsExternDeclaration : _emptyPluginRegistrantStub}${mapsApiKey == null ? '' : mapsKeyFunction(mapsApiKey)}
-@interface AppDelegate : FlutterAppDelegate <FlutterImplicitEngineDelegate>
+// Started during launch; the first window uses it.
+static FlutterEngine* xcrossLaunchEngine;
+
+static FlutterEngine* XcrossStartEngine(void) {
+  FlutterEngine* engine = [[FlutterEngine alloc] initWithName:@"io.flutter"];
+  [engine run];
+  ${verbose ? 'NSLog(@"[xcross] Flutter engine started; registering plugins");' : ''}
+  ${hasPlugins ? '${GeneratedPluginsConstants.registrantSymbol}(engine);' : '[GeneratedPluginRegistrant registerWithRegistry:engine];'}
+  ${verbose && !hasPlugins ? 'NSLog(@"[xcross] plugin registration summary: 0 attempted, 0 registered, 0 failed");' : ''}
+  ${verbose ? 'NSLog(@"[xcross] plugin registration completed");' : ''}
+  return engine;
+}
+
+@interface AppDelegate : FlutterAppDelegate
 @end
 @implementation AppDelegate
 - (BOOL)application:(UIApplication*)application didFinishLaunchingWithOptions:(NSDictionary*)launchOptions {
   ${verbose ? 'NSLog(@"[xcross] application launch started");' : ''}${mapsApiKey == null ? '' : ' XcrossProvideMapsKey();'}
+  xcrossLaunchEngine = XcrossStartEngine();
   BOOL launched = [super application:application didFinishLaunchingWithOptions:launchOptions];
   ${verbose ? 'NSLog(@"[xcross] FlutterAppDelegate didFinishLaunching returned: %@", launched ? @"YES" : @"NO");' : ''}
   return launched;
-}
-- (void)didInitializeImplicitFlutterEngine:(NSObject<FlutterImplicitEngineBridge>*)engineBridge {
-  ${verbose ? 'NSLog(@"[xcross] Flutter engine initialized; registering plugins");' : ''}
-  ${hasPlugins ? '${GeneratedPluginsConstants.registrantSymbol}(engineBridge.pluginRegistry);' : '[GeneratedPluginRegistrant registerWithRegistry:engineBridge.pluginRegistry];'}
-  ${verbose && !hasPlugins ? 'NSLog(@"[xcross] plugin registration summary: 0 attempted, 0 registered, 0 failed");' : ''}
-  ${verbose ? 'NSLog(@"[xcross] plugin registration completed");' : ''}
 }
 @end
 
@@ -312,7 +323,9 @@ ${hasPlugins ? _pluginsExternDeclaration : _emptyPluginRegistrantStub}${mapsApiK
 - (void)scene:(UIScene*)scene willConnectToSession:(UISceneSession*)session options:(UISceneConnectionOptions*)connectionOptions {
   if (![scene isKindOfClass:[UIWindowScene class]]) return;
   UIWindowScene* windowScene = (UIWindowScene*)scene;
-  FlutterViewController* flutterViewController = [[FlutterViewController alloc] initWithProject:nil nibName:nil bundle:nil];
+  // An engine serves one window.
+  FlutterEngine* engine = xcrossLaunchEngine.viewController == nil ? xcrossLaunchEngine : XcrossStartEngine();
+  FlutterViewController* flutterViewController = [[FlutterViewController alloc] initWithEngine:engine nibName:nil bundle:nil];
   [flutterViewController setFlutterViewDidRenderCallback:^{
     NSLog(@"[xcross] first Flutter frame rendered");
   }];

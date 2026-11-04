@@ -51,9 +51,33 @@ void main() {
     );
     expect(
       source,
-      contains('[xcross] Flutter engine initialized; registering plugins'),
+      contains('[xcross] Flutter engine started; registering plugins'),
     );
     expect(source, contains('[xcross] plugin registration completed'));
+  });
+
+  test('AC-025-7 plugins register during launch, on the engine the window '
+      'uses', () {
+    final source = RunnerShim.runnerObjcSource(
+      hasPlugins: true,
+      verbose: false,
+    );
+
+    // firebase_messaging connects to push when launch finishes.
+    expect(
+      source.indexOf('xcrossLaunchEngine = XcrossStartEngine();'),
+      lessThan(
+        source.indexOf(
+          '[super application:application didFinishLaunchingWithOptions',
+        ),
+      ),
+    );
+    expect(source, contains('XcrossRegisterGeneratedPlugins(engine);'));
+    expect(
+      source,
+      contains('[[FlutterViewController alloc] initWithEngine:engine'),
+    );
+    expect(source, isNot(contains('FlutterImplicitEngineDelegate')));
   });
 
   test('verbose source summarizes an app without native plugins', () {
