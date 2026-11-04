@@ -562,6 +562,67 @@ end
       expect(out.join(), contains('✔ Patched Classes/Phone.m (import UIKit)'));
     });
 
+    // flutter_image_compress_common (doctory, 2026-11-04): "'Mantle/Mantle.h'
+    // file not found". Mantle and SDWebImageWebPCoder keep flat headers in
+    // their Swift packages, so only their modules can be imported.
+    test('AC-006-14 pods with flat headers in their Swift package are '
+        'imported as modules', () async {
+      final root = p.join(temp.path, 'pub', 'pod_flat');
+      File(p.join(root, 'pubspec.yaml'))
+        ..createSync(recursive: true)
+        ..writeAsStringSync('name: pod_flat\nversion: 1.0.0\n');
+      void ios(String path, String text) => File(p.join(root, 'ios', path))
+        ..createSync(recursive: true)
+        ..writeAsStringSync(text);
+      ios(
+        'pod_flat.podspec',
+        "Pod::Spec.new do |s|\n  s.source_files = 'Classes/**/*'\n"
+            "  s.dependency 'Flutter'\n  s.dependency 'Mantle'\n"
+            "  s.dependency 'SDWebImage'\n  s.dependency 'SDWebImageWebPCoder'\n"
+            'end\n',
+      );
+      ios('Classes/Base.h', '#import <Mantle/Mantle.h>\nint a;\n');
+      ios(
+        'Classes/Coder.m',
+        '#import <SDWebImage/SDWebImage.h>\n'
+            '#import <SDWebImageWebPCoder/SDImageWebPCoder.h>\n'
+            '  #include <Mantle/MTLModel.h> // model\n'
+            'int b;\n',
+      );
+      File(p.join(project, '.flutter-plugins-dependencies')).writeAsStringSync(
+        jsonEncode({
+          'plugins': {
+            'ios': [
+              {'name': 'pod_flat', 'path': root},
+            ],
+          },
+        }),
+      );
+      await runner().run(['plugin', 'shim', 'pod_flat', '--project', project]);
+      final folder = p.join(
+        project,
+        'xcross_overrides',
+        'pod_flat',
+        '1.0.0',
+        'Classes',
+      );
+      expect(
+        File(p.join(folder, 'Base.h')).readAsStringSync(),
+        '@import Mantle;\nint a;\n',
+      );
+      expect(
+        File(p.join(folder, 'Coder.m')).readAsStringSync(),
+        '#import <SDWebImage/SDWebImage.h>\n'
+        '@import SDWebImageWebPCoder;\n'
+        '@import Mantle;\n'
+        'int b;\n',
+      );
+      expect(
+        out.join(),
+        contains('✔ Patched Classes/Base.h (@import Mantle;)'),
+      );
+    });
+
     test('implicit Objective-C imports: what counts as imported and used', () {
       // Flutter's header brings UIKit; a comment is not a use.
       for (final source in [

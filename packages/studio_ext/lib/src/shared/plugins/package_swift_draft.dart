@@ -12,6 +12,7 @@ final class KnownPackage {
     this.objectiveCModules = const {},
     this.defaultVersion,
     this.minimumIos,
+    this.flatHeaders = false,
   });
 
   final String url;
@@ -35,6 +36,11 @@ final class KnownPackage {
   /// The iOS version the package needs, when it can be above a podspec's:
   /// SwiftPM refuses a dependency with a higher minimum than its user.
   final String? minimumIos;
+
+  /// The Swift package's public headers are not in a `<product>/` folder, so
+  /// `#import <Mantle/Mantle.h>` cannot be found: Objective-C must use
+  /// `@import Mantle;` (see [patchFlatHeaderImports]).
+  final bool flatHeaders;
 }
 
 /// The Facebook SDK's Swift package names its products differently from the
@@ -111,6 +117,7 @@ KnownPackage? knownPackageFor(String pod) {
       'SDWebImageWebPCoder',
       'SDWebImageWebPCoder',
       defaultVersion: '0.14.0',
+      flatHeaders: true,
     ),
     'FBSDKLoginKit' => _facebook('FacebookLogin'),
     'FBSDKCoreKit' => _facebook('FacebookCore'),
@@ -120,6 +127,7 @@ KnownPackage? knownPackageFor(String pod) {
       'Mantle',
       'Mantle',
       defaultVersion: '2.2.0',
+      flatHeaders: true,
     ),
     'Kingfisher' => const KnownPackage(
       'https://github.com/onevcat/Kingfisher',
@@ -171,7 +179,12 @@ final class PackageSwiftDraft {
     this.swiftSources = const [],
     this.splitsSwift = false,
     this.moduleRenames = const {},
+    this.flatHeaderModules = const {},
   });
+
+  /// Modules whose headers Objective-C must import as modules
+  /// (see [patchFlatHeaderImports]).
+  final Set<String> flatHeaderModules;
 
   final String text;
   final List<String> notes;
@@ -293,6 +306,24 @@ int _firstCodeOffset(String source) {
   return source.length;
 }
 
+/// [source] with `#import <Module/…>` replaced by `@import Module;` for each
+/// of [modules], or null when nothing changed.
+@internal
+String? patchFlatHeaderImports(String source, Set<String> modules) {
+  var patched = source;
+  for (final module in modules) {
+    patched = patched.replaceAll(
+      RegExp(
+        '^[ \\t]*#[ \\t]*(?:import|include)[ \\t]*<${RegExp.escape(module)}/'
+        r'[^>\n]*>[^\n\r]*',
+        multiLine: true,
+      ),
+      '@import $module;',
+    );
+  }
+  return patched == source ? null : patched;
+}
+
 /// [source] with `@import <from>;` replaced by `@import <to>;` for every
 /// entry of [renames], or null when nothing changed.
 @internal
@@ -377,6 +408,7 @@ PackageSwiftDraft draftPackageSwift({
   final todo = <String>[];
   final seenPackages = <String>{};
   final moduleRenames = <String, String>{};
+  final flatHeaderModules = <String>{};
   for (final dependency in spec.dependencies) {
     if (dependency.name == 'Flutter') continue;
     final known = knownPackageFor(dependency.name);
@@ -388,6 +420,7 @@ PackageSwiftDraft draftPackageSwift({
       continue;
     }
     moduleRenames.addAll(known.objectiveCModules);
+    if (known.flatHeaders) flatHeaderModules.add(known.product);
     if (seenPackages.add(known.package)) {
       dependencyLines.add(
         '.package(url: "${known.url}", '
@@ -539,6 +572,7 @@ PackageSwiftDraft draftPackageSwift({
     ],
     splitsSwift: mixed,
     moduleRenames: moduleRenames,
+    flatHeaderModules: flatHeaderModules,
   );
 }
 

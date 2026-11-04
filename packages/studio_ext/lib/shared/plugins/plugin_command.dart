@@ -346,6 +346,16 @@ final class PluginShimCommand extends Command<void> {
             reasons.add('@import ${name}_swift;');
           }
         }
+        final flat = patchFlatHeaderImports(text, draft.flatHeaderModules);
+        if (flat != null) {
+          reasons.add(
+            [
+              for (final module in draft.flatHeaderModules)
+                if (flat.contains('@import $module;')) '@import $module;',
+            ].join(', '),
+          );
+          text = flat;
+        }
         final renamed = patchModuleImports(text, draft.moduleRenames);
         if (renamed != null) {
           text = renamed;
