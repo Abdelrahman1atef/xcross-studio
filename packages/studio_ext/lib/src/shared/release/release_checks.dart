@@ -13,6 +13,7 @@ import 'package:studio_ext/src/shared/inspect/inspector.dart';
 import 'package:studio_ext/src/shared/inspect/macho_reader.dart';
 import 'package:studio_ext/src/shared/inspect/plist_reader.dart';
 import 'package:studio_ext/src/shared/release/macho_build_version.dart';
+import 'package:studio_ext/src/shared/release/release_structure.dart'; // studio: 018
 import 'package:studio_ext/src/shared/release/release_tables.dart';
 
 /// How bad a [ReleaseIssue] is: errors block an upload.
@@ -286,6 +287,9 @@ final class ReleaseChecker {
     _signing();
     _toolchain();
     _swiftSupport();
+    _issues.addAll(
+      structureIssues(source: source, report: _report, binaries: _binaries),
+    );
     _permissions();
     _permissionsFromCode();
     _privacy();
@@ -535,6 +539,24 @@ final class ReleaseChecker {
         'SwiftSupport/iphoneos lacks ${missing.join(', ')}, which the app '
             'loads; App Store Connect refuses it (90426).',
         path: 'SwiftSupport/iphoneos',
+        hint: 'Build again with a current xcross.',
+      );
+    }
+    // App Store Connect also wants each SwiftSupport library inside the app's
+    // own Frameworks folder (90429).
+    final notEmbedded = [
+      for (final name in packed)
+        if (name.endsWith('.dylib') && !source.hasFile('Frameworks/$name'))
+          name,
+    ]..sort();
+    if (notEmbedded.isNotEmpty) {
+      _add(
+        'release.swift_support_not_embedded',
+        ReleaseSeverity.error,
+        'SwiftSupport holds ${notEmbedded.take(3).join(', ')}'
+            '${notEmbedded.length > 3 ? ', …' : ''} but the app has no copy '
+            'in Frameworks; App Store Connect refuses it (90429).',
+        path: 'Frameworks',
         hint: 'Build again with a current xcross.',
       );
     }

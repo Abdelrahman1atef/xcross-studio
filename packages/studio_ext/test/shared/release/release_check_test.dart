@@ -178,10 +178,20 @@ Map<String, Uint8List> _appStoreApp({
   'PrivacyInfo.xcprivacy': _manifest([
     'NSPrivacyAccessedAPICategoryUserDefaults',
   ]),
-  'Frameworks/Flutter.framework/Flutter': machO(seed: 3),
+  'Frameworks/Flutter.framework/Flutter': machO(
+    seed: 3,
+    signature: codeSignature(
+      identifier: 'io.flutter.flutter',
+      teamId: 'TEAMID1234',
+      flags: 0,
+      cms: CmsBlob.signed,
+    ),
+  ),
   'Frameworks/Flutter.framework/Info.plist': xmlPlist({
     'CFBundleExecutable': 'Flutter',
     'CFBundleIdentifier': 'io.flutter.flutter',
+    'CFBundleVersion': '1',
+    'CFBundleShortVersionString': '1.0',
   }),
   'Frameworks/Flutter.framework/PrivacyInfo.xcprivacy': _manifest(const []),
 };
@@ -294,6 +304,13 @@ void main() {
       }
     }
 
+    // The fixture's nested binaries are unsigned on purpose here: these tests
+    // are about the Swift libraries only.
+    List<String> swiftErrors(ReleaseReport report) => [
+      for (final code in codes(report, ReleaseSeverity.error))
+        if (code != 'release.nested_not_signed') code,
+    ];
+
     final swiftApp = {
       ..._appStoreApp(),
       'Frameworks/Facebook.framework/Facebook': _loading([
@@ -309,43 +326,65 @@ void main() {
 
     test('Swift libraries but no SwiftSupport: Apple refuses it (90426)', () {
       final report = checkIpa(ipa(swiftApp));
-      expect(codes(report, ReleaseSeverity.error), [
-        'release.swift_support_missing',
-      ]);
+      expect(swiftErrors(report), ['release.swift_support_missing']);
       expect(
         report.issues
-            .firstWhere((i) => i.severity != ReleaseSeverity.info)
+            .firstWhere((i) => i.code == 'release.swift_support_missing')
             .message,
         allOf(contains('libswiftCore.dylib'), contains('90426')),
       );
     });
 
+    // What Xcode produces: the libraries in SwiftSupport and in Frameworks.
+    final embedded = {
+      ...swiftApp,
+      'Frameworks/libswiftCore.dylib': machO(seed: 5),
+      'Frameworks/libswiftDispatch.dylib': machO(seed: 6),
+    };
+    final support = {
+      'SwiftSupport/iphoneos/libswiftCore.dylib': machO(),
+      'SwiftSupport/iphoneos/libswiftDispatch.dylib': machO(seed: 2),
+    };
+
     test('SwiftSupport with every library the app loads through the rpath', () {
-      final report = checkIpa(
-        ipa(
-          swiftApp,
-          outside: {
-            'SwiftSupport/iphoneos/libswiftCore.dylib': machO(),
-            'SwiftSupport/iphoneos/libswiftDispatch.dylib': machO(seed: 2),
-          },
-        ),
-      );
+      final report = checkIpa(ipa(embedded, outside: support));
       expect(codes(report), isNot(contains('release.swift_support_missing')));
+      expect(
+        codes(report),
+        isNot(contains('release.swift_support_not_embedded')),
+      );
     });
+
+    test(
+      'SwiftSupport libraries missing from Frameworks: Apple refuses (90429)',
+      () {
+        final report = checkIpa(ipa(swiftApp, outside: support));
+        expect(swiftErrors(report), ['release.swift_support_not_embedded']);
+        expect(
+          report.issues
+              .firstWhere((i) => i.code == 'release.swift_support_not_embedded')
+              .message,
+          allOf(contains('libswiftCore.dylib'), contains('90429')),
+        );
+      },
+    );
 
     test('a library left out of SwiftSupport is named', () {
       final report = checkIpa(
         ipa(
-          swiftApp,
+          embedded,
           outside: {'SwiftSupport/iphoneos/libswiftCore.dylib': machO()},
         ),
       );
-      expect(codes(report, ReleaseSeverity.error), [
+      // libswiftDispatch is embedded but not in SwiftSupport: the folders
+      // differ both ways, and each has its rule.
+      expect(swiftErrors(report), [
+        'release.swift_support_incomplete',
         'release.swift_support_missing',
       ]);
       expect(
         report.issues
-            .firstWhere((i) => i.severity != ReleaseSeverity.info)
+            .firstWhere((i) => i.code == 'release.swift_support_missing')
             .message,
         contains('libswiftDispatch.dylib'),
       );
@@ -362,6 +401,164 @@ void main() {
       expect(
         codes(check(writeApp(swiftApp))),
         isNot(contains('release.swift_support_missing')),
+      );
+    });
+  });
+
+  group('AC-018-19 how the IPA is put together', () {
+    Uint8List signed(String id, {String team = 'TEAMID1234', int seed = 9}) =>
+        machO(
+          seed: seed,
+          signature: codeSignature(
+            identifier: id,
+            teamId: team,
+            flags: 0,
+            cms: CmsBlob.signed,
+          ),
+        );
+
+    Map<String, Uint8List> framework(
+      String name,
+      Uint8List binary, {
+      Map<String, Object> plist = const {},
+    }) => {
+      'Frameworks/$name.framework/$name': binary,
+      'Frameworks/$name.framework/Info.plist': xmlPlist({
+        'CFBundleExecutable': name,
+        'CFBundleIdentifier': 'io.example.$name',
+        'CFBundleVersion': '1',
+        'CFBundleShortVersionString': '1.0',
+        ...plist,
+      }),
+    };
+
+    // Each call writes its own app: files of an earlier one must not stay.
+    var apps = 0;
+    List<String> errors(Map<String, Uint8List> files) => codes(
+      check(writeApp(files, name: 'App${apps++}.app')),
+      ReleaseSeverity.error,
+    );
+
+    test(
+      'a standalone dylib is refused, as App Store Connect does (90429)',
+      () {
+        final files = {
+          ..._appStoreApp(),
+          'Frameworks/libPlugins.dylib': signed('libPlugins'),
+        };
+        expect(errors(files), ['release.loose_dylib']);
+        // The Swift runtime is the exception, and a dylib inside a framework
+        // is a framework's own file.
+        final allowed = {
+          ..._appStoreApp(),
+          'Frameworks/libswiftCore.dylib': signed('libswiftCore'),
+          ...framework('Plugins', signed('Plugins')),
+        };
+        expect(errors(allowed), isNot(contains('release.loose_dylib')));
+      },
+    );
+
+    test('a static library in the bundle is refused', () {
+      final files = {
+        ..._appStoreApp(),
+        'Frameworks/libAudio.a': Uint8List.fromList([1, 2, 3]),
+      };
+      expect(errors(files), ['release.static_library_in_bundle']);
+    });
+
+    test('code inside the app that is unsigned, or signed by another team', () {
+      final unsigned = {..._appStoreApp(), ...framework('Fb', machO(seed: 8))};
+      expect(errors(unsigned), ['release.nested_not_signed']);
+      final other = {
+        ..._appStoreApp(),
+        ...framework('Fb', signed('Fb', team: 'OTHERTEAM1')),
+      };
+      expect(errors(other), ['release.nested_team_mismatch']);
+      final same = {..._appStoreApp(), ...framework('Fb', signed('Fb'))};
+      expect(errors(same), isEmpty);
+    });
+
+    test('simulator and 32-bit slices are refused', () {
+      for (final arch in ['x86_64', 'armv7']) {
+        final files = {
+          ..._appStoreApp(),
+          ...framework(
+            'Sim',
+            machO(
+              arch: arch,
+              seed: 10,
+              signature: codeSignature(
+                identifier: 'Sim',
+                teamId: 'TEAMID1234',
+                flags: 0,
+                cms: CmsBlob.signed,
+              ),
+            ),
+          ),
+        };
+        expect(errors(files), ['release.unsupported_architecture']);
+      }
+    });
+
+    test('a library the app loads from inside itself must be there', () {
+      Uint8List loads(String path) => _loading([path]);
+      final missing = {
+        ..._appStoreApp(),
+        ...framework('Fb', loads('@rpath/Gone.framework/Gone')),
+      };
+      final report = check(writeApp(missing));
+      expect(
+        codes(report, ReleaseSeverity.error),
+        contains('release.dependency_missing'),
+      );
+      expect(
+        report.issues
+            .firstWhere((i) => i.code == 'release.dependency_missing')
+            .message,
+        contains('@rpath/Gone.framework/Gone'),
+      );
+      final present = {
+        ..._appStoreApp(),
+        ...framework('Fb', loads('@rpath/Gone.framework/Gone')),
+        ...framework('Gone', signed('Gone')),
+      };
+      expect(
+        errors(present),
+        isNot(contains('release.dependency_missing')),
+        reason: 'the library is in Frameworks',
+      );
+      // The OS and the Swift runtime are not looked for in the app.
+      final system = {
+        ..._appStoreApp(),
+        ...framework(
+          'Fb',
+          _loading([
+            '/usr/lib/libSystem.B.dylib',
+            '/System/Library/Frameworks/UIKit.framework/UIKit',
+            '@rpath/libswiftCore.dylib',
+          ]),
+        ),
+      };
+      expect(errors(system), isNot(contains('release.dependency_missing')));
+    });
+
+    test('a framework whose Info.plist lacks its version is a warning', () {
+      final files = {
+        ..._appStoreApp(),
+        'Frameworks/Fb.framework/Fb': signed('Fb'),
+        'Frameworks/Fb.framework/Info.plist': xmlPlist({
+          'CFBundleExecutable': 'Fb',
+          'CFBundleIdentifier': 'io.example.Fb',
+        }),
+      };
+      final report = check(writeApp(files));
+      final issue = report.issues.firstWhere(
+        (i) => i.code == 'release.framework_plist_incomplete',
+      );
+      expect(issue.severity, ReleaseSeverity.warning);
+      expect(
+        issue.message,
+        allOf(contains('CFBundleVersion'), contains('CFBundleShortVersion')),
       );
     });
   });
