@@ -123,6 +123,37 @@ Uint8List _manifest(List<String> categories) => xmlPlist({
   'NSPrivacyTracking': false,
 });
 
+/// A binary that loads [libraries] (`@rpath/libswiftCore.dylib`, …).
+Uint8List _loading(List<String> libraries) {
+  const le = Endian.little;
+  final commands = <Uint8List>[];
+  for (final library in libraries) {
+    final name = utf8.encode(library);
+    final size = (24 + name.length + 1 + 7) ~/ 8 * 8;
+    final command = Uint8List(size);
+    ByteData.sublistView(command)
+      ..setUint32(0, 0xc, le)
+      ..setUint32(4, size, le)
+      ..setUint32(8, 24, le);
+    command.setRange(24, 24 + name.length, name);
+    commands.add(command);
+  }
+  final total = commands.fold<int>(0, (sum, c) => sum + c.length);
+  final bytes = Uint8List(32 + total);
+  ByteData.sublistView(bytes)
+    ..setUint32(0, 0xfeedfacf, le)
+    ..setInt32(4, 0x0100000c, le)
+    ..setUint32(12, 2, le)
+    ..setUint32(16, commands.length, le)
+    ..setUint32(20, total, le);
+  var offset = 32;
+  for (final command in commands) {
+    bytes.setRange(offset, offset + command.length, command);
+    offset += command.length;
+  }
+  return bytes;
+}
+
 /// A clean App Store build; tests change one thing at a time.
 Map<String, Uint8List> _appStoreApp({
   Map<String, Object> info = const {},
@@ -243,6 +274,157 @@ void main() {
     expect(report.configuration['bundleId'], _bundleId);
     expect(report.configuration['sdk'], '26.1');
     expect((report.configuration['profile']! as Map)['kind'], 'app-store');
+  });
+
+  group('AC-018-16 SwiftSupport', () {
+    String ipa(
+      Map<String, Uint8List> app, {
+      Map<String, Uint8List> outside = const {},
+    }) => FixtureBundle(
+      'Runner.app',
+      app,
+    ).writeIpa(temp, 'a.ipa', outside: outside);
+
+    ReleaseReport checkIpa(String path) {
+      final source = InspectSource.open(const IoFileSystem(), path);
+      try {
+        return runReleaseChecks(source, now: DateTime.utc(2026, 11, 3));
+      } finally {
+        source.close();
+      }
+    }
+
+    final swiftApp = {
+      ..._appStoreApp(),
+      'Frameworks/Facebook.framework/Facebook': _loading([
+        '@rpath/libswiftCore.dylib',
+        '/usr/lib/swift/libswiftFoundation.dylib',
+        '@rpath/libswiftDispatch.dylib',
+      ]),
+      'Frameworks/Facebook.framework/Info.plist': xmlPlist({
+        'CFBundleExecutable': 'Facebook',
+        'CFBundleIdentifier': 'com.facebook.sdk',
+      }),
+    };
+
+    test('Swift libraries but no SwiftSupport: Apple refuses it (90426)', () {
+      final report = checkIpa(ipa(swiftApp));
+      expect(codes(report, ReleaseSeverity.error), [
+        'release.swift_support_missing',
+      ]);
+      expect(
+        report.issues
+            .firstWhere((i) => i.severity != ReleaseSeverity.info)
+            .message,
+        allOf(contains('libswiftCore.dylib'), contains('90426')),
+      );
+    });
+
+    test('SwiftSupport with every library the app loads through the rpath', () {
+      final report = checkIpa(
+        ipa(
+          swiftApp,
+          outside: {
+            'SwiftSupport/iphoneos/libswiftCore.dylib': machO(),
+            'SwiftSupport/iphoneos/libswiftDispatch.dylib': machO(seed: 2),
+          },
+        ),
+      );
+      expect(codes(report), isNot(contains('release.swift_support_missing')));
+    });
+
+    test('a library left out of SwiftSupport is named', () {
+      final report = checkIpa(
+        ipa(
+          swiftApp,
+          outside: {'SwiftSupport/iphoneos/libswiftCore.dylib': machO()},
+        ),
+      );
+      expect(codes(report, ReleaseSeverity.error), [
+        'release.swift_support_missing',
+      ]);
+      expect(
+        report.issues
+            .firstWhere((i) => i.severity != ReleaseSeverity.info)
+            .message,
+        contains('libswiftDispatch.dylib'),
+      );
+    });
+
+    test('an app that loads no Swift library needs no SwiftSupport', () {
+      expect(
+        codes(checkIpa(ipa(_appStoreApp()))),
+        isNot(contains('release.swift_support_missing')),
+      );
+    });
+
+    test('a .app directory has no archive root to look in', () {
+      expect(
+        codes(check(writeApp(swiftApp))),
+        isNot(contains('release.swift_support_missing')),
+      );
+    });
+  });
+
+  group('AC-018-17 purpose strings found in the code', () {
+    test(
+      'requestAlwaysAuthorization needs the always-and-when-in-use key (90683)',
+      () {
+        final files = _appStoreApp(
+          info: {
+            'NSLocationWhenInUseUsageDescription': 'To show nearby clinics.',
+          },
+          runnerBody: 'requestAlwaysAuthorization',
+        );
+        final report = check(writeApp(files));
+        expect(codes(report, ReleaseSeverity.warning), [
+          'release.permission_missing_for_call',
+        ]);
+        expect(
+          report.issues
+              .firstWhere((i) => i.severity != ReleaseSeverity.info)
+              .message,
+          allOf(
+            contains('NSLocationAlwaysAndWhenInUseUsageDescription'),
+            contains('90683'),
+          ),
+        );
+      },
+    );
+
+    test('with both keys there is nothing to say', () {
+      final files = _appStoreApp(
+        info: {
+          'NSLocationWhenInUseUsageDescription': 'To show nearby clinics.',
+          'NSLocationAlwaysAndWhenInUseUsageDescription':
+              'To remind you near a clinic.',
+        },
+        runnerBody: 'requestAlwaysAuthorization',
+      );
+      expect(
+        codes(check(writeApp(files))),
+        isNot(contains('release.permission_missing_for_call')),
+      );
+    });
+
+    test('a call in a framework counts the same', () {
+      final files = _appStoreApp()
+        ..['Frameworks/Geo.framework/Geo'] = _executable(
+          body: 'requestWhenInUseAuthorization',
+        )
+        ..['Frameworks/Geo.framework/Info.plist'] = xmlPlist({
+          'CFBundleExecutable': 'Geo',
+          'CFBundleIdentifier': 'com.example.geo',
+        });
+      final report = check(writeApp(files));
+      expect(
+        report.issues
+            .where((i) => i.code == 'release.permission_missing_for_call')
+            .single
+            .message,
+        contains('Frameworks/Geo.framework/Geo'),
+      );
+    });
   });
 
   group('AC-018-9 signing', () {

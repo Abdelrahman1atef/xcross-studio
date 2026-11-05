@@ -13,6 +13,22 @@ final class UsageRequirement {
   final List<String> anyOf;
 }
 
+/// A call whose presence in a binary means Info.plist needs purpose strings,
+/// the way App Store Connect finds them (it reads the code, not the plugin
+/// list): "Missing purpose string in Info.plist" (90683).
+@internal
+@immutable
+final class UsageSymbol {
+  const UsageSymbol(this.symbol, this.resource, this.allOf);
+
+  /// An Objective-C selector or symbol name found in the binary.
+  final String symbol;
+  final String resource;
+
+  /// Every key must be present.
+  final List<String> allOf;
+}
+
 /// Release-check knowledge that changes with Apple's rules and plugin
 /// releases; kept in one place so updates are one-line edits.
 @internal
@@ -94,6 +110,20 @@ abstract final class ReleaseTables {
     'processing': ['workmanager', 'background_fetch'],
     'voip': ['flutter_callkit_incoming', 'callkeep'],
   };
+
+  /// Calls App Store Connect warned about, with the keys it wanted. Only rules
+  /// with a message from Apple behind them are here; add the next one when an
+  /// upload reports it (90683 named
+  /// NSLocationAlwaysAndWhenInUseUsageDescription for doctory).
+  static const usageSymbols = <UsageSymbol>[
+    UsageSymbol('requestAlwaysAuthorization', 'always-on location', [
+      'NSLocationAlwaysAndWhenInUseUsageDescription',
+      'NSLocationWhenInUseUsageDescription',
+    ]),
+    UsageSymbol('requestWhenInUseAuthorization', 'location', [
+      'NSLocationWhenInUseUsageDescription',
+    ]),
+  ];
 
   /// Required-reason API category → symbol names whose presence in a binary
   /// means the API is used (Apple's "Describing use of required reason API").

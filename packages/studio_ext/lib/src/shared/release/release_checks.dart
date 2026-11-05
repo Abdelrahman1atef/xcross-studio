@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
+import 'package:studio_ext/shared/release/swift_runtime.dart'; // studio: 018
 import 'package:studio_ext/src/shared/inspect/inspect_report.dart';
 import 'package:studio_ext/src/shared/inspect/inspect_source.dart';
 import 'package:studio_ext/src/shared/inspect/inspector.dart';
@@ -70,6 +71,15 @@ final class ReleaseReport {
       issues.where((i) => i.severity == ReleaseSeverity.error).length;
   int get warnings =>
       issues.where((i) => i.severity == ReleaseSeverity.warning).length;
+
+  /// This report with what App Store Connect said added: [online] is whether
+  /// it was asked at all (false: the key or the network was missing).
+  ReleaseReport withOnline(List<ReleaseIssue> asked, {required bool online}) =>
+      ReleaseReport(
+        input: input,
+        configuration: {...configuration, 'online': online},
+        issues: [...issues, ...asked],
+      );
 
   Map<String, Object?> toJson() => {
     'v': 1,
@@ -275,7 +285,9 @@ final class ReleaseChecker {
   ReleaseReport run() {
     _signing();
     _toolchain();
+    _swiftSupport();
     _permissions();
+    _permissionsFromCode();
     _privacy();
     _assets();
     if (project == null) {
@@ -469,6 +481,65 @@ final class ReleaseChecker {
     }
   }
 
+  // --- SwiftSupport (AC-018-16) -------------------------------------------
+
+  /// Every binary of the app, read once.
+  late final Map<String, Uint8List> _binaries = () {
+    final binaries = <String, Uint8List>{};
+    for (final executable in _report.executables) {
+      try {
+        final bytes = source.read(executable.path);
+        if (bytes != null) binaries[executable.path] = bytes;
+      } on FormatException {
+        // An unreadable file is the inspector's to report.
+      }
+    }
+    return binaries;
+  }();
+
+  /// App Store Connect wants `SwiftSupport/iphoneos/` at the root of an IPA
+  /// whose binaries load Swift runtime libraries (90426 "Invalid Swift
+  /// Support"). Only an `.ipa` has a root to look in.
+  void _swiftSupport() {
+    if (source.kind != InputKind.ipa) return;
+    final loaded = swiftRuntimeLibraries(_binaries.values);
+    if (loaded.isEmpty) return;
+    const folder = 'SwiftSupport/iphoneos/';
+    final packed = {
+      for (final file in source.outsideFiles)
+        if (file.startsWith(folder)) file.substring(folder.length),
+    };
+    if (packed.isEmpty) {
+      _add(
+        'release.swift_support_missing',
+        ReleaseSeverity.error,
+        'The app loads Swift libraries (${(loaded.keys.toList()..sort()).take(3).join(', ')}'
+            '${loaded.length > 3 ? ', …' : ''}) but the IPA has no '
+            'SwiftSupport folder; App Store Connect refuses it (90426).',
+        path: 'SwiftSupport',
+        hint:
+            'Install the SDK again with `xcross sdk install <Xcode.xip>` (it '
+            'now keeps the Swift runtime libraries), then build again.',
+      );
+      return;
+    }
+    final missing = [
+      for (final library in loaded.values)
+        if (library.required && !packed.contains(library.fileName))
+          library.fileName,
+    ]..sort();
+    if (missing.isNotEmpty) {
+      _add(
+        'release.swift_support_missing',
+        ReleaseSeverity.error,
+        'SwiftSupport/iphoneos lacks ${missing.join(', ')}, which the app '
+            'loads; App Store Connect refuses it (90426).',
+        path: 'SwiftSupport/iphoneos',
+        hint: 'Build again with a current xcross.',
+      );
+    }
+  }
+
   // --- Permissions (AC-018-11) --------------------------------------------
 
   void _permissions() {
@@ -541,6 +612,38 @@ final class ReleaseChecker {
           path: 'Info.plist',
         );
       }
+    }
+  }
+
+  /// The purpose strings App Store Connect finds by reading the code
+  /// (AC-018-17): a call such as `requestAlwaysAuthorization` in any binary,
+  /// whatever plugin it came from, needs its keys.
+  void _permissionsFromCode() {
+    for (final rule in ReleaseTables.usageSymbols) {
+      String? where;
+      for (final MapEntry(key: path, value: bytes) in _binaries.entries) {
+        if (latin1.decode(bytes, allowInvalid: true).contains(rule.symbol)) {
+          where = path;
+          break;
+        }
+      }
+      if (where == null) continue;
+      final missing = [
+        for (final key in rule.allOf)
+          if (!_info.containsKey(key)) key,
+      ];
+      if (missing.isEmpty) continue;
+      _add(
+        'release.permission_missing_for_call',
+        ReleaseSeverity.warning,
+        '$where calls ${rule.symbol} (${rule.resource}) but Info.plist has '
+            'no ${missing.join(' or ')}; App Store Connect warns about every '
+            'missing purpose string (90683).',
+        path: 'Info.plist',
+        hint:
+            'Add ${missing.join(' and ')} to ios/Runner/Info.plist with a '
+            'sentence saying why the app needs it.',
+      );
     }
   }
 

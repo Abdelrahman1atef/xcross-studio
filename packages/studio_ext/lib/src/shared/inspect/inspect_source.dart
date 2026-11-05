@@ -65,6 +65,11 @@ abstract class InspectSource {
   /// Symbolic links that were not followed, sorted.
   List<String> get skippedSymlinks;
 
+  /// Regular files of an `.ipa` outside the app bundle, relative to the
+  /// archive root (`SwiftSupport/iphoneos/libswiftCore.dylib`), sorted. Empty
+  /// for `.app` input. studio: 018
+  List<String> get outsideFiles => const [];
+
   bool hasFile(String path);
 
   bool hasDirectory(String path);
@@ -118,6 +123,7 @@ final class IpaSource extends InspectSource {
     required this.bundlePath,
     required Map<String, ArchiveFile> entries,
     required List<String> skippedSymlinks,
+    required this.outsideFiles,
     required InputFileStream input,
   }) : _entries = entries,
        _input = input,
@@ -180,8 +186,12 @@ final class IpaSource extends InspectSource {
       final prefix = 'Payload/$app/';
       final entries = <String, ArchiveFile>{};
       final links = <String>[];
+      final outside = <String>[];
       for (final entry in archive.files) {
         final entryName = entry.name.replaceAll(r'\', '/');
+        if (entry.isFile && !entryName.startsWith('Payload/')) {
+          outside.add(entryName); // studio: 018
+        }
         if (!entryName.startsWith(prefix) || !entry.isFile) continue;
         final relative = entryName.substring(prefix.length);
         if (relative.isEmpty) continue;
@@ -198,6 +208,7 @@ final class IpaSource extends InspectSource {
         bundlePath: 'Payload/$app',
         entries: entries,
         skippedSymlinks: links,
+        outsideFiles: List.unmodifiable(outside..sort()),
         input: input,
       );
     } on Object {
@@ -205,6 +216,9 @@ final class IpaSource extends InspectSource {
       rethrow;
     }
   }
+
+  @override
+  final List<String> outsideFiles;
 
   final Map<String, ArchiveFile> _entries;
   final InputFileStream _input;

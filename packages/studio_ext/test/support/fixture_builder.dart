@@ -431,10 +431,15 @@ final class FixtureBundle {
     String fileName, {
     DateTime? modified,
     bool compress = false,
+    Map<String, Uint8List> outside = const {}, // studio: 018 — SwiftSupport
   }) {
     final file = File('${parent.path}${Platform.pathSeparator}$fileName')
       ..writeAsBytesSync(
-        encodeZip(ipaEntries, modified: modified, compress: compress),
+        encodeZip(
+          {...ipaEntries, ...outside},
+          modified: modified,
+          compress: compress,
+        ),
       );
     return file.path;
   }
