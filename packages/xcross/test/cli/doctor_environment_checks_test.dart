@@ -21,6 +21,7 @@ import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 import 'package:xcross/src/shared/cli/basic/doctor_environment_checks.dart';
 import 'package:xcross/src/shared/cli/basic/doctor_models.dart';
+import 'package:xcross/src/shared/sdk/sdk_install_constants.dart';
 
 import '../log_fixture.dart';
 import 'auth_fixture.dart';
@@ -305,6 +306,35 @@ void main() {
       ]);
     },
   );
+
+  // studio: 018 — AC-018-16: an SDK without the Swift runtime libraries is
+  // not "Installed" (the App Store IPA would lack SwiftSupport, error 90426).
+  test('doctor warns when the SDK has no Swift runtime libraries', () async {
+    final fixture = DoctorServiceFixture(
+      baseHost: LinuxHost(
+        currentDirectory: '/fixture',
+        environment: const {'HOME': '/fixture'},
+      ),
+    );
+    addTearDown(fixture.dispose);
+    final before = await fixture.checks.darwinSdk();
+    expect(before.status, DoctorStatus.warning);
+    expect(before.message, contains('xcross sdk install'));
+    expect(before.message, contains('90426'));
+
+    final library = fixture.fileSystem.file(
+      fixture.host.paths.context.joinAll([
+        fixture.bundle,
+        ...sdkSwiftRuntimeRelativePaths.first.split('/'),
+        'libswiftCore.dylib',
+      ]),
+    );
+    library.parent.createSync(recursive: true);
+    library.writeAsBytesSync(const [0]);
+    final after = await fixture.checks.darwinSdk();
+    expect(after.status, DoctorStatus.success);
+    expect(after.message, 'Installed');
+  });
 }
 
 @internal

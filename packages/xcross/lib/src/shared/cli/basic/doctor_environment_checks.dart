@@ -15,6 +15,7 @@ import 'package:meta/meta.dart';
 import 'package:xcross/src/shared/cli/basic/auth_command.dart'; // studio: 015
 import 'package:xcross/src/shared/cli/basic/doctor_models.dart';
 import 'package:xcross/src/shared/diagnostics/xcross_diagnostics.dart'; // studio: 002
+import 'package:xcross/src/shared/sdk/sdk_install_constants.dart'; // studio: 018
 import 'package:xcross/src/shared/sdk/xcode_build_info.dart'; // studio: 018
 import 'package:xcross/src/shared/sdk/xcode_swift_requirement.dart';
 import 'package:xcross/src/shared/toolchain/path_linker_guard.dart'; // studio: 002
@@ -198,12 +199,42 @@ final class DoctorEnvironmentChecks<T extends PlatformHostInterface> {
     // `doctor` reports the SDK the build will actually get rather than the
     // one on disk a moment ago.
     final patched = repository.patch.ensureApplied(path);
+    // studio: 018 — an SDK installed before xcross kept the Swift runtime
+    // libraries builds fine, but an App Store IPA then has no SwiftSupport
+    // (App Store Connect error 90426).
+    if (!hasSwiftRuntime(path)) {
+      return DoctorCheck.warning(
+        'Darwin SDK',
+        'Installed, but without the Swift runtime libraries an App Store '
+            'build needs (App Store Connect error 90426). Install it again '
+            'with `xcross sdk install <Xcode.xip>`.',
+        path: path,
+      );
+    }
     return DoctorCheck.success(
       'Darwin SDK',
       patched == 0
           ? 'Installed'
           : 'Installed (rewrote $patched text stubs for this linker)',
       path: path,
+    );
+  }
+
+  // studio: 018
+  /// Whether the SDK in [bundle] holds the Swift runtime libraries that go
+  /// into an App Store IPA's `SwiftSupport` folder.
+  bool hasSwiftRuntime(String bundle) {
+    final paths = hostPlatform.paths.context;
+    return sdkSwiftRuntimeRelativePaths.any(
+      (relative) => hostPlatform.fileSystem
+          .file(
+            paths.joinAll([
+              bundle,
+              ...relative.split('/'),
+              'libswiftCore.dylib',
+            ]),
+          )
+          .existsSync(),
     );
   }
 

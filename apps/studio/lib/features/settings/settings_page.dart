@@ -10,6 +10,7 @@ import '../../src/state/settings.dart';
 import '../common/doctor_checklist.dart';
 import '../common/flutter_sdk_fix.dart';
 import '../common/job_views.dart';
+import '../common/toolchain_install.dart';
 
 /// Settings (§6.7): the xcross CLI, toolchain readout, IDE integration,
 /// appearance and shortcuts.
@@ -157,6 +158,8 @@ class _SettingsPageState extends State<SettingsPage> {
                     )
                   : DoctorChecklist(checks: readiness.checks),
             ),
+            const MissingToolsCard(),
+            const DarwinSdkSettingsCard(),
             const FlutterSdkSettingsCard(), // feature 014
             XCard(
               title: 'IDE integration',
