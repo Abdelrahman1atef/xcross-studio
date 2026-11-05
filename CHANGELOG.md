@@ -1,5 +1,15 @@
 ## Unreleased (XCross Studio)
 
+- **Permissions and capabilities like Xcode** (feature 027): `xcross permissions list|set|remove` and
+  `xcross capabilities list|add|remove` (`--json`) read and edit the purpose strings of `ios/Runner/Info.plist` and the
+  entitlements file as text, so comments, key order and line endings stay, with a backup in `.xcross/permission-backups/`.
+  The Studio's **Project** page (it replaces Plugins) has Permissions, Capabilities and Plugins tabs.
+- **Plugin actions you cannot miss** (feature 028): `xcross plugin status --json` finds an override for another version of
+  the plugin (a build skips it), a draft that lacks the privacy manifest the plugin ships, and a draft nobody reviewed;
+  `plugin ack` marks it reviewed. `plugin shim --force` copies the old files to `.xcross/plugin-backups/` first and refuses a
+  `Package.swift` you wrote unless `--replace-hand-written`. The Studio shows the count on the sidebar and the top bar, lists
+  the items on Overview, Build & Run, Project and Release step 6, and fixes one with a click.
+
 - App Store Connect refused an IPA with **90426 Invalid Swift Support**: apps that load Swift libraries (Facebook's
   frameworks, Flutter's plugin library) need `SwiftSupport/iphoneos/` in the IPA. The App Store build now adds it, and
   the archive too. **Run `xcross sdk install <Xcode.xip>` again once:** the SDK now keeps Xcode's iPhoneOS Swift runtime
