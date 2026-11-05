@@ -15,6 +15,11 @@ const sdkIncludedRoots = <String>[
   'Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift',
   'Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift_static',
   'Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang',
+  // studio: 018 — the Swift runtime libraries an App Store IPA carries in
+  // SwiftSupport (about 60 MB for iPhoneOS only).
+  'Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/iphoneos',
+  'Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.5/iphoneos',
+  'Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-6.2/iphoneos',
   'Developer/Toolchains/XcodeDefault.xctoolchain/usr/include',
 ];
 
@@ -32,6 +37,17 @@ const sdkToolchainRelativePath =
     'Developer/Toolchains/XcodeDefault.xctoolchain';
 @internal
 const sdkSwiftResourcesRelativePath = '$sdkToolchainRelativePath/usr/lib/swift';
+
+/// Where the iPhoneOS Swift runtime libraries (`libswiftCore.dylib`, …) are,
+/// in the order Xcode takes them from: a library found in an earlier folder
+/// is not taken again. studio: 018
+@internal
+const sdkSwiftRuntimeRelativePaths = <String>[
+  '$sdkToolchainRelativePath/usr/lib/swift-5.0/iphoneos',
+  '$sdkToolchainRelativePath/usr/lib/swift-5.5/iphoneos',
+  '$sdkToolchainRelativePath/usr/lib/swift-6.2/iphoneos',
+];
+
 @internal
 const sdkSwiftStaticResourcesRelativePath =
     '$sdkToolchainRelativePath/usr/lib/swift_static';

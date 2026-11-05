@@ -232,6 +232,7 @@ final class FlutterBuildCommand<T extends PlatformHostInterface>
     hostServices: runtime.appleHostServices,
     httpClients: runtime.signingHttpClients,
     environment: runtime.runner.effectiveEnvironment,
+    sdkBundle: () => runtime.sdkRepository.current()?.bundle, // studio: 018
   );
 
   // studio: 018 — sign for distribution, write the IPA and the archive.

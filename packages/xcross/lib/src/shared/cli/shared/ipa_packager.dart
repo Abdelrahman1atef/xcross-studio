@@ -16,8 +16,13 @@ final class IpaPackager {
   ///
   /// Symlinks are dereferenced (iOS `.app` bundles are flat and codesign
   /// rejects interior symlinks, so this matches `zip` without `-y`). Unix
-  /// file modes are recorded on each entry. Returns the `.ipa` path.
-  Future<String> package(String appPath) async {
+  /// file modes are recorded on each entry. [extraEntries] (archive name to
+  /// source file) are added beside `Payload/`, as `SwiftSupport/` is. Returns
+  /// the `.ipa` path.
+  Future<String> package(
+    String appPath, {
+    Map<String, String> extraEntries = const {}, // studio: 018
+  }) async {
     final paths = host.paths.context;
     final appDir = host.fileSystem.directory(appPath);
     final appName = paths.basename(appPath);
@@ -41,6 +46,17 @@ final class IpaPackager {
       final bytes = await entity.readAsBytes();
       final file = ArchiveFile.bytes(entryName, bytes);
       file.mode = entity.statSync().mode & 0xFFF;
+      archive.addFile(file);
+    }
+
+    // studio: 018 — files that sit beside Payload/ (SwiftSupport/iphoneos/…).
+    for (final MapEntry(key: entryName, value: source)
+        in extraEntries.entries) {
+      final file = ArchiveFile.bytes(
+        entryName,
+        await host.fileSystem.file(source).readAsBytes(),
+      );
+      file.mode = 0x1ed;
       archive.addFile(file);
     }
 

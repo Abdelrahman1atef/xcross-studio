@@ -46,6 +46,7 @@ final class XcodeArchiveWriter<T extends PlatformHostInterface> {
     required String appPath,
     required String archivePath,
     required ArchivedApp app,
+    Map<String, String> swiftSupport = const {}, // studio: 018
   }) async {
     final paths = runner.host.paths.context;
     final archive = _files.directory(archivePath);
@@ -55,6 +56,12 @@ final class XcodeArchiveWriter<T extends PlatformHostInterface> {
     await _copyDirectory(appPath, paths.join(applications, appName));
     final dsyms = paths.join(archivePath, 'dSYMs');
     await _files.directory(dsyms).create(recursive: true);
+    // studio: 018 — Xcode keeps the Swift runtime libraries here too.
+    for (final MapEntry(key: name, value: source) in swiftSupport.entries) {
+      final target = paths.joinAll([archivePath, ...name.split('/')]);
+      await _files.directory(paths.dirname(target)).create(recursive: true);
+      await _files.file(source).copy(target);
+    }
 
     await _files
         .file(paths.join(archivePath, 'Info.plist'))

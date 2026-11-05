@@ -20,6 +20,7 @@ import 'package:xcross/src/shared/device/signing_http_client_factory.dart';
 import 'package:xcross/src/shared/diagnostics/xcross_diagnostics.dart';
 import 'package:xcross/src/shared/errors/errors.dart';
 import 'package:xcross/src/target/iphone/device/signed_bundle_preparer.dart';
+import 'package:xcross/src/target/iphone/device/swift_support.dart'; // studio: 018
 import 'package:xcross/src/target/iphone/device/xcode_archive.dart';
 
 /// Where an App Store export left its outputs.
@@ -51,7 +52,9 @@ final class AppStoreExport<T extends PlatformHostInterface> {
     required this.httpClients,
     required this.environment,
     Future<AscCredentials> Function()? loadCredentials,
-  }) : _loadCredentials =
+    String? Function()? sdkBundle, // studio: 018
+  }) : _sdkBundle = sdkBundle ?? (() => null),
+       _loadCredentials =
            loadCredentials ??
            (() => AscCredentialsLoader(hostServices: hostServices).load());
 
@@ -64,6 +67,9 @@ final class AppStoreExport<T extends PlatformHostInterface> {
   final SigningHttpClientFactory httpClients;
   final Map<String, String> environment;
   final Future<AscCredentials> Function() _loadCredentials;
+
+  /// The installed Darwin SDK folder, where the Swift runtime libraries are.
+  final String? Function() _sdkBundle;
 
   static const _roleHint =
       'App Store signing needs an App Store Connect team API key with the '
@@ -119,6 +125,22 @@ final class AppStoreExport<T extends PlatformHostInterface> {
       throw XcrossError('$appPath/Info.plist has no CFBundleIdentifier.');
     }
     preparer.validateContainment(appPath);
+    // studio: 018 — App Store Connect refuses an IPA that loads Swift
+    // libraries without SwiftSupport (90426): find them before signing.
+    final swiftSupport = await SwiftSupport.collect(
+      fileSystem: _files,
+      appPath: appPath,
+      sdkBundle: _sdkBundle(),
+    );
+    if (swiftSupport.missing.isNotEmpty) {
+      throw XcrossError(
+        'The app loads Swift libraries (${swiftSupport.missing.join(', ')}) '
+        'that the installed SDK does not have, and App Store Connect refuses '
+        'an IPA without SwiftSupport (90426).\n'
+        'hint: Install the SDK again with `xcross sdk install <Xcode.xip>`; it '
+        'now keeps the Swift runtime libraries.',
+      );
+    }
     // The App ID is always the real one for the App Store.
     final extensions = await preparer.rewriteExtensionIdentifiers(
       appPath,
@@ -192,6 +214,7 @@ final class AppStoreExport<T extends PlatformHostInterface> {
       return await package(
         appPath: appPath,
         outputRoot: outputRoot,
+        swiftSupport: swiftSupport.files,
         app: ArchivedApp(
           bundleId: bundleId,
           shortVersion: _plistString(info, 'CFBundleShortVersionString') ?? '',
@@ -221,18 +244,24 @@ final class AppStoreExport<T extends PlatformHostInterface> {
     required String appPath,
     required String outputRoot,
     required ArchivedApp app,
+    Map<String, String> swiftSupport = const {}, // studio: 018
   }) async {
     final paths = runner.host.paths.context;
-    final packaged = await IpaPackager(host: runner.host).package(appPath);
+    final packaged = await IpaPackager(
+      host: runner.host,
+    ).package(appPath, extraEntries: swiftSupport);
     final ipaDir = paths.join(outputRoot, 'ipa');
     await _files.directory(ipaDir).create(recursive: true);
     final ipaPath = paths.join(ipaDir, paths.basename(packaged));
     if (_files.file(ipaPath).existsSync()) await _files.file(ipaPath).delete();
     await _files.file(packaged).rename(ipaPath);
     final archivePath = paths.join(outputRoot, 'archive', 'Runner.xcarchive');
-    final missing = await XcodeArchiveWriter(
-      runner: runner,
-    ).write(appPath: appPath, archivePath: archivePath, app: app);
+    final missing = await XcodeArchiveWriter(runner: runner).write(
+      appPath: appPath,
+      archivePath: archivePath,
+      app: app,
+      swiftSupport: swiftSupport,
+    );
     return AppStoreExportResult(
       ipaPath: ipaPath,
       archivePath: archivePath,
