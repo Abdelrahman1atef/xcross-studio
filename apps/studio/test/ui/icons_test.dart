@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:xcross_studio/app/app.dart';
@@ -114,6 +115,16 @@ Map<String, Object?> _check(String setPath, {bool ready = false}) => {
   'errors': ready ? 0 : 2,
   'warnings': 0,
 };
+
+/// The number field beside the slider named [label].
+TextField fieldOf(WidgetTester tester, String label) {
+  final row = find
+      .ancestor(of: find.text(label), matching: find.byType(Row))
+      .first;
+  return tester.widget<TextField>(
+    find.descendant(of: row, matching: find.byType(TextField)),
+  );
+}
 
 void main() {
   late Directory project;
@@ -500,7 +511,7 @@ void main() {
       expect(sent['ipad-logo-width'], '120');
       expect(sent['android-logo-width'], '120');
       expect(sent['android12-icon-width'], '120');
-      expect(find.textContaining('iPad 120 pt'), findsOneWidget);
+      expect(fieldOf(tester, 'iPad').controller!.text, '120');
       await closeApp(tester);
     });
 
@@ -540,7 +551,7 @@ void main() {
 
     Future<void> slide(WidgetTester tester, String label, double to) async {
       final row = find
-          .ancestor(of: find.textContaining(label), matching: find.byType(Row))
+          .ancestor(of: find.text(label), matching: find.byType(Row))
           .first;
       final slider = tester.widget<Slider>(
         find.descendant(of: row, matching: find.byType(Slider)),
@@ -553,7 +564,7 @@ void main() {
         'reaches the CLI', (tester) async {
       final launcher = await openSplash(tester);
       expect(find.byTooltip('Set each side of Margin'), findsNothing);
-      await slide(tester, 'Top 0 pt', 80);
+      await slide(tester, 'Top', 80);
       await debounce(tester, launcher);
       expect(splashDesigns(launcher).last['margin'], '80,0,0,0');
       await closeApp(tester);
@@ -563,9 +574,75 @@ void main() {
       tester,
     ) async {
       final launcher = await openSplash(tester);
-      await slide(tester, 'Padding 0%', 12.5);
+      await slide(tester, 'Padding', 12.5);
       await debounce(tester, launcher);
       expect(splashDesigns(launcher).last['padding'], '12.5');
+      await closeApp(tester);
+    });
+
+    testWidgets('a number typed beside a slider reaches the CLI, kept in its '
+        'range and on a step', (tester) async {
+      final launcher = await openSplash(tester);
+      Future<void> type(String label, String text) async {
+        final field = find.descendant(
+          of: find
+              .ancestor(of: find.text(label), matching: find.byType(Row))
+              .first,
+          matching: find.byType(TextField),
+        );
+        await tester.enterText(field, text);
+        await tester.pump();
+      }
+
+      await type('Padding', '12.3');
+      await debounce(tester, launcher);
+      expect(splashDesigns(launcher).last['padding'], '12.5');
+      // 99 is more than a side can have; 45 is the most.
+      await type('Padding', '99');
+      await debounce(tester, launcher);
+      expect(splashDesigns(launcher).last['padding'], '45');
+      // A comma is a decimal point in some keyboards.
+      await type('Padding', '7,5');
+      await debounce(tester, launcher);
+      expect(splashDesigns(launcher).last['padding'], '7.5');
+      await type('Top', '120');
+      await debounce(tester, launcher);
+      expect(splashDesigns(launcher).last['margin'], '120,0,0,0');
+      await closeApp(tester);
+    });
+
+    testWidgets('the arrow keys in the number field change it one step', (
+      tester,
+    ) async {
+      final launcher = await openSplash(tester);
+      Finder field(String label) => find.descendant(
+        of: find
+            .ancestor(of: find.text(label), matching: find.byType(Row))
+            .first,
+        matching: find.byType(TextField),
+      );
+      await tester.tap(field('Padding'));
+      await tester.pump();
+      for (var i = 0; i < 3; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+        await tester.pump();
+      }
+      expect(fieldOf(tester, 'Padding').controller!.text, '1.5');
+      await debounce(tester, launcher);
+      expect(splashDesigns(launcher).last['padding'], '1.5');
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+      expect(fieldOf(tester, 'Padding').controller!.text, '1');
+      // Down at the minimum stays at the minimum.
+      for (var i = 0; i < 4; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.pump();
+      }
+      expect(fieldOf(tester, 'Padding').controller!.text, '0');
+      // Page Up is ten steps.
+      await tester.sendKeyEvent(LogicalKeyboardKey.pageUp);
+      await tester.pump();
+      expect(fieldOf(tester, 'Padding').controller!.text, '5');
       await closeApp(tester);
     });
 
@@ -585,16 +662,13 @@ void main() {
       );
       await debounce(tester, launcher);
       final row = find
-          .ancestor(
-            of: find.textContaining('Android 12+ ', findRichText: true).first,
-            matching: find.byType(Row),
-          )
+          .ancestor(of: find.text('Android 12+'), matching: find.byType(Row))
           .first;
       final slider = tester.widget<Slider>(
         find.descendant(of: row, matching: find.byType(Slider)),
       );
       expect(slider.max, 288);
-      await slide(tester, 'Android 12+ ', 250);
+      await slide(tester, 'Android 12+', 250);
       await debounce(tester, launcher);
       expect(splashDesigns(launcher).last['android12-icon-width'], '250');
       await closeApp(tester);
@@ -885,7 +959,7 @@ void main() {
     await settle(tester, 2);
     // Margin always shows its sides: one value would do nothing (AC-026-29).
     expect(find.text('Margin'), findsOneWidget);
-    expect(find.text('Top 0 pt'), findsOneWidget);
+    expect(find.text('Top'), findsOneWidget);
     // The phones are there before a logo is.
     expect(find.text('Android 12+ (safe circle)'), findsOneWidget);
 

@@ -1,5 +1,6 @@
 // Feature 024: the controls the icon and splash tabs share.
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../design_system/design_system.dart';
 import 'studio_model.dart';
@@ -22,7 +23,7 @@ class StudioLayout extends StatelessWidget {
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
-      if (constraints.maxWidth < 860) {
+      if (constraints.maxWidth < 980) {
         return SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -44,7 +45,12 @@ class StudioLayout extends StatelessWidget {
       return Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(width: 412, child: side(controls)),
+          // Wide enough for a slider, its number and the label without clipping;
+          // wider where the window allows.
+          SizedBox(
+            width: (constraints.maxWidth * 0.42).clamp(500.0, 600.0),
+            child: side(controls),
+          ),
           const SizedBox(width: XSpace.s3),
           Expanded(
             child: Column(
@@ -253,8 +259,11 @@ class _StudioColorState extends State<StudioColor> {
   }
 }
 
-/// A value on a slider with its number.
-class StudioSlider extends StatelessWidget {
+/// A value on a slider, with a field beside it for the number: type it, or
+/// press the up and down arrows in the field to change it one step at a time
+/// (Shift or Page Up and Page Down: ten steps). Whatever is typed is kept
+/// inside the range and on a step.
+class StudioSlider extends StatefulWidget {
   const StudioSlider({
     super.key,
     required this.label,
@@ -276,26 +285,142 @@ class StudioSlider extends StatelessWidget {
   final double step;
   final ValueChanged<double> onChanged;
 
-  String get _shown => value == value.roundToDouble()
-      ? '${value.round()}$unit'
-      : '${value.toStringAsFixed(1)}$unit';
+  @override
+  State<StudioSlider> createState() => _StudioSliderState();
+}
+
+class _StudioSliderState extends State<StudioSlider> {
+  late final _controller = TextEditingController(text: _format(widget.value));
+  final _focus = FocusNode();
 
   @override
-  Widget build(BuildContext context) => Row(
-    children: [
-      SizedBox(width: 96, child: Text('$label $_shown', style: XType.support)),
-      Expanded(
-        child: Slider(
-          value: value.clamp(min, max),
-          min: min,
-          max: max,
-          divisions: ((max - min) / step).round(),
-          label: _shown,
-          onChanged: (next) => onChanged((next / step).round() * step),
+  void initState() {
+    super.initState();
+    // Leaving the field shows the value that was kept, not what was typed.
+    _focus.addListener(() {
+      if (!_focus.hasFocus) _show(widget.value);
+    });
+  }
+
+  @override
+  void didUpdateWidget(StudioSlider oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_focus.hasFocus) _show(widget.value);
+  }
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  /// `12`, `12.5`: no trailing zeros.
+  static String _format(double value) {
+    final text = value.toStringAsFixed(2);
+    return text.contains('.') ? text.replaceFirst(RegExp(r'\.?0+$'), '') : text;
+  }
+
+  void _show(double value) {
+    final text = _format(value);
+    if (_controller.text != text) _controller.text = text;
+  }
+
+  /// Inside the range, on a step counted from the minimum.
+  double _snap(double value) {
+    final steps = ((value - widget.min) / widget.step).round();
+    return (widget.min + steps * widget.step).clamp(widget.min, widget.max);
+  }
+
+  void _commit(double value) {
+    final next = _snap(value);
+    if (next != widget.value) widget.onChanged(next);
+  }
+
+  /// What the field holds, or the current value while it holds no number.
+  double get _typed =>
+      double.tryParse(_controller.text.trim().replaceAll(',', '.')) ??
+      widget.value;
+
+  KeyEventResult _key(FocusNode node, KeyEvent event) {
+    if (event is KeyUpEvent) return KeyEventResult.ignored;
+    final key = event.logicalKey;
+    final big = HardwareKeyboard.instance.isShiftPressed ? 10 : 1;
+    final steps = switch (key) {
+      LogicalKeyboardKey.arrowUp => big,
+      LogicalKeyboardKey.arrowDown => -big,
+      LogicalKeyboardKey.pageUp => 10,
+      LogicalKeyboardKey.pageDown => -10,
+      _ => 0,
+    };
+    if (steps == 0) return KeyEventResult.ignored;
+    final next = _snap(_typed + steps * widget.step);
+    _controller.value = TextEditingValue(
+      text: _format(next),
+      selection: TextSelection.collapsed(offset: _format(next).length),
+    );
+    _commit(next);
+    return KeyEventResult.handled;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final unit = widget.unit.trim();
+    return Row(
+      children: [
+        SizedBox(width: 88, child: Text(widget.label, style: XType.support)),
+        Expanded(
+          child: Slider(
+            value: widget.value.clamp(widget.min, widget.max),
+            min: widget.min,
+            max: widget.max,
+            divisions: ((widget.max - widget.min) / widget.step).round(),
+            label: '${_format(widget.value)}${widget.unit}',
+            onChanged: (next) => _commit(next),
+          ),
         ),
-      ),
-    ],
-  );
+        SizedBox(
+          width: 84,
+          child: Focus(
+            onKeyEvent: _key,
+            child: Semantics(
+              label: '${widget.label} value',
+              child: TextField(
+                controller: _controller,
+                focusNode: _focus,
+                style: XType.body.copyWith(
+                  color: XTheme.of(context).colors.textPrimary,
+                ),
+                textAlign: TextAlign.end,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                  signed: false,
+                ),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                ],
+                decoration: InputDecoration(
+                  isDense: true,
+                  suffixText: unit.isEmpty ? null : unit,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: XSpace.s2,
+                    vertical: XSpace.s2,
+                  ),
+                ),
+                onChanged: (text) {
+                  final number = double.tryParse(
+                    text.trim().replaceAll(',', '.'),
+                  );
+                  if (number != null) _commit(number);
+                },
+                onSubmitted: (_) => _show(widget.value),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 /// One value for all sides, or four, with a button to switch (AC-024-17).
