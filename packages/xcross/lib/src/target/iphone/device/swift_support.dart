@@ -87,6 +87,24 @@ final class SwiftSupport {
     );
   }
 
+  /// Copies every library of [files] into `<appPath>/Frameworks`, where Xcode
+  /// also keeps them: App Store Connect refuses an IPA whose SwiftSupport
+  /// holds a library the app does not embed (90429). Call before signing, so
+  /// the copies get the app's signature.
+  Future<void> embed({
+    required HostFileSystemInterface fileSystem,
+    required String appPath,
+  }) async {
+    if (files.isEmpty) return;
+    final frameworks = p.join(appPath, 'Frameworks');
+    await fileSystem.directory(frameworks).create(recursive: true);
+    for (final entry in files.entries) {
+      final target = p.join(frameworks, p.basename(entry.key));
+      if (fileSystem.file(target).existsSync()) continue;
+      await fileSystem.file(entry.value).copy(target);
+    }
+  }
+
   static Future<bool> _isMachO(File file) async {
     final handle = await file.open();
     try {

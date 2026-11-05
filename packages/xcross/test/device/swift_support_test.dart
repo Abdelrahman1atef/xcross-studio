@@ -163,6 +163,38 @@ void main() {
     expect((await collect()).missing, ['libswiftCore.dylib']);
   });
 
+  test(
+    'the same libraries are embedded in the app Frameworks (90429)',
+    () async {
+      write(
+        app,
+        'Frameworks/Fb.framework/Fb',
+        _loading(['@rpath/libswiftCore.dylib']),
+      );
+      sdkLibrary('swift-5.0', 'libswiftCore.dylib');
+      final support = await collect(bundle: sdk);
+      await support.embed(fileSystem: host.fileSystem, appPath: app);
+      final copy = File(p.join(app, 'Frameworks', 'libswiftCore.dylib'));
+      expect(copy.existsSync(), isTrue);
+      expect(
+        copy.readAsBytesSync(),
+        File(support.files.values.single).readAsBytesSync(),
+      );
+      // Embedding again, or an app that needs nothing, changes nothing.
+      await support.embed(fileSystem: host.fileSystem, appPath: app);
+      await const SwiftSupport().embed(
+        fileSystem: host.fileSystem,
+        appPath: app,
+      );
+      expect(
+        Directory(
+          p.join(app, 'Frameworks'),
+        ).listSync().map((e) => p.basename(e.path)).toSet(),
+        {'Fb.framework', 'libswiftCore.dylib'},
+      );
+    },
+  );
+
   test('the IPA carries the folder beside Payload, executable', () async {
     sdkLibrary('swift-5.0', 'libswiftCore.dylib');
     final extra = {

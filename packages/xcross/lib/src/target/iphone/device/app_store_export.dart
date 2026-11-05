@@ -19,6 +19,7 @@ import 'package:xcross/src/shared/cli/shared/ipa_packager.dart';
 import 'package:xcross/src/shared/device/signing_http_client_factory.dart';
 import 'package:xcross/src/shared/diagnostics/xcross_diagnostics.dart';
 import 'package:xcross/src/shared/errors/errors.dart';
+import 'package:xcross/src/target/iphone/device/loose_dylibs.dart'; // studio: 018
 import 'package:xcross/src/target/iphone/device/signed_bundle_preparer.dart';
 import 'package:xcross/src/target/iphone/device/swift_support.dart'; // studio: 018
 import 'package:xcross/src/target/iphone/device/xcode_archive.dart';
@@ -125,6 +126,25 @@ final class AppStoreExport<T extends PlatformHostInterface> {
       throw XcrossError('$appPath/Info.plist has no CFBundleIdentifier.');
     }
     preparer.validateContainment(appPath);
+    // studio: 018 — a standalone dylib is refused (90429); wrap each in a
+    // framework before anything below looks at the app's libraries.
+    final plist = await _files
+        .file(paths.join(appPath, 'Info.plist'))
+        .readAsString();
+    final wrapped = await LooseDylibs.frameworkize(
+      fileSystem: _files,
+      appPath: appPath,
+      version: _plistString(plist, 'CFBundleShortVersionString') ?? '1.0',
+      build: _plistString(plist, 'CFBundleVersion') ?? '1',
+      minimumOs: _plistString(plist, 'MinimumOSVersion') ?? '15.0',
+    );
+    for (final fileName in wrapped) {
+      runner.log.logInfo(
+        'Frameworks',
+        '$fileName is now a framework: iOS allows dynamic libraries only '
+            'inside framework bundles (App Store Connect 90429).',
+      );
+    }
     // studio: 018 — App Store Connect refuses an IPA that loads Swift
     // libraries without SwiftSupport (90426): find them before signing.
     final swiftSupport = await SwiftSupport.collect(
@@ -141,6 +161,9 @@ final class AppStoreExport<T extends PlatformHostInterface> {
         'now keeps the Swift runtime libraries.',
       );
     }
+    // And the same libraries go into the app's Frameworks folder, which
+    // App Store Connect checks against SwiftSupport (90429).
+    await swiftSupport.embed(fileSystem: _files, appPath: appPath);
     // The App ID is always the real one for the App Store.
     final extensions = await preparer.rewriteExtensionIdentifiers(
       appPath,
