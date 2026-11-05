@@ -10,6 +10,7 @@ import 'package:args/command_runner.dart';
 import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:path/path.dart' as p;
 import 'package:studio_ext/shared/appstore/command_exit.dart';
+import 'package:studio_ext/src/shared/appstore/apple_rejections.dart'; // studio: 018
 import 'package:studio_ext/src/shared/appstore/asc_session.dart';
 import 'package:studio_ext/src/shared/appstore/build_processing.dart';
 import 'package:studio_ext/src/shared/appstore/build_upload.dart';
@@ -269,9 +270,15 @@ final class PublishCommand extends Command<void> {
         },
       });
       if (outcome.state == 'FAILED') {
+        final rejected = [
+          for (final issue in outcome.issues)
+            if (issue.severity == 'error') '${issue.code} ${issue.description}',
+        ];
         throw CommandExit(
           '[publish.upload_failed] App Store Connect rejected the upload'
-          '${outcome.issues.isEmpty ? '' : ': ${outcome.issues.where((i) => i.severity == 'error').map((i) => '${i.code} ${i.description}').join('; ')}'}.',
+          '${outcome.issues.isEmpty ? '' : ': ${rejected.join('; ')}'}.'
+          // studio: 018 — what xcross knows about each error code.
+          '${rejectionHints(rejected).map((hint) => '\n$hint').join()}',
         );
       }
       final result = await processing.waitForProcessing(
