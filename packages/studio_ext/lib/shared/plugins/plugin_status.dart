@@ -72,7 +72,10 @@ final class PluginStatus {
   String? get action {
     if (problems.isEmpty) return null;
     final needsFix = problems.any(
-      (p) => p.code == 'stale' || p.code == 'manifest_missing',
+      (p) =>
+          p.code == 'stale' ||
+          p.code == 'manifest_missing' ||
+          p.code == 'permission_macros_missing',
     );
     if (needsFix) return kind == PluginKind.draft ? 'regenerate' : 'manual';
     if (problems.any((p) => p.code == 'review_pending')) return 'review';
@@ -183,14 +186,31 @@ List<PluginStatus> readPluginStatus(
           final spec = Podspec.parse(
             fs.file(plugins.podspecPath(plugin)).readAsStringSync(),
           );
+          final macros = writer.macrosFor(plugin, project);
           final fresh = draftPackageSwift(
             plugin: plugin.name,
             spec: spec,
             files: plugins.platformFiles(plugin),
             pluginVersion: version,
+            defines: macros,
           );
-          edited =
-              fs.file(manifest).readAsStringSync().trim() != fresh.text.trim();
+          final written = fs.file(manifest).readAsStringSync();
+          final off = [
+            for (final MapEntry(:key, :value) in macros.entries)
+              if (value == '1' && !written.contains('.define("$key"')) key,
+          ];
+          if (off.isNotEmpty) {
+            problems.add(
+              PluginProblem(
+                'permission_macros_missing',
+                'The draft does not switch on '
+                    '${off.map((m) => m.replaceFirst('PERMISSION_', '').toLowerCase()).join(', ')}, '
+                    'so ${plugin.name} answers "denied" without asking, although '
+                    'Info.plist or the Podfile declares it.',
+              ),
+            );
+          }
+          edited = written.trim() != fresh.text.trim();
           final missing = [
             for (final target in fresh.resourceCopies.values)
               if (!fs

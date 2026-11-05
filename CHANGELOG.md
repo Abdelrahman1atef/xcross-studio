@@ -4,6 +4,13 @@
   `xcross capabilities list|add|remove` (`--json`) read and edit the purpose strings of `ios/Runner/Info.plist` and the
   entitlements file as text, so comments, key order and line endings stay, with a backup in `.xcross/permission-backups/`.
   The Studio's **Project** page (it replaces Plugins) has Permissions, Capabilities and Plugins tabs.
+- **The camera (and every other) permission answered "denied" without asking** in iOS apps that use `permission_handler`
+  and are built by xcross. The plugin compiles a permission out unless its `PERMISSION_X` switch is set, CocoaPods sets it
+  from the Podfile, and xcross never did. xcross now reads the Info.plist purpose strings and the Podfile's
+  `PERMISSION_X=1|0` lines and gives the plugin the switches (part of the plugin build's cache key; the build says which it
+  switched on). Drafts of older plugin versions (9.4.x, from a podspec) get the same switches written into
+  `Package.swift`, and `plugin status` reports a draft that lacks one (`permission_macros_missing`) with a Regenerate
+  button. doctory's draft lacked all of them: run Regenerate once.
 - **Plugin actions you cannot miss** (feature 028): `xcross plugin status --json` finds an override for another version of
   the plugin (a build skips it), a draft that lacks the privacy manifest the plugin ships, and a draft nobody reviewed;
   `plugin ack` marks it reviewed. `plugin shim --force` copies the old files to `.xcross/plugin-backups/` first and refuses a

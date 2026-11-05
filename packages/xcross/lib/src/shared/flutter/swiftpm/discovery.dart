@@ -43,6 +43,7 @@ final class SwiftPmDiscovery<T extends PlatformHostInterface> {
     String? sdkIdentity,
     String? flutterEngineRevision,
     bool distribution = false,
+    Map<String, String> projectEnvironment = const {},
   }) async {
     Digest? result;
     final input = sha256.startChunkedConversion(
@@ -68,6 +69,13 @@ final class SwiftPmDiscovery<T extends PlatformHostInterface> {
     add(deploymentTarget.version);
     add(deploymentTarget.swiftSdkTriple);
     add(verbose.toString());
+    // studio: 027 — a changed permission switch must rebuild the plugin.
+    add(
+      [
+        for (final entry in projectEnvironment.entries)
+          '${entry.key}=${entry.value}',
+      ].join(''),
+    );
     final sdk = sdkRepository.current();
     if (toolchainIdentity == null && sdk == null) {
       throw FlutterBuildError(

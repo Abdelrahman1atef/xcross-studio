@@ -26,6 +26,12 @@ final class SwiftPmProcessPolicy<T extends PlatformHostInterface> {
   final ProcessRunner<T> runner;
   final AppleToolShimResolver<T> tools;
 
+  /// Variables the project asks plugin manifests to see (studio: 027): the
+  /// `PERMISSION_*` switches of `permission_handler_apple`. Set once per build
+  /// by the plugin build step, so every Swift process of it sees the same
+  /// environment and the manifest cache stays valid.
+  Map<String, String> projectEnvironment = const {};
+
   /// Environment that makes Git — and anything spawning it, including
   /// SwiftPM's own dependency resolution — fail instead of waiting on a
   /// human.
@@ -230,6 +236,7 @@ final class SwiftPmProcessPolicy<T extends PlatformHostInterface> {
         'GIT_CONFIG_KEY_$index': entry.key,
         'GIT_CONFIG_VALUE_$index': entry.value,
       },
+      ...projectEnvironment,
       ...hostPolicy.sourceEnvironment,
       ...hostPolicy.bundledToolEnvironment(
         executable ?? tools.executable,

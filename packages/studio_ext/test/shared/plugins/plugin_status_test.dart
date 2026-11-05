@@ -38,6 +38,7 @@ void main() {
     bool swiftPackage = false,
     String version = '1.0.0',
     bool privacy = false,
+    bool objc = false,
   }) {
     final root = p.join(temp.path, 'pub', name);
     File(p.join(root, 'pubspec.yaml'))
@@ -47,9 +48,18 @@ void main() {
       File(p.join(root, 'ios', '$name.podspec'))
         ..createSync(recursive: true)
         ..writeAsStringSync(podspec);
-      File(p.join(root, 'ios', 'Classes', 'Plugin.swift'))
-        ..createSync(recursive: true)
-        ..writeAsStringSync('import Flutter\n');
+      if (objc) {
+        File(p.join(root, 'ios', 'Classes', 'Plugin.m'))
+          ..createSync(recursive: true)
+          ..writeAsStringSync('#import "Plugin.h"\n');
+        File(p.join(root, 'ios', 'Classes', 'Plugin.h'))
+          ..createSync(recursive: true)
+          ..writeAsStringSync('#import <Flutter/Flutter.h>\n');
+      } else {
+        File(p.join(root, 'ios', 'Classes', 'Plugin.swift'))
+          ..createSync(recursive: true)
+          ..writeAsStringSync('import Flutter\n');
+      }
     }
     if (privacy) {
       File(p.join(root, 'ios', 'Resources', 'PrivacyInfo.xcprivacy'))
@@ -313,6 +323,69 @@ void main() {
           ),
         ),
       );
+    },
+  );
+
+  test(
+    'AC-027-21 a permission_handler draft switches on what the app declares, '
+    'and status finds one that does not',
+    () async {
+      final infoPlist = File(p.join(temp.path, 'ios', 'Runner', 'Info.plist'))
+        ..createSync(recursive: true);
+      void declare(List<String> keys) => infoPlist.writeAsStringSync(
+        '<plist version="1.0"><dict>\n'
+        '${keys.map((k) => '<key>$k</key><string>Why.</string>').join('\n')}\n'
+        '</dict></plist>\n',
+      );
+      declare(['NSCameraUsageDescription', 'NSPhotoLibraryUsageDescription']);
+      File(
+        p.join(temp.path, 'ios', 'Podfile'),
+      ).writeAsStringSync("'PERMISSION_MICROPHONE=1'\n");
+      addPlugin('permission_handler_apple', podspec: _plainSpec, objc: true);
+      await plugin(['shim', 'permission_handler_apple']);
+      final manifest = File(
+        overrides('permission_handler_apple/1.0.0/Package.swift'),
+      );
+      final text = manifest.readAsStringSync();
+      for (final macro in ['CAMERA', 'PHOTOS', 'MICROPHONE']) {
+        expect(text, contains('.define("PERMISSION_$macro", to: "1")'));
+      }
+      expect(text, isNot(contains('PERMISSION_CONTACTS')));
+      await plugin(['ack', 'permission_handler_apple']);
+      expect(
+        (await status())['permission_handler_apple']!['problems'],
+        isEmpty,
+      );
+
+      // A draft from before xcross knew: the macros are not in it.
+      manifest.writeAsStringSync(
+        text.replaceAll(
+          RegExp(r'[ \t]*\.define\("PERMISSION_[A-Z_]+", to: "1"\),?\n'),
+          '',
+        ),
+      );
+      final old = (await status())['permission_handler_apple']!;
+      final problem = (old['problems']! as List)
+          .cast<Map<String, Object?>>()
+          .single;
+      expect(problem['code'], 'permission_macros_missing');
+      expect(problem['message'], allOf(contains('camera'), contains('denied')));
+      expect(old['action'], 'regenerate');
+
+      await plugin(['shim', 'permission_handler_apple', '--force']);
+      expect(
+        manifest.readAsStringSync(),
+        contains('.define("PERMISSION_CAMERA", to: "1")'),
+      );
+
+      // Declaring another permission later makes the draft out of date again.
+      declare(['NSCameraUsageDescription', 'NSContactsUsageDescription']);
+      await plugin(['ack', 'permission_handler_apple']);
+      final stale = (await status())['permission_handler_apple']!;
+      final problems = (stale['problems']! as List)
+          .cast<Map<String, Object?>>();
+      expect(problems.map((p) => p['code']), ['permission_macros_missing']);
+      expect(problems.single['message'], contains('contacts'));
     },
   );
 }

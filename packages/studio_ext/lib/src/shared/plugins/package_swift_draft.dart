@@ -404,6 +404,7 @@ PackageSwiftDraft draftPackageSwift({
   required Podspec spec,
   required List<String> files,
   String? pluginVersion,
+  Map<String, String> defines = const {},
 }) {
   final notes = <String>[];
   final targetPath = _commonDirectory(spec.sourceFiles);
@@ -552,9 +553,17 @@ PackageSwiftDraft draftPackageSwift({
         block('resources', resourceLines),
       if (objc && headers.isNotEmpty)
         '            publicHeadersPath: "$publicHeaders"',
-      if (objc && headerSearchPaths.isNotEmpty)
+      // The macros are the plugin's own switches (permission_handler's
+      // PERMISSION_CAMERA): without them an Objective-C plugin built from a
+      // podspec compiles its permissions out (studio: 027).
+      if (objc &&
+          (headerSearchPaths.isNotEmpty ||
+              (name == plugin && defines.isNotEmpty)))
         block('cSettings', [
           for (final dir in headerSearchPaths) '.headerSearchPath("$dir")',
+          if (name == plugin)
+            for (final MapEntry(:key, :value) in defines.entries)
+              '.define("$key", to: "$value")',
         ]),
       if (linker.isNotEmpty && name == plugin) block('linkerSettings', linker),
     ];

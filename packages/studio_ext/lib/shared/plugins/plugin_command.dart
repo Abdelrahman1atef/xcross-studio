@@ -7,6 +7,7 @@ import 'package:cli_kit/shared/errors/errors.dart';
 import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:path/path.dart' as p;
 import 'package:studio_ext/shared/plugins/draft_ledger.dart'; // studio: 028
+import 'package:studio_ext/shared/plugins/permission_macros.dart'; // studio: 027
 import 'package:studio_ext/shared/plugins/plugin_status.dart'; // studio: 028
 import 'package:studio_ext/src/shared/plugins/package_swift_draft.dart';
 import 'package:studio_ext/src/shared/plugins/podspec.dart';
@@ -193,6 +194,33 @@ final class PluginDraftWriter {
         dependency.name,
   ];
 
+  /// The project folder an override [base] (`<project>/xcross_overrides`)
+  /// belongs to; null for the shared `~/.xcross/overrides`.
+  String? projectRootOf(String base) {
+    final paths = plugins.paths;
+    return paths.basename(base) == 'xcross_overrides'
+        ? paths.dirname(base)
+        : null;
+  }
+
+  /// The `PERMISSION_*` switches a draft of [target] needs, from the project's
+  /// Info.plist and Podfile (studio: 027); none for other plugins.
+  Map<String, String> macrosFor(ProjectPlugin target, String? project) {
+    if (target.name != PermissionMacros.plugin || project == null) {
+      return const {};
+    }
+    final fs = plugins.fileSystem;
+    String? read(List<String> parts) {
+      final file = fs.file(plugins.paths.joinAll([project, ...parts]));
+      return file.existsSync() ? file.readAsStringSync() : null;
+    }
+
+    return PermissionMacros.environment(
+      infoPlist: read(['ios', 'Runner', 'Info.plist']),
+      podfile: read(['ios', 'Podfile']),
+    );
+  }
+
   /// Where the draft of [target] goes under [base].
   String packagePath(ProjectPlugin target, String base) {
     final paths = plugins.paths;
@@ -212,6 +240,7 @@ final class PluginDraftWriter {
       spec: _spec(target),
       files: plugins.platformFiles(target),
       pluginVersion: target.version,
+      defines: macrosFor(target, projectRootOf(base)),
     );
     // The logical path, for messages: the host file's path carries the
     // Windows long-path prefix ("✔ Wrote \\?\D:\…").

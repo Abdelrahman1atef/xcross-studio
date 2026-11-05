@@ -166,6 +166,8 @@ class ProjectHealthController extends ChangeNotifier {
       'stale' => '${plugin.name}: its override is for another version',
       'manifest_missing' =>
         '${plugin.name}: the override has no privacy manifest',
+      'permission_macros_missing' =>
+        '${plugin.name}: its permissions are switched off in the draft',
       'unknown_pods' => '${plugin.name}: a build leaves out its iOS code',
       'review_pending' => '${plugin.name}: review the draft xcross wrote',
       _ => '${plugin.name}: ${problem.code}',

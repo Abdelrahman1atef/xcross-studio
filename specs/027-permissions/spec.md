@@ -50,6 +50,21 @@ easy, and (answering the scope question) for capabilities as well as purpose str
 12. **AC-027-16** The Capabilities tab has a switch per capability, chips for background modes, an input for domains and
     groups, and shows the notes the CLI returned.
 
+13. **AC-027-20** (camera permission under xcross) `permission_handler_apple` compiles a permission out unless its
+    `PERMISSION_X` macro is set, and a compiled-out permission answers "denied" without asking. CocoaPods builds take the
+    macros from the Podfile; xcross builds plugins with Swift Package Manager and did not. When the plugin build starts,
+    xcross reads the project's Info.plist purpose strings and the Podfile's `PERMISSION_X=1|0` lines and gives the plugin
+    the environment variable it reads for each macro (the table is the one in the plugin's own `Package.swift`). A Podfile
+    `=0` turns a permission off even with the string present. The variables are part of the plugin build's cache key, and
+    the build says which permissions it switched on. Found on `bsat`: the camera key was in Info.plist and
+    `PERMISSION_CAMERA=1` in the Podfile, yet the manifest printed "Could not locate the host app, so every iOS permission
+    has been compiled out" (probed with `swift package dump-package`: no variable gives `PERMISSION_CAMERA=0`, the variable
+    gives `1`; pointing at the Info.plist did not help on the Windows toolchain).
+14. **AC-027-21** (older drafts) A plugin built from a podspec draft (permission_handler_apple 9.4.x, Objective-C) reads its
+    macros only from the draft's compile settings. The drafter writes `.define("PERMISSION_X", to: "1")` for each switch the
+    project declares, and `plugin status` reports `permission_macros_missing` (action: regenerate) for a draft that lacks one
+    the project now declares: doctory's draft had none, so every permission answered "denied".
+
 ## Result on doctory (read-only)
 
 `xcross permissions list` shows its six purpose strings and no missing key; `capabilities list` shows Push,

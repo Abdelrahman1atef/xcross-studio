@@ -6,6 +6,7 @@ import 'package:darwin_sdk_kit/shared/sdk/darwin_sdk_repository.dart';
 import 'package:darwin_sdk_kit/shared/toolchain/darwin_toolchain_resolver.dart';
 import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
+import 'package:studio_ext/shared/plugins/permission_macros.dart'; // studio: 027
 import 'package:xcross/src/shared/flutter/build/internal/apple_tool_shims.dart';
 import 'package:xcross/src/shared/flutter/build/internal/swiftpm_workspace.dart';
 import 'package:xcross/src/shared/flutter/build/ios_deployment_target.dart';
@@ -150,6 +151,40 @@ final class GeneratedPluginsPackage<T extends PlatformHostInterface> {
         workspace: workspace,
       );
 
+  /// The `PERMISSION_*` switches `permission_handler_apple` needs, from the
+  /// project's Podfile and Info.plist (studio: 027). Empty when the project
+  /// does not use that plugin.
+  Map<String, String> _permissionEnvironment(
+    String projectRoot,
+    List<IosPlugin> plugins,
+  ) {
+    if (!plugins.any((plugin) => plugin.name == PermissionMacros.plugin)) {
+      return const {};
+    }
+    final fileSystem = runtime.runner.host.fileSystem;
+    final paths = runtime.runner.host.paths.context;
+    String? read(List<String> parts) {
+      final file = fileSystem.file(paths.joinAll([projectRoot, ...parts]));
+      return file.existsSync() ? file.readAsStringSync() : null;
+    }
+
+    final environment = PermissionMacros.environment(
+      infoPlist: read(['ios', 'Runner', 'Info.plist']),
+      podfile: read(['ios', 'Podfile']),
+    );
+    runtime.runner.log.logInfo(
+      'Permissions',
+      environment.isEmpty
+          ? '${PermissionMacros.plugin}: no purpose string in Info.plist, so '
+                'every permission stays off (a request answers denied).'
+          : '${PermissionMacros.plugin}: on for '
+                '${[for (final e in environment.entries)
+                  if (e.value == '1') e.key.replaceFirst('PERMISSION_', '').toLowerCase()].join(', ')}'
+                ' (from Info.plist and the Podfile).',
+    );
+    return environment;
+  }
+
   /// Builds the aggregate dylib for the subset of [plugins] that use Swift
   /// Package Manager. Returns null if there is nothing to build.
   ///
@@ -180,6 +215,12 @@ final class GeneratedPluginsPackage<T extends PlatformHostInterface> {
           .where((plugin) => plugin.usesSwiftPackageManager)
           .toList();
       if (spmPlugins.isEmpty) return null;
+      // studio: 027 — permission_handler compiles a permission out unless told.
+      final projectEnvironment = _permissionEnvironment(
+        projectRoot,
+        spmPlugins,
+      );
+      runtime.processPolicy.projectEnvironment = projectEnvironment;
       await runtime.hostPolicy.hostEnvironment();
       final capabilities =
           await artifactJunctionCapabilityResolver?.call() ??
@@ -207,6 +248,7 @@ final class GeneratedPluginsPackage<T extends PlatformHostInterface> {
         sdkIdentity: sdkIdentity,
         flutterEngineRevision: flutterEngineRevision,
         distribution: distribution,
+        projectEnvironment: projectEnvironment,
       );
       final fingerprintFile = runtime.artifactFileSystem.file(
         p.join(outputDir, '.xcross-build-fingerprint'),
