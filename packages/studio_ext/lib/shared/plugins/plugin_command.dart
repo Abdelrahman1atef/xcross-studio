@@ -6,6 +6,8 @@ import 'package:args/command_runner.dart';
 import 'package:cli_kit/shared/errors/errors.dart';
 import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:path/path.dart' as p;
+import 'package:studio_ext/shared/plugins/draft_ledger.dart'; // studio: 028
+import 'package:studio_ext/shared/plugins/plugin_status.dart'; // studio: 028
 import 'package:studio_ext/src/shared/plugins/package_swift_draft.dart';
 import 'package:studio_ext/src/shared/plugins/podspec.dart';
 
@@ -20,6 +22,9 @@ final class PluginCommand extends Command<void> {
     final plugins = ProjectPlugins(fileSystem, paths);
     addSubcommand(PluginListCommand(plugins: plugins, write: write));
     addSubcommand(PluginCheckCommand(plugins: plugins, write: write));
+    // studio: 028
+    addSubcommand(PluginStatusCommand(plugins: plugins, write: write));
+    addSubcommand(PluginAckCommand(plugins: plugins, write: write));
     addSubcommand(
       PluginShimCommand(plugins: plugins, write: write, home: home),
     );
@@ -318,6 +323,8 @@ final class PluginDraftWriter {
       copy.writeAsBytesSync(source.readAsBytesSync());
       patched[to] = 'copied from $from';
     }
+    // studio: 028 — xcross wrote this one; the developer has yet to look.
+    DraftLedger(fs, paths, base).record(name, target.version);
     return WrittenDraft(shown, patched, draft.notes);
   }
 }
@@ -353,6 +360,11 @@ final class PluginCheckCommand extends Command<void> {
       final out = StringBuffer();
       final problems = <String>[];
       final all = plugins.read(project);
+      final staleNames = {
+        for (final status in readPluginStatus(plugins, project))
+          if (status.problems.any((p) => p.code == 'stale')) status.name,
+      };
+      final staleProblems = <String>[];
       for (final plugin in all) {
         final label = '${plugin.name} ${plugin.version ?? ''}'.trimRight();
         final overridden = plugins.fileSystem
@@ -360,7 +372,16 @@ final class PluginCheckCommand extends Command<void> {
               plugins.paths.join(project, 'xcross_overrides', plugin.name),
             )
             .existsSync();
-        if (overridden) {
+        // studio: 028 — a folder for another version is skipped by the build.
+        final stale = overridden && staleNames.contains(plugin.name);
+        if (stale) {
+          problems.add(plugin.name);
+          staleProblems.add(plugin.name);
+          out.writeln(
+            '✖ $label  (override does not apply: xcross_overrides/'
+            '${plugin.name} is for another version)',
+          );
+        } else if (overridden) {
           out.writeln('✔ $label  (override)');
         } else if (plugins.hasSwiftPackage(plugin)) {
           out.writeln('✔ $label  (swiftpm)');
@@ -381,6 +402,15 @@ final class PluginCheckCommand extends Command<void> {
       }
       if (all.isEmpty) out.writeln('No iOS plugins.');
       write(out.toString());
+      if (staleProblems.isNotEmpty) {
+        throw PluginFailure(
+          'plugin.override_stale',
+          'A build skips the override of ${staleProblems.join(', ')}: it is '
+              'for another version of the plugin.',
+          'Run xcross plugin status; a draft is rewritten with '
+              'xcross plugin shim <plugin> --force.',
+        );
+      }
       if (problems.isNotEmpty) {
         throw PluginFailure(
           'plugin.unknown_pods',
@@ -469,7 +499,14 @@ final class PluginShimCommand extends Command<void> {
       ..addFlag(
         'force',
         negatable: false,
-        help: 'Overwrite an existing Package.swift draft.',
+        help: 'Overwrite an existing Package.swift draft (after a backup).',
+      )
+      ..addFlag(
+        'replace-hand-written',
+        negatable: false,
+        help:
+            'With --force: also replace a Package.swift xcross did not '
+            'write (after a backup).',
       );
   }
 
@@ -536,9 +573,34 @@ final class PluginShimCommand extends Command<void> {
           'Edit it, or pass --force to replace it with a new draft.',
         );
       }
+      // studio: 028 — never overwrite a file the developer wrote, and keep a
+      // copy of a draft before it is replaced.
+      String? backedUp;
+      if (fs.file(existing).existsSync()) {
+        if (!isDraftManifest(fs, existing) &&
+            !args.flag('replace-hand-written')) {
+          throw PluginFailure(
+            'plugin.hand_written',
+            '$existing was not written by xcross (it has no DRAFT header), so '
+                'it is not replaced.',
+            'Edit it by hand, or pass --replace-hand-written to replace it '
+                'after a backup.',
+          );
+        }
+        backedUp = _backUp(
+          fs,
+          paths,
+          from: paths.dirname(existing),
+          root: args.flag('global')
+              ? paths.join(home!, '.xcross', 'plugin-backups')
+              : paths.join(project, '.xcross', 'plugin-backups'),
+          label: paths.relative(paths.dirname(existing), from: base),
+        );
+      }
       final written = writer.write(target, base: base);
       final message = StringBuffer()
         ..writeln('✔ Wrote ${written.path}')
+        ..writeln(backedUp == null ? '' : '✔ Kept the old files in $backedUp')
         ..writeln(
           plugins.hasSwiftPackage(target)
               ? '  (overrides the Package.swift $name ships)'
@@ -563,4 +625,36 @@ final class PluginShimCommand extends Command<void> {
       throw failure.toCliError();
     }
   }
+}
+
+/// Copies every file under [from] to `<root>/<stamp>/<label>/`; returns that
+/// folder.
+String _backUp(
+  HostFileSystemInterface fs,
+  p.Context paths, {
+  required String from,
+  required String root,
+  required String label,
+}) {
+  final now = DateTime.now();
+  String two(int v) => v.toString().padLeft(2, '0');
+  final stamp =
+      '${now.year}${two(now.month)}${two(now.day)}-'
+      '${two(now.hour)}${two(now.minute)}${two(now.second)}';
+  final target = paths.join(root, stamp, label);
+  final source = fs.directory(from);
+  final prefix = source.path.replaceAll(RegExp(r'[\\/]+$'), '');
+  for (final entity in source.listSync(recursive: true, followLinks: false)) {
+    final file = fs.file(entity.path);
+    if (!file.existsSync()) continue;
+    final relative = entity.path.startsWith(prefix)
+        ? entity.path
+              .substring(prefix.length)
+              .replaceFirst(RegExp(r'^[\\/]+'), '')
+        : paths.relative(entity.path, from: from);
+    final copy = fs.file(paths.join(target, relative));
+    copy.parent.createSync(recursive: true);
+    copy.writeAsBytesSync(file.readAsBytesSync());
+  }
+  return target;
 }
