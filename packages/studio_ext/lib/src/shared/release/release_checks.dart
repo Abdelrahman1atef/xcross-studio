@@ -582,15 +582,11 @@ final class ReleaseChecker {
         );
       }
     }
-    final usageKey = RegExp(r'^NS\w*UsageDescription$');
-    final placeholder = RegExp(
-      'todo|placeholder|lorem|xxx|description here',
-      caseSensitive: false,
-    );
-    for (final key in _info.keys.where(usageKey.hasMatch).toList()..sort()) {
+    for (final key
+        in _info.keys.where(ReleaseTables.isUsageKey).toList()..sort()) {
       final value = _info[key];
       final text = value is String ? value.trim() : '';
-      if (text.length < 10 || placeholder.hasMatch(text) || text == key) {
+      if (ReleaseTables.isPlaceholderPurpose(key, value)) {
         _add(
           'release.permission_placeholder',
           ReleaseSeverity.warning,

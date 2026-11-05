@@ -96,6 +96,26 @@ abstract final class ReleaseTables {
     'app_tracking_transparency': [_tracking],
   };
 
+  static final _usageKey = RegExp(
+    r'^(NS\w*UsageDescription|NFCReaderUsageDescription)$',
+  );
+  static final _placeholder = RegExp(
+    'todo|placeholder|lorem|xxx|description here',
+    caseSensitive: false,
+  );
+
+  /// Whether [key] is an Info.plist purpose string (`NS…UsageDescription`,
+  /// `NFCReaderUsageDescription`).
+  static bool isUsageKey(String key) => _usageKey.hasMatch(key);
+
+  /// Whether [value] is empty, a stand-in, too short to explain anything, or
+  /// just the key: App Review rejects those (studio: 027, shared by the
+  /// release check and the permissions editor).
+  static bool isPlaceholderPurpose(String key, Object? value) {
+    final text = value is String ? value.trim() : '';
+    return text.length < 10 || _placeholder.hasMatch(text) || text == key;
+  }
+
   /// `UIBackgroundModes` value → plugins that legitimately need it.
   static const backgroundModePlugins = <String, List<String>>{
     'remote-notification': [

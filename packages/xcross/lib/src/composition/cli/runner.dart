@@ -18,6 +18,7 @@ import 'package:meta/meta.dart';
 import 'package:studio_ext/shared/appstore/command_exit.dart'; // studio: 019
 import 'package:studio_ext/shared/icons/icons_command.dart'; // studio: 023
 import 'package:studio_ext/shared/inspect/inspect_command.dart'; // studio:
+import 'package:studio_ext/shared/permissions/permissions_command.dart'; // studio: 027
 import 'package:studio_ext/shared/plugins/plugin_command.dart'; // studio: 006
 import 'package:studio_ext/shared/release/release_check_command.dart'; // studio: 018
 import 'package:studio_ext/shared/splash/splash_command.dart'; // studio: 024
@@ -205,6 +206,9 @@ abstract final class XcrossCli {
         write: runtime.log.output.write,
         input: runtime.input,
       ),
+      // studio: 027 — `xcross permissions` and `xcross capabilities`.
+      PermissionsCommand(_permissionsContext(runtime)),
+      CapabilitiesCommand(_permissionsContext(runtime)),
       // studio: 024 — `xcross splash check|generate`.
       SplashCommand(
         fileSystem: runtime.host.fileSystem,
@@ -452,6 +456,16 @@ abstract final class XcrossCli {
       // instead of a raw stack trace.
     }
   }
+
+  // studio: 027
+  static PermissionsContext _permissionsContext<
+    T extends PlatformHostInterface
+  >(XcrossRuntime<T> runtime) => PermissionsContext(
+    fileSystem: runtime.host.fileSystem,
+    paths: runtime.host.paths.context,
+    currentDirectory: () => runtime.host.paths.context.current,
+    write: runtime.log.output.write,
+  );
 
   // studio: 016
   /// The current folder when it is the project [bundleId] was built from
