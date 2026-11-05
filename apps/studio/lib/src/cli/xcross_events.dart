@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+part 'project_events.dart';
+
 /// One NDJSON event from `xcross … --json` (schemas:
 /// `specs/010-device-logs/contracts/devicelog.schema.json` and, with
 /// `XCROSS_EVENTS=ndjson`, `specs/012-build-events/contracts/events.schema.json`;
@@ -67,6 +69,12 @@ sealed class XcrossEvent {
       'splash_generate' => SplashGenerateResult.fromJson(json),
       'splash_check' => SplashCheckReport.fromJson(json),
       'project_version' => ProjectVersion.fromJson(json),
+      // Features 027 and 028: permissions, capabilities, plugin actions.
+      'permissions' => PermissionsReport.fromJson(json),
+      'permissions_change' ||
+      'capabilities_change' => ProjectChange.fromJson(json),
+      'capabilities' => CapabilitiesReport.fromJson(json),
+      'plugin_status' => PluginStatusReport.fromJson(json),
       // Feature 026: how the user signed in.
       'auth_status' => AuthStatusReport.fromJson(json),
       'done' => BuildDone(

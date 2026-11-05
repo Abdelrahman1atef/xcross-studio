@@ -324,7 +324,12 @@ void main() {
       await settle(tester);
       await tester.tap(find.widgetWithText(OutlinedButton, 'Build IPA'));
       await settle(tester);
-      expect(launcher.starts.last.environment['XCROSS_EVENTS'], 'ndjson');
+      // The project is read again after a build (features 027 and 028), so
+      // the build is not the last process started.
+      final build = launcher.starts.lastWhere(
+        (start) => start.arguments.take(2).join(' ') == 'flutter build',
+      );
+      expect(build.environment['XCROSS_EVENTS'], 'ndjson');
       expect(find.text('Built demo.ipa'), findsOneWidget);
       final install = find.widgetWithText(FilledButton, 'Install demo.ipa');
       expect(install, findsOneWidget);

@@ -204,11 +204,15 @@ class XSidebarItem extends StatelessWidget {
     this.compact = false,
     this.enabled = true,
     this.shortcut,
+    this.badge = 0,
   });
 
   final IconData icon;
   final String label;
   final bool selected;
+
+  /// A count of things to do on this page; nothing is shown for 0.
+  final int badge;
   final VoidCallback onTap;
   final bool compact;
   final bool enabled;
@@ -226,7 +230,7 @@ class XSidebarItem extends StatelessWidget {
       button: true,
       selected: selected,
       enabled: enabled,
-      label: label,
+      label: badge > 0 ? '$label, $badge to do' : label,
       excludeSemantics: true,
       child: Material(
         color: selected
@@ -253,7 +257,26 @@ class XSidebarItem extends StatelessWidget {
                   ? MainAxisAlignment.center
                   : MainAxisAlignment.start,
               children: [
-                Icon(icon, size: 20, color: selected ? c.primary : color),
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Icon(icon, size: 20, color: selected ? c.primary : color),
+                    if (compact && badge > 0)
+                      Positioned(
+                        right: -3,
+                        top: -3,
+                        child: Container(
+                          key: const ValueKey('sidebar-badge-dot'),
+                          width: 9,
+                          height: 9,
+                          decoration: BoxDecoration(
+                            color: c.warning,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
                 if (!compact) ...[
                   const SizedBox(width: XSpace.s3),
                   Expanded(
@@ -268,6 +291,26 @@ class XSidebarItem extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (badge > 0)
+                    Container(
+                      key: const ValueKey('sidebar-badge'),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: c.warning,
+                        borderRadius: BorderRadius.circular(XRadius.md),
+                      ),
+                      child: Text(
+                        '$badge',
+                        style: XType.body.copyWith(
+                          color: Colors.black,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
                 ],
               ],
             ),

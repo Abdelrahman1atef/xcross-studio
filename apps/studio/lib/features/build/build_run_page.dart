@@ -10,6 +10,7 @@ import '../../design_system/design_system.dart';
 import '../../src/cli/xcross_commands.dart';
 import '../../src/state/job.dart';
 import '../../src/state/project_info.dart';
+import '../common/attention_widgets.dart';
 import '../common/flutter_sdk_fix.dart';
 import '../common/job_views.dart';
 
@@ -122,6 +123,8 @@ class _BuildRunPageState extends State<BuildRunPage> {
             ),
           ],
           children: [
+            // Features 027 and 028: what to settle before building.
+            const AttentionList(title: 'Before you build'),
             XCard(
               title: 'Project',
               child: XFilePickerField(

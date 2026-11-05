@@ -13,6 +13,7 @@ import '../../src/cli/xcross_events.dart';
 import '../../src/state/job.dart';
 import '../../src/state/project_info.dart';
 import '../../src/state/readiness.dart';
+import '../common/attention_widgets.dart';
 import '../common/job_views.dart';
 import '../common/readiness_views.dart';
 
@@ -781,6 +782,16 @@ class _CheckReport extends StatelessWidget {
             },
             label: '[${issue.code}] ${issue.message}',
             detail: issue.hint,
+          ),
+        // Features 027 and 028: the same problems with their one-click fix.
+        if (ordered.any(
+          (issue) =>
+              issue.code.startsWith('release.privacy_manifest') ||
+              issue.code.startsWith('release.permission'),
+        ))
+          const Padding(
+            padding: EdgeInsets.only(top: XSpace.s3),
+            child: AttentionList(title: 'Fix it here'),
           ),
       ],
     );

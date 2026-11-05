@@ -459,6 +459,73 @@ abstract final class XcrossCommands {
   /// studio: 026 — what is saved about signing in; reads files only.
   static List<String> authStatus() => const ['auth', 'status', '--json'];
 
+  // Features 027 and 028: run in the project folder, so no --project.
+  static List<String> permissionsList() => const [
+    'permissions',
+    'list',
+    '--json',
+  ];
+
+  static List<String> permissionSet(String key, String sentence) => [
+    'permissions',
+    'set',
+    key,
+    sentence,
+    '--json',
+  ];
+
+  static List<String> permissionRemove(String key) => [
+    'permissions',
+    'remove',
+    key,
+    '--json',
+  ];
+
+  static List<String> capabilitiesList() => const [
+    'capabilities',
+    'list',
+    '--json',
+  ];
+
+  static List<String> capabilityAdd(
+    String id, [
+    List<String> values = const [],
+  ]) => [
+    'capabilities',
+    'add',
+    id,
+    for (final value in values) ...['--value', value],
+    '--json',
+  ];
+
+  static List<String> capabilityRemove(
+    String id, [
+    List<String> values = const [],
+  ]) => [
+    'capabilities',
+    'remove',
+    id,
+    for (final value in values) ...['--value', value],
+    '--json',
+  ];
+
+  static List<String> pluginStatus() => const ['plugin', 'status', '--json'];
+
+  /// Rewrites the draft of [plugin] after a backup (`plugin shim --force`).
+  static List<String> pluginRegenerate(String plugin) => [
+    'plugin',
+    'shim',
+    plugin,
+    '--force',
+  ];
+
+  static List<String> pluginAck(String plugin) => [
+    'plugin',
+    'ack',
+    plugin,
+    '--json',
+  ];
+
   static List<String> pluginList(String project) => [
     'plugin',
     'list',

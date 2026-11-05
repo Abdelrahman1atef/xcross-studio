@@ -332,12 +332,14 @@ class JobCenter extends ChangeNotifier {
     String title,
     List<String> command, {
     void Function(XcrossEvent event)? onEvent,
+    String? workingDirectory,
   }) {
     final job = Job(
       title: title,
       command: command,
       invocation: invocation(),
       launcher: launcher,
+      workingDirectory: workingDirectory,
       onEvent: onEvent,
       maxLines: 200,
     );

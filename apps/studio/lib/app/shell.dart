@@ -10,7 +10,7 @@ import '../features/icons/icons_page.dart';
 import '../features/logs/logs_debug_page.dart';
 import '../features/onboarding/setup_wizard.dart';
 import '../features/overview/overview_page.dart';
-import '../features/plugins/plugins_page.dart';
+import '../features/project/project_page.dart';
 import '../features/release/archives_page.dart';
 import '../features/release/release_page.dart';
 import '../features/settings/settings_page.dart';
@@ -29,7 +29,7 @@ extension DestinationLook on Destination {
     Destination.devices => 'Devices',
     Destination.signing => 'Signing',
     Destination.logs => 'Logs & Debug',
-    Destination.plugins => 'Plugins',
+    Destination.project => 'Project',
     Destination.icons => 'App icon',
     Destination.release => 'Release',
     Destination.archives => 'Archives',
@@ -42,7 +42,7 @@ extension DestinationLook on Destination {
     Destination.devices => Icons.phone_iphone,
     Destination.signing => Icons.verified_user_outlined,
     Destination.logs => Icons.receipt_long_outlined,
-    Destination.plugins => Icons.extension_outlined,
+    Destination.project => Icons.tune_outlined,
     Destination.icons => Icons.apps,
     Destination.release => Icons.rocket_launch_outlined,
     Destination.archives => Icons.archive_outlined,
@@ -96,6 +96,7 @@ class _StudioShellState extends State<StudioShell> {
       // Feature 017: plug/unplug updates the device list live.
       services.devices.watch();
       services.readiness.readVersion();
+      services.projectHealth.ensureLoaded();
       services.readiness.runDoctor().done.then((_) => _maybeOpenWizard());
     });
   }
@@ -173,6 +174,7 @@ class _StudioShellState extends State<StudioShell> {
               services.readiness,
               services.jobs,
               services.devices,
+              services.projectHealth,
             ]),
             builder: (context, _) => LayoutBuilder(
               builder: (context, constraints) {
@@ -197,7 +199,7 @@ class _StudioShellState extends State<StudioShell> {
                       const DevicesPage(),
                       const SigningPage(),
                       const LogsDebugPage(),
-                      const PluginsPage(),
+                      const ProjectPage(),
                       const IconsPage(),
                       const ReleasePage(),
                       const ArchivesPage(),
@@ -263,6 +265,24 @@ class _TopBar extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (services.projectHealth.count > 0) ...[
+                  const SizedBox(width: XSpace.s2),
+                  Tooltip(
+                    message: services.projectHealth.items.first.title,
+                    child: ActionChip(
+                      key: const ValueKey('todo-chip'),
+                      avatar: Icon(
+                        Icons.error_outline,
+                        size: 16,
+                        color: c.warning,
+                      ),
+                      label: Text('${services.projectHealth.count} to do'),
+                      onPressed: () => services.app.goProject(
+                        services.projectHealth.items.first.tab,
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(width: XSpace.s2),
                 Flexible(
                   child: PopupMenuButton<String>(
@@ -384,6 +404,9 @@ class _Sidebar extends StatelessWidget {
                 label: d.label,
                 compact: compact,
                 shortcut: d.shortcut,
+                badge: d == Destination.project
+                    ? services.projectHealth.count
+                    : 0,
                 selected: services.app.destination == d,
                 onTap: () => services.app.go(d),
               ),

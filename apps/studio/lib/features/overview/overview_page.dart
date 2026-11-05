@@ -10,6 +10,7 @@ import '../../design_system/design_system.dart';
 import '../../src/state/job.dart';
 import '../../src/state/project_info.dart';
 import '../../src/state/readiness.dart';
+import '../common/attention_widgets.dart';
 import '../common/flutter_sdk_fix.dart';
 import '../common/job_views.dart';
 import '../common/readiness_views.dart';
@@ -87,6 +88,7 @@ class _OverviewPageState extends State<OverviewPage> {
           ],
           children: [
             _nextStep(context, info),
+            const AttentionList(title: 'Needs your attention'),
             if (settings.projectPath == null)
               XCard(
                 child: XEmptyState(

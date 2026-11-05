@@ -5,6 +5,7 @@ import '../src/host/host_platform.dart';
 import '../src/state/devices.dart';
 import '../src/state/job.dart';
 import '../src/state/log_session.dart';
+import '../src/state/project_health.dart';
 import '../src/state/readiness.dart';
 import '../src/state/settings.dart';
 import 'app_controller.dart';
@@ -20,10 +21,12 @@ class StudioServices {
     ReadinessController? readiness,
     DeviceController? devices,
     AppController? app,
+    ProjectHealthController? projectHealth,
   }) : logs = logs ?? LogSession(jobs),
        readiness = readiness ?? ReadinessController(jobs, settings),
        devices = devices ?? DeviceController(jobs, settings),
-       app = app ?? AppController();
+       app = app ?? AppController(),
+       projectHealth = projectHealth ?? ProjectHealthController(jobs, settings);
 
   final HostPlatform host;
   final ProcessLauncher launcher;
@@ -33,6 +36,9 @@ class StudioServices {
   final ReadinessController readiness;
   final DeviceController devices;
   final AppController app;
+
+  /// What the open project needs (features 027 and 028).
+  final ProjectHealthController projectHealth;
 }
 
 /// Hands [StudioServices] down the widget tree.

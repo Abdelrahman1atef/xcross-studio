@@ -124,7 +124,7 @@ void main() {
       ('Devices', 'Install an app (.ipa)'),
       ('Signing', 'Sign in'),
       ('Logs & Debug', 'Device log'),
-      ('Plugins', 'Plugins marked "Podspec only"'),
+      ('Project', 'No project open'),
       ('App icon', 'Open a Flutter project'),
       ('Release', 'Open a Flutter project'),
       ('Archives', 'Open a Flutter project'),

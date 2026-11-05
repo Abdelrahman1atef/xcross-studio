@@ -5,7 +5,6 @@ import 'package:xcross_studio/src/cli/xcross_commands.dart';
 import 'package:xcross_studio/src/cli/xcross_events.dart';
 import 'package:xcross_studio/src/host/host_platform.dart';
 import 'package:xcross_studio/src/state/settings.dart';
-import 'package:xcross_studio/features/plugins/plugins_page.dart';
 
 void main() {
   group('AC-008-4 command lines', () {
@@ -116,18 +115,65 @@ void main() {
         '/p',
         '--force',
       ]);
-      final podspec = PluginStatus.tryParse(
-        '✖ legacy_maps 0.0.1  (podspec only)',
+    });
+
+    test('features 027 and 028: the commands and what they print', () {
+      expect(XcrossCommands.pluginStatus(), ['plugin', 'status', '--json']);
+      expect(XcrossCommands.pluginRegenerate('fluttertoast'), [
+        'plugin',
+        'shim',
+        'fluttertoast',
+        '--force',
+      ]);
+      expect(
+        XcrossCommands.permissionSet('NSCameraUsageDescription', 'Scan.'),
+        ['permissions', 'set', 'NSCameraUsageDescription', 'Scan.', '--json'],
       );
-      expect(podspec?.name, 'legacy_maps');
-      expect(podspec?.version, '0.0.1');
-      expect(podspec?.needsOverride, isTrue);
-      final spm = PluginStatus.tryParse(
-        '✔ path_provider_foundation  (swiftpm)',
+      expect(XcrossCommands.capabilityAdd('push', ['production']), [
+        'capabilities',
+        'add',
+        'push',
+        '--value',
+        'production',
+        '--json',
+      ]);
+      final status = XcrossEvent.tryParse(
+        '{"v":1,"type":"plugin_status","project":"/p","plugins":['
+        '{"name":"fluttertoast","version":"8.2.14","kind":"draft",'
+        '"overridePath":"xcross_overrides/fluttertoast/8.2.14","edited":false,'
+        '"problems":[{"code":"manifest_missing","message":"no manifest"}],'
+        '"action":"regenerate","canRegenerate":true,'
+        '"command":["plugin","shim","fluttertoast","--force"]}]}',
       );
-      expect(spm?.version, isNull);
-      expect(spm?.kind, 'swiftpm');
-      expect(PluginStatus.tryParse('Draft an override …'), isNull);
+      final plugin = (status! as PluginStatusReport).plugins.single;
+      expect(plugin.name, 'fluttertoast');
+      expect(plugin.needsAction, isTrue);
+      expect(plugin.problems.single.code, 'manifest_missing');
+      expect(plugin.canRegenerate, isTrue);
+      expect(plugin.command, ['plugin', 'shim', 'fluttertoast', '--force']);
+
+      final permissions = XcrossEvent.tryParse(
+        '{"v":1,"type":"permissions","permissions":['
+        '{"key":"NSMicrophoneUsageDescription","name":"Microphone",'
+        '"value":"TODO","status":"placeholder","neededBy":["record"]}],'
+        '"missing":[{"resource":"camera","keys":["NSCameraUsageDescription"],'
+        '"plugins":["image_picker_ios"]}],'
+        '"catalog":[{"key":"NSCameraUsageDescription","name":"Camera",'
+        '"description":"d","suggestion":"Scan codes."}]}',
+      );
+      final report = permissions! as PermissionsReport;
+      expect(report.permissions.single.isPlaceholder, isTrue);
+      expect(report.missing.single.keys.first, 'NSCameraUsageDescription');
+      expect(
+        report.catalogOf('NSCameraUsageDescription')?.suggestion,
+        'Scan codes.',
+      );
+
+      final change = XcrossEvent.tryParse(
+        '{"v":1,"type":"capabilities_change","action":"add","id":"push",'
+        '"changed":true,"backup":null,"notes":["n"]}',
+      );
+      expect((change! as ProjectChange).target, 'push');
     });
 
     test('passwords never appear in the shown command', () {
