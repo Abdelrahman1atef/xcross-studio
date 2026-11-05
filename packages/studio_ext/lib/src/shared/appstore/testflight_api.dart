@@ -20,6 +20,9 @@ final class TestFlightBuild {
     this.internalBuildState,
     this.externalBuildState,
     this.groups = const [],
+    this.iconTemplateUrl,
+    this.iconWidth,
+    this.iconHeight,
   });
 
   final String id;
@@ -39,6 +42,19 @@ final class TestFlightBuild {
   /// Names of the beta groups the build is in.
   final List<String> groups;
 
+  /// The icon App Store Connect took from the build (`iconAssetToken`), as the
+  /// URL template (`…/{w}x{h}bb.{f}`) and the size it has; null when it found
+  /// none.
+  final String? iconTemplateUrl;
+  final int? iconWidth;
+  final int? iconHeight;
+
+  /// The icon's URL at its own size as a PNG, or null without an icon.
+  String? get iconUrl => iconTemplateUrl
+      ?.replaceAll('{w}', '${iconWidth ?? 1024}')
+      .replaceAll('{h}', '${iconHeight ?? 1024}')
+      .replaceAll('{f}', 'png');
+
   Map<String, Object?> toJson() => {
     'id': id,
     'version': version,
@@ -50,6 +66,13 @@ final class TestFlightBuild {
     'internalBuildState': internalBuildState,
     'externalBuildState': externalBuildState,
     'groups': groups,
+    'icon': iconTemplateUrl == null
+        ? null
+        : {
+            'templateUrl': iconTemplateUrl,
+            'width': iconWidth,
+            'height': iconHeight,
+          },
   };
 }
 
@@ -200,8 +223,18 @@ final class TestFlightApi {
             for (final id in relatedIds(build, 'betaGroups'))
               included['betaGroups/$id']?.string('name') ?? id,
           ],
+          iconTemplateUrl: _icon(build, 'templateUrl'),
+          iconWidth: int.tryParse('${_icon(build, 'width')}'),
+          iconHeight: int.tryParse('${_icon(build, 'height')}'),
         ),
     ];
+  }
+
+  static String? _icon(AscResource build, String field) {
+    final token = build.attributes['iconAssetToken'];
+    if (token is! Map) return null;
+    final value = token[field];
+    return value == null ? null : '$value';
   }
 
   /// The build numbered [buildNumber], or the newest upload.

@@ -65,6 +65,12 @@ void main() {
                     'processingState': 'VALID',
                     'expired': false,
                     'usesNonExemptEncryption': false,
+                    'iconAssetToken': {
+                      'templateUrl':
+                          'https://example.test/AppIcon60x60@2x.png/{w}x{h}bb.{f}',
+                      'width': 120,
+                      'height': 120,
+                    },
                   },
                   {
                     'preReleaseVersion': {
@@ -143,6 +149,13 @@ void main() {
       expect(text, contains('external: READY_FOR_BETA_SUBMISSION'));
       expect(text, contains('no non-exempt encryption'));
       expect(text, contains('groups: QA'));
+      expect(
+        text,
+        contains(
+          'icon: 120x120  '
+          'https://example.test/AppIcon60x60@2x.png/120x120bb.png',
+        ),
+      );
       final request = asc.requests.firstWhere(
         (r) => r.url.path == '/v1/builds',
       );
@@ -164,6 +177,29 @@ void main() {
       expect(build['version'], '1.2.0');
       expect(build['processingState'], 'VALID');
       expect(build['groups'], ['QA']);
+      expect(build['icon'], {
+        'templateUrl': 'https://example.test/AppIcon60x60@2x.png/{w}x{h}bb.{f}',
+        'width': 120,
+        'height': 120,
+      });
+    });
+
+    test('a build Apple found no icon in says so', () async {
+      asc.on(
+        'GET',
+        '/v1/builds',
+        (_) => (
+          status: 200,
+          body: FakeAsc.doc([
+            FakeAsc.resource('builds', 'b8', {
+              'version': '8',
+              'processingState': 'VALID',
+            }),
+          ]),
+        ),
+      );
+      await run(['status']);
+      expect(out.toString(), contains('icon: none'));
     });
   });
 

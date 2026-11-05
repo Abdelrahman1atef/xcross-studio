@@ -192,6 +192,13 @@ final class TestFlightStatusCommand extends TestFlightSubcommand {
       if (build.groups.isNotEmpty) {
         context.line('  groups: ${build.groups.join(', ')}');
       }
+      context.line(
+        build.iconTemplateUrl == null
+            ? '  icon: none (App Store Connect found no app icon in this '
+                  'build)'
+            : '  icon: ${build.iconWidth ?? '?'}x${build.iconHeight ?? '?'}  '
+                  '${build.iconUrl}',
+      );
     }
   });
 }
