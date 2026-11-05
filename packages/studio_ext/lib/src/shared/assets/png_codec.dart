@@ -53,6 +53,40 @@ final class RgbaImage {
     return RgbaImage(width, height, out);
   }
 
+  /// This image in the middle of a [canvasWidth] × [canvasHeight] canvas of
+  /// the colour [red], [green], [blue] (0…255). The canvas must hold the image.
+  RgbaImage centeredOn(
+    int canvasWidth,
+    int canvasHeight,
+    int red,
+    int green,
+    int blue,
+  ) {
+    assert(
+      canvasWidth >= width && canvasHeight >= height,
+      'the canvas must hold the image',
+    );
+    if (canvasWidth == width && canvasHeight == height) return this;
+    final out = Uint8List(canvasWidth * canvasHeight * 4);
+    for (var i = 0; i < out.length; i += 4) {
+      out[i] = red;
+      out[i + 1] = green;
+      out[i + 2] = blue;
+      out[i + 3] = 255;
+    }
+    final left = (canvasWidth - width) ~/ 2;
+    final top = (canvasHeight - height) ~/ 2;
+    for (var y = 0; y < height; y++) {
+      out.setRange(
+        ((top + y) * canvasWidth + left) * 4,
+        ((top + y) * canvasWidth + left + width) * 4,
+        rgba,
+        y * width * 4,
+      );
+    }
+    return RgbaImage(canvasWidth, canvasHeight, out);
+  }
+
   /// The single colour of the image, or `null` when pixels differ.
   (int, int, int, int)? get uniformColor {
     if (rgba.isEmpty) return null;

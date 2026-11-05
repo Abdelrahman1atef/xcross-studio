@@ -626,6 +626,12 @@ void main() {
 
     List<int> corner(Csi csi) => csi.mlecPixels.sublist(0, 4);
 
+    /// The pixel in the middle of the canvas.
+    List<int> centre(Csi csi) {
+      final at = ((csi.height ~/ 2) * csi.width + csi.width ~/ 2) * 4;
+      return csi.mlecPixels.sublist(at, at + 4);
+    }
+
     test('transparent pixels become its colour, in light and dark', () {
       final result = compiler.compile(
         [catalog(color: blue, darkColor: navy)],
@@ -642,6 +648,71 @@ void main() {
       }
     });
 
+    test(
+      'the picture sits in the middle of a canvas shaped like the screen',
+      () {
+        final path = '${temp.path}/Assets.xcassets';
+        writeJson('$path/Splash.imageset/Contents.json', {
+          'images': [
+            {'idiom': 'universal', 'filename': 'a.png', 'scale': '2x'},
+            {'idiom': 'universal', 'filename': 'b.png', 'scale': '3x'},
+            {'idiom': 'ipad', 'filename': 'c.png', 'scale': '2x'},
+          ],
+        });
+        writeBytes(
+          '$path/Splash.imageset/a.png',
+          solidPng(8, 8, (9, 8, 7, 255)),
+        );
+        writeBytes(
+          '$path/Splash.imageset/b.png',
+          solidPng(12, 12, (9, 8, 7, 255)),
+        );
+        writeBytes(
+          '$path/Splash.imageset/c.png',
+          solidPng(8, 8, (9, 8, 7, 255)),
+        );
+        writeJson('$path/Back.colorset/Contents.json', {
+          'colors': [colorEntry(blue)],
+        });
+        final result = compiler.compile(
+          [path],
+          deploymentTarget: '16.0',
+          launch: backdrop,
+        );
+        final sizes = {
+          for (final (_, csi) in images(result.car))
+            '${csi.scaleFactor ~/ 100}x ${csi.width}x${csi.height}': csi,
+        };
+        // iPhone X is 375 x 812 points, the iPad canvas 768 x 1024.
+        expect(
+          sizes.keys,
+          unorderedEquals(['2x 750x1624', '3x 1125x2436', '2x 1536x2048']),
+        );
+        for (final csi in sizes.values) {
+          expect(corner(csi), [
+            255,
+            0,
+            0,
+            255,
+          ], reason: 'the background colour');
+          expect(centre(csi), [7, 8, 9, 255], reason: 'the picture');
+        }
+      },
+    );
+
+    test('a canvas never cuts the picture, and keeps the screen shape', () {
+      final result = compiler.compile(
+        [catalog(png: solidPng(1000, 1000, (9, 8, 7, 255)), color: blue)],
+        deploymentTarget: '16.0',
+        launch: backdrop,
+      );
+      final csi = images(result.car).single.$2;
+      expect(csi.width, greaterThanOrEqualTo(1000));
+      expect(csi.height, greaterThanOrEqualTo(1000));
+      expect(csi.height / csi.width, closeTo(812 / 375, 0.01));
+      expect(centre(csi), [7, 8, 9, 255]);
+    });
+
     test('a half transparent pixel blends with the colour', () {
       final result = compiler.compile(
         [
@@ -653,7 +724,7 @@ void main() {
         deploymentTarget: '16.0',
         launch: backdrop,
       );
-      expect(corner(images(result.car).single.$2), [127, 127, 255, 255]);
+      expect(centre(images(result.car).single.$2), [127, 127, 255, 255]);
     });
 
     test('an opaque pixel keeps its colour', () {
@@ -662,7 +733,7 @@ void main() {
         deploymentTarget: '16.0',
         launch: backdrop,
       );
-      expect(corner(images(result.car).single.$2), [7, 8, 9, 255]);
+      expect(centre(images(result.car).single.$2), [7, 8, 9, 255]);
     });
 
     test('the same colour in dark adds no second image', () {

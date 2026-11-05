@@ -94,3 +94,14 @@ The Constitution's required legal review before 1.0 should see this item.
 
 If it works, a real storyboard could replace the plist path everywhere, which may also remove the need to flatten the
 launch image. That is decided from the results.
+
+## A square logo stretched on TestFlight (2026-11-05)
+
+doctory 1.0.11 (14) from TestFlight showed its 318 × 318 pt logo "very stretched" on the iPhone X. The shipped `Assets.car`
+holds correct renditions (318 px at 1x, 636 at 2x, 954 at 3x, 742 at 2x iPad, scale factors right) and `UILaunchScreen` is
+`{UIColorName, UIImageName}`, so the file is not wrong. A square that looks very stretched on a 375 × 812 pt screen is a
+square scaled to fill it, which is what [Apple forum 671370](https://developer.apple.com/forums/thread/671370) reports (centred
+on the first launch, stretched on later ones). The earlier device rows read launch images written at install, so they never
+covered a later launch. Cause not proven; the fix does not depend on it: the launch image is composed on a canvas with the
+screen's shape (`AssetCatalogCompiler._launchCanvas`), which is right if iOS centres it and right if iOS fills the screen.
+Open: device row, release build, two launches. Other devices with another shape (iPhone 8, iPad) stay slightly off if iOS fills.

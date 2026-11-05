@@ -1,5 +1,6 @@
 // studio: 004 — compile `.xcassets` into `Assets.car` without Xcode, a
 // pure-Dart port of xtool-org/AssetKit (MIT, see THIRD_PARTY_NOTICES.md).
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:cli_kit/shared/platform/platform_host.dart';
@@ -392,6 +393,46 @@ final class AssetCatalogCompiler {
       a.blue == b.blue &&
       a.displayP3 == b.displayP3;
 
+  /// A launch image is drawn on a canvas the shape of the screen, with the
+  /// picture in the middle.
+  ///
+  /// `UILaunchScreen` showed a small square logo stretched over the whole
+  /// screen on an iPhone X (TestFlight, 2026-11-05; Apple's forums describe the
+  /// same: centred on the first launch, stretched to fill after). A picture
+  /// that already has the screen's shape and size looks right whether iOS
+  /// centres it or fills the screen with it, and the colour around the logo is
+  /// the colour behind it, so no edge shows. The canvas never gets smaller than
+  /// the picture.
+  static RgbaImage _launchCanvas(
+    RgbaImage picture,
+    CatalogImage image,
+    CatalogColor over,
+  ) {
+    final (pointsWide, pointsHigh) = image.idiom == AssetIdiom.ipad
+        ? launchCanvasPad
+        : launchCanvasPhone;
+    final scale = (image.scale ?? AssetScale.x1).factor;
+    var width = pointsWide * scale;
+    var height = pointsHigh * scale;
+    if (picture.width > width || picture.height > height) {
+      final grow = math.max(picture.width / width, picture.height / height);
+      width = math.max(picture.width, (width * grow).ceil());
+      height = math.max(picture.height, (height * grow).ceil());
+    }
+    return picture.centeredOn(
+      width,
+      height,
+      _channel(over.red),
+      _channel(over.green),
+      _channel(over.blue),
+    );
+  }
+
+  /// Points of the screens a launch canvas is shaped for: an iPhone X (every
+  /// iPhone since shares its 19.5 : 9 shape) and a 9.7-inch iPad.
+  static const launchCanvasPhone = (375, 812);
+  static const launchCanvasPad = (768, 1024);
+
   static int _channel(double component) =>
       (component * 255).round().clamp(0, 255);
 
@@ -430,10 +471,14 @@ final class AssetCatalogCompiler {
         final source = PngDecoder.decode(bytes);
         final decoded = over == null
             ? source
-            : source.flattenedOver(
-                _channel(over.red),
-                _channel(over.green),
-                _channel(over.blue),
+            : _launchCanvas(
+                source.flattenedOver(
+                  _channel(over.red),
+                  _channel(over.green),
+                  _channel(over.blue),
+                ),
+                image,
+                over,
               );
         // Over a colour, the image takes the colour's space: its edge must not
         // show against the same colour behind it.

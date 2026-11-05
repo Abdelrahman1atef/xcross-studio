@@ -1,5 +1,11 @@
 ## Unreleased (XCross Studio)
 
+- **The iOS splash logo looked very stretched on an iPhone X (TestFlight).** A square logo under `UILaunchScreen` was
+  scaled to fill the whole screen. The build now draws the launch image on a canvas the shape of the screen (375 × 812 pt
+  for iPhones, 768 × 1024 pt for iPads, at each scale), with the logo in the middle over its background colour. It looks
+  right whether iOS centres the picture or fills the screen with it. The files in your project do not change. The catalog
+  grows by about 30 MB on disk (the IPA far less, the canvas is one colour). Not yet seen on a device: restart the phone,
+  install a release build, and open the app twice (the stretch showed on later launches).
 - **Permissions and capabilities like Xcode** (feature 027): `xcross permissions list|set|remove` and
   `xcross capabilities list|add|remove` (`--json`) read and edit the purpose strings of `ios/Runner/Info.plist` and the
   entitlements file as text, so comments, key order and line endings stay, with a backup in `.xcross/permission-backups/`.
