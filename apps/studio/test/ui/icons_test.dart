@@ -646,6 +646,46 @@ void main() {
       await closeApp(tester);
     });
 
+    testWidgets('branding takes text as well as an image', (tester) async {
+      final launcher = await openSplash(tester);
+      final textField = find.widgetWithText(
+        TextField,
+        'Text near the bottom (optional)',
+      );
+      expect(
+        find.text('Or an image near the bottom (optional)'),
+        findsOneWidget,
+      );
+      expect(find.text('Height above bottom'), findsNothing);
+
+      await tester.enterText(textField, 'Acme Health');
+      // Drawing the text takes real time, which the fake clock does not give.
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 500)),
+      );
+      await debounce(tester, launcher);
+      await settle(tester, 2);
+      final branding = splashDesigns(launcher).last['branding']! as String;
+      expect(File(branding).existsSync(), isTrue);
+      expect(File(branding).lengthSync(), greaterThan(500));
+      // The text replaces the image picker, and the size controls appear.
+      expect(find.text('Or an image near the bottom (optional)'), findsNothing);
+      expect(find.text('Text colour'), findsOneWidget);
+      expect(find.text('Height above bottom'), findsOneWidget);
+
+      await tester.enterText(textField, '');
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 100)),
+      );
+      await debounce(tester, launcher);
+      expect(splashDesigns(launcher).last.containsKey('branding'), isFalse);
+      expect(
+        find.text('Or an image near the bottom (optional)'),
+        findsOneWidget,
+      );
+      await closeApp(tester);
+    });
+
     testWidgets('AC-026-30 Android 12 has a slider as wide as its canvas, '
         'starting where the logo already is', (tester) async {
       final launcher = await openSplash(tester);

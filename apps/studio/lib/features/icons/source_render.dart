@@ -92,6 +92,46 @@ abstract final class SourceRender {
     return _encode(recorder, side.toInt(), height.toInt());
   }
 
+  /// A band for the splash's branding: [text] in [color] on a transparent
+  /// 1024 by 140 px canvas. The width the branding is shown at scales it, so
+  /// the text is small on the canvas, as a signature would be.
+  static Future<Uint8List> brandingText(String text, Color color) {
+    const width = 1024.0;
+    const height = 140.0;
+    return _renderSized(width.toInt(), height.toInt(), (canvas) {
+      final painter = TextPainter(
+        text: TextSpan(
+          text: text,
+          style: TextStyle(
+            color: color,
+            fontSize: 72,
+            height: 1,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+      )..layout();
+      final scale = painter.width > width * 0.95
+          ? width * 0.95 / painter.width
+          : 1.0;
+      canvas
+        ..translate(width / 2, height / 2)
+        ..scale(scale);
+      painter.paint(canvas, Offset(-painter.width / 2, -painter.height / 2));
+    });
+  }
+
+  static Future<Uint8List> _renderSized(
+    int width,
+    int height,
+    void Function(Canvas canvas) draw,
+  ) {
+    final recorder = ui.PictureRecorder();
+    draw(Canvas(recorder));
+    return _encode(recorder, width, height);
+  }
+
   /// [path], an image in any format Flutter can read, as PNG bytes.
   static Future<Uint8List> toPng(String path) async {
     final codec = await ui.instantiateImageCodec(

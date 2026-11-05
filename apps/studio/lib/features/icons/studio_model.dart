@@ -238,6 +238,11 @@ class SplashStudioDesign {
   final FourSides margin = FourSides(0);
   String? branding;
   String? darkBranding;
+
+  /// Text for the branding instead of an image; the studio draws it into
+  /// [branding] (and [darkBranding]). `auto` colours it against the background.
+  String brandingText = '';
+  String brandingTextColor = 'auto';
   bool ios = true;
   bool android = true;
 

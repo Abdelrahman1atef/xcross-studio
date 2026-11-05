@@ -5,6 +5,7 @@ import 'dart:math';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 
 import '../../app/services.dart';
 import '../../design_system/design_system.dart';
@@ -15,6 +16,7 @@ import '../common/job_views.dart';
 import 'device_catalog.dart';
 import 'device_gallery.dart';
 import 'preview_server.dart';
+import 'source_render.dart';
 import 'studio_board.dart';
 import 'studio_controls.dart';
 import 'studio_model.dart';
@@ -44,6 +46,13 @@ class _SplashTabState extends State<SplashTab> {
   Job? _job;
   SplashCheckReport? _check;
   String? _copyError;
+
+  final _brandingText = TextEditingController();
+
+  /// The branding images are the ones drawn from the text, not picked.
+  bool _textBranding = false;
+  String? _brandingKey;
+  int _brandingSeq = 0;
 
   /// The logo is the icon's source, until another is chosen (AC-026-14).
   bool _logoFromIcon = false;
@@ -94,6 +103,7 @@ class _SplashTabState extends State<SplashTab> {
   @override
   void dispose() {
     widget.board.removeListener(_onBoard);
+    _brandingText.dispose();
     _server?.dispose();
     super.dispose();
   }
@@ -132,6 +142,59 @@ class _SplashTabState extends State<SplashTab> {
       project: project,
       toProject: true,
     );
+  }
+
+  /// Draws the branding text into the branding images, then previews. The
+  /// text takes the colour that reads on each background unless one is chosen.
+  Future<void> _applyBrandingText() async {
+    final design = _design;
+    final text = design.brandingText.trim();
+    final seq = ++_brandingSeq;
+    if (text.isEmpty) {
+      if (_textBranding) {
+        _textBranding = false;
+        _brandingKey = null;
+        design.branding = null;
+        design.darkBranding = null;
+      }
+      _changed();
+      return;
+    }
+    final server = _server;
+    if (server == null) return;
+    Color colorOn(String background) {
+      final chosen = StudioColor.parse(design.brandingTextColor);
+      if (chosen != null) return chosen;
+      final base = StudioColor.parse(background) ?? Colors.white;
+      return base.computeLuminance() > 0.5 ? Colors.black : Colors.white;
+    }
+
+    final light = colorOn(design.background);
+    final dark = _hasDark
+        ? colorOn(design.darkBackground ?? design.background)
+        : null;
+    final key = '$text|${light.toARGB32()}|${dark?.toARGB32()}';
+    if (_textBranding && key == _brandingKey) {
+      _changed();
+      return;
+    }
+    Future<String> draw(String name, Color color) async {
+      final file = File(p.join(server.folder.path, name));
+      await file.writeAsBytes(await SourceRender.brandingText(text, color));
+      return file.path;
+    }
+
+    final lightPath = await draw('branding-text.png', light);
+    final darkPath = dark == null
+        ? null
+        : await draw('dark-branding-text.png', dark);
+    // A newer edit has started: its images are the ones to show.
+    if (!mounted || seq != _brandingSeq) return;
+    _textBranding = true;
+    _brandingKey = key;
+    design.branding = lightPath;
+    design.darkBranding = darkPath;
+    _changed();
   }
 
   Future<void> _exportFolder() async {
@@ -236,7 +299,12 @@ class _SplashTabState extends State<SplashTab> {
     final design = _design;
     void update(VoidCallback change) {
       change();
-      _changed();
+      // The text's images follow the background and the dark choice.
+      if (design.brandingText.trim().isNotEmpty || _textBranding) {
+        _applyBrandingText();
+      } else {
+        _changed();
+      }
     }
 
     String? path(String? value) =>
@@ -431,14 +499,31 @@ class _SplashTabState extends State<SplashTab> {
         StudioSection(
           'Branding',
           children: [
-            XFilePickerField(
-              label: 'Image near the bottom (optional)',
-              value: design.branding,
-              directory: false,
-              extensions: const ['png'],
-              onChanged: (value) => update(() => design.branding = path(value)),
+            XTextField(
+              controller: _brandingText,
+              label: 'Text near the bottom (optional)',
+              onChanged: (value) => update(() => design.brandingText = value),
             ),
-            if (_hasDark && design.branding != null)
+            if (design.brandingText.trim().isEmpty) ...[
+              XFilePickerField(
+                label: 'Or an image near the bottom (optional)',
+                value: design.branding,
+                directory: false,
+                extensions: const ['png'],
+                onChanged: (value) =>
+                    update(() => design.branding = path(value)),
+              ),
+            ] else
+              StudioColor(
+                label: 'Text colour',
+                value: design.brandingTextColor,
+                allowAuto: true,
+                onChanged: (value) =>
+                    update(() => design.brandingTextColor = value ?? 'auto'),
+              ),
+            if (design.brandingText.trim().isEmpty &&
+                _hasDark &&
+                design.branding != null)
               XFilePickerField(
                 label: 'Dark branding (optional)',
                 value: design.darkBranding,
