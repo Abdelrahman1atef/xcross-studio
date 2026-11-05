@@ -272,7 +272,7 @@ void main() {
         final configs = launch['configurations'] as List;
         final first = configs.first as Map;
         final last = configs.last as Map;
-        expect(configs, hasLength(2));
+        expect(configs, hasLength(3));
         expect(first['name'], 'Flutter');
         expect(last['env'], {'XCROSS': 'true'});
 

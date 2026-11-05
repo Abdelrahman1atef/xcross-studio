@@ -14,6 +14,7 @@ final class IconsCommand extends Command<void> {
     required HostFileSystemInterface fileSystem,
     required String Function() currentDirectory,
     required void Function(String) write,
+    required Stream<List<int>> input,
     DateTime Function()? now,
   }) {
     addSubcommand(
@@ -31,7 +32,9 @@ final class IconsCommand extends Command<void> {
         now: now,
       ),
     );
-    addSubcommand(IconsPreviewCommand(fileSystem: fileSystem, write: write));
+    addSubcommand(
+      IconsPreviewCommand(fileSystem: fileSystem, write: write, input: input),
+    );
   }
 
   @override

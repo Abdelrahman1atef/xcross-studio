@@ -300,6 +300,7 @@ void main() {
                 fileSystem: detectPlatformHost().fileSystem,
                 currentDirectory: () => project,
                 write: out.add,
+                input: const Stream.empty(),
                 now: () => DateTime(2026, 11, 4, 12),
               ),
             ))

@@ -2,7 +2,6 @@
 // project needs from one design (specs/023-icon-studio,
 // specs/024-icon-splash-studio).
 import 'dart:convert';
-import 'dart:io' show stdin;
 import 'dart:typed_data';
 
 import 'package:args/command_runner.dart';
@@ -561,7 +560,7 @@ final class IconsPreviewCommand extends Command<void> {
   IconsPreviewCommand({
     required HostFileSystemInterface fileSystem,
     required void Function(String) write,
-    Stream<List<int>>? input,
+    required Stream<List<int>> input,
   }) : _fileSystem = fileSystem,
        _write = write,
        _input = input {
@@ -584,7 +583,7 @@ final class IconsPreviewCommand extends Command<void> {
 
   final HostFileSystemInterface _fileSystem;
   final void Function(String) _write;
-  final Stream<List<int>>? _input;
+  final Stream<List<int>> _input;
 
   @override
   String get name => 'preview';
@@ -608,7 +607,7 @@ final class IconsPreviewCommand extends Command<void> {
       });
     }
 
-    final lines = (_input ?? stdin)
+    final lines = _input
         .transform(utf8.decoder)
         .transform(const LineSplitter());
     final previous = <String>[];

@@ -171,7 +171,7 @@ void main() {
         log: testLog(),
       );
       final client = FirstBuildClient();
-      final prompt = AnsweringPrompt('2');
+      final prompt = AnsweringPrompt('1');
       final backend = NativeBackend(
         Pymd(
           runner,

@@ -276,6 +276,7 @@ void main() {
                 fileSystem: fileSystem,
                 currentDirectory: () => root.path,
                 write: out.add,
+                input: const Stream.empty(),
                 now: () => DateTime(2026, 11, 3, 10, 45, 7),
               ),
             ))

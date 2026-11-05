@@ -201,6 +201,7 @@ abstract final class XcrossCli {
         fileSystem: runtime.host.fileSystem,
         currentDirectory: () => runtime.host.paths.context.current,
         write: runtime.log.output.write,
+        input: runtime.input,
       ),
       // studio: 024 — `xcross splash check|generate`.
       SplashCommand(
