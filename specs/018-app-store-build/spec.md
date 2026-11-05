@@ -75,6 +75,23 @@ configuration and coded issues (errors first), exits 1 when there is an error.
    severity, message, path, hint).
 7. **AC-018-15** (device/store evidence, `device-check.md`): app A exported with a team key passes `release check`
    without errors (the upload itself is feature 019).
+8. **AC-018-16** (SwiftSupport, App Store Connect 90426): an App Store IPA whose binaries load Swift runtime libraries
+   (`libswift*.dylib`) carries them in `SwiftSupport/iphoneos/` at its root, and in the archive. The build takes them
+   from the installed SDK, which keeps `usr/lib/swift-5.0/iphoneos`, `swift-5.5/iphoneos` and `swift-6.2/iphoneos` of
+   Xcode's toolchain (first folder wins; the libraries' own Swift dependencies come too). A library loaded through
+   `@rpath` that the SDK lacks stops the build before signing and says to run `xcross sdk install` again.
+   `release check` reports `release.swift_support_missing` (error) when an `.ipa` loads Swift libraries and has no
+   SwiftSupport, or lacks an `@rpath` one.
+9. **AC-018-17** (purpose strings from the code, 90683): `release check` reads every binary for calls Apple has warned
+   about and reports `release.permission_missing_for_call` (warning) when Info.plist lacks the keys: today
+   `requestAlwaysAuthorization` (`NSLocationAlwaysAndWhenInUseUsageDescription` and `NSLocationWhenInUse…`) and
+   `requestWhenInUseAuthorization`. A rule is added only with an Apple message behind it.
+10. **AC-018-18** (`release check --online`, read-only): with the saved key it asks App Store Connect and reports
+    `release.asc_no_app` (no record for the bundle ID), `release.asc_build_exists` and `release.asc_build_not_higher`
+    (this version's builds), `release.asc_version_closed` (the version, or a lower one, has shipped),
+    `release.asc_capability_missing` (warning: an entitlement's capability is off on the App ID) and
+    `release.asc_unavailable` (warning: no key, refused key or no network; the IPA checks still stand). Only GET requests
+    are made. `configuration.online` says whether it was asked; the Studio's step 6 always passes `--online`.
 
 ### Edge Cases
 

@@ -3,6 +3,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:apple_developer_kit/shared/appstoreconnect/asc_api.dart';
 import 'package:args/command_runner.dart';
 import 'package:cli_kit/shared/errors/errors.dart';
 import 'package:cli_kit/shared/platform/platform_host.dart';
@@ -11,6 +12,7 @@ import 'package:studio_ext/shared/release/release_gate_command.dart'; // studio:
 import 'package:studio_ext/src/shared/inspect/inspect_failure.dart';
 import 'package:studio_ext/src/shared/inspect/inspect_source.dart';
 import 'package:studio_ext/src/shared/release/release_checks.dart';
+import 'package:studio_ext/src/shared/release/release_online.dart';
 
 /// `xcross release …`: steps of an App Store release.
 final class ReleaseCommand extends Command<void> {
@@ -23,6 +25,8 @@ final class ReleaseCommand extends Command<void> {
     // studio: 022 — the quality gate needs the Flutter xcross builds with.
     Future<String> Function(String projectRoot)? flutter,
     RunTool? runTool,
+    // studio: 018 — `release check --online` asks App Store Connect.
+    Future<AscApi> Function()? openApi,
   }) {
     addSubcommand(
       ReleaseCheckCommand(
@@ -31,6 +35,7 @@ final class ReleaseCommand extends Command<void> {
         currentDirectory: currentDirectory,
         write: write,
         now: now,
+        openApi: openApi,
       ),
     );
     if (flutter != null && runTool != null) {
@@ -68,12 +73,22 @@ final class ReleaseCheckCommand extends Command<void> {
     required String Function() currentDirectory,
     required void Function(String) write,
     DateTime Function()? now,
+    Future<AscApi> Function()? openApi,
   }) : _fileSystem = fileSystem,
        _paths = paths,
        _currentDirectory = currentDirectory,
        _write = write,
+       _openApi = openApi,
        _now = now ?? DateTime.now {
     argParser
+      ..addFlag(
+        'online',
+        negatable: false,
+        help:
+            'Also ask App Store Connect (read-only, with the saved key): the '
+            'app exists, this version and build are accepted, the App ID has '
+            'the capabilities the entitlements need.',
+      )
       ..addFlag(
         'json',
         negatable: false,
@@ -93,6 +108,7 @@ final class ReleaseCheckCommand extends Command<void> {
   final String Function() _currentDirectory;
   final void Function(String) _write;
   final DateTime Function() _now;
+  final Future<AscApi> Function()? _openApi;
 
   @override
   String get name => 'check';
@@ -104,7 +120,7 @@ final class ReleaseCheckCommand extends Command<void> {
 
   @override
   String get invocation =>
-      'xcross release check [<ipa|app>] [--json] [--project <dir>]';
+      'xcross release check [<ipa|app>] [--online] [--json] [--project <dir>]';
 
   @override
   Future<void> run() async {
@@ -124,7 +140,7 @@ final class ReleaseCheckCommand extends Command<void> {
     final project = _project(results.option('project'), cwd);
     final json = results.flag('json');
     InspectSource? source;
-    final ReleaseReport report;
+    ReleaseReport report;
     try {
       source = InspectSource.open(_fileSystem, input);
       report = runReleaseChecks(source, project: project, now: _now());
@@ -135,6 +151,7 @@ final class ReleaseCheckCommand extends Command<void> {
     } finally {
       source?.close();
     }
+    if (results.flag('online')) report = await _askAppStoreConnect(report);
     _write(json ? '${jsonEncode(report.toJson())}\n' : render(report));
     if (report.errors > 0) {
       throw CliError(
@@ -142,6 +159,44 @@ final class ReleaseCheckCommand extends Command<void> {
         'error${report.errors == 1 ? '' : 's'} would stop the App Store '
         'upload.\nhint: Fix the errors above and build again.',
       );
+    }
+  }
+
+  /// [offline] with App Store Connect's answers; without a key or network it
+  /// is one warning and `online: false`, never a failure of the check.
+  Future<ReleaseReport> _askAppStoreConnect(ReleaseReport offline) async {
+    final open = _openApi;
+    AscApi? api;
+    try {
+      if (open != null) api = await open();
+    } on Object catch (error) {
+      return offline.withOnline([
+        ReleaseIssue(
+          'release.asc_unavailable',
+          ReleaseSeverity.warning,
+          'App Store Connect was not asked: $error',
+          hint: 'Save a key with `xcross auth`, then check again.',
+        ),
+      ], online: false);
+    }
+    if (api == null) {
+      return offline.withOnline(const [
+        ReleaseIssue(
+          'release.asc_unavailable',
+          ReleaseSeverity.warning,
+          'App Store Connect was not asked: no key is available here.',
+          hint: 'Save a key with `xcross auth`, then check again.',
+        ),
+      ], online: false);
+    }
+    try {
+      final asked = await runOnlineReleaseChecks(api, offline);
+      return offline.withOnline(
+        asked,
+        online: !asked.any((i) => i.code == 'release.asc_unavailable'),
+      );
+    } finally {
+      api.close();
     }
   }
 
@@ -206,6 +261,9 @@ final class ReleaseCheckCommand extends Command<void> {
       line('Profile', '$kind (team $team)');
     }
     line('Encryption', configuration['usesNonExemptEncryption']);
+    if (configuration['online'] case final bool online) {
+      line('Online', online ? 'App Store Connect checked' : 'not checked');
+    }
     out.writeln();
     for (final issue in report.issues) {
       out.writeln('${issue.severity.name} [${issue.code}] ${issue.message}');

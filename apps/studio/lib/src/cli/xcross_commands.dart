@@ -265,7 +265,12 @@ abstract final class XcrossCommands {
   ];
 
   /// `xcross release check --json`.
-  static List<String> releaseCheck() => const ['release', 'check', '--json'];
+  static List<String> releaseCheck() => const [
+    'release',
+    'check',
+    '--online',
+    '--json',
+  ];
 
   /// `xcross publish --wait --json`.
   static List<String> publish() => const ['publish', '--wait', '--json'];

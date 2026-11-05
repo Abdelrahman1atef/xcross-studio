@@ -22,7 +22,11 @@ final _check = jsonEncode({
   'v': 1,
   'type': 'release_check',
   'input': 'Runner.ipa',
-  'configuration': {'bundleId': 'com.example.app', 'version': '1.0.0'},
+  'configuration': {
+    'bundleId': 'com.example.app',
+    'version': '1.0.0',
+    'online': true,
+  },
   'issues': [
     {
       'code': 'release.encryption_unset',
@@ -326,6 +330,7 @@ void main() {
     await settle(tester);
     expect(find.textContaining('[release.marketing_icon]'), findsOneWidget);
     expect(find.textContaining('1 errors, 1 warnings'), findsOneWidget);
+    expect(find.textContaining('App Store Connect checked'), findsOneWidget);
 
     await tester.tap(find.widgetWithText(XButton, 'Upload'));
     await settle(tester);

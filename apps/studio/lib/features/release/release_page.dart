@@ -469,8 +469,11 @@ class _ReleasePageState extends State<ReleasePage> {
             ? _statusOf(6)
             : (_check!.errors == 0 ? XStatus.ready : XStatus.failed),
         description:
-            'What App Store Connect would reject: signing, SDK, Info.plist, '
-            'permissions, privacy manifests, icons, iPad.',
+            'What App Store Connect would reject, checked the way it checks: '
+            'signing, SDK, SwiftSupport, Info.plist and the purpose strings '
+            'the code needs, privacy manifests, icons, iPad. With a saved key '
+            'it also asks App Store Connect (read-only): the app exists, this '
+            'version and build are accepted, the App ID has the capabilities.',
         command: XcrossCommands.releaseCheck(),
         job: _jobs[6],
         actions: [
@@ -745,10 +748,12 @@ class _CheckReport extends StatelessWidget {
       for (final severity in const ['error', 'warning', 'info'])
         ...report.issues.where((issue) => issue.severity == severity),
     ];
+    final online = report.configuration['online'];
     final summary =
         '${report.errors} errors, ${report.warnings} warnings · '
         '${report.configuration['bundleId'] ?? ''} '
-        '${report.configuration['version'] ?? ''}';
+        '${report.configuration['version'] ?? ''}'
+        '${online is bool ? ' · App Store Connect ${online ? 'checked' : 'not checked'}' : ''}';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

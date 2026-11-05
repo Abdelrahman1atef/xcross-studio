@@ -35,6 +35,11 @@ K = `packages/apple_developer_kit/lib`, X = `packages/xcross/lib/src`, S = `pack
 - [X] T013 Rebuild the CLI; app A `release check` on the current IPA; App Store export when a team key is available
   (`device-check.md`, AC-018-15).
 - [X] T014 Analyze, tests, CHANGELOG, README, user story statuses (AC-03…AC-11, TC-07/09/11/12/15/16/18/32).
+- [X] T015 SwiftSupport in the App Store IPA and archive (AC-018-16): SDK install keeps the iPhoneOS Swift runtime,
+  `swift_support.dart`, `IpaPackager(extraEntries)`, `release.swift_support_missing`.
+- [X] T016 `release.permission_missing_for_call` (AC-018-17).
+- [X] T017 `release check --online` and Studio step 6 (AC-018-18). **Still owed on the real account:** an upload that
+  App Store Connect accepts with the SwiftSupport folder (needs `xcross sdk install` again, then a rebuild).
 
 ## Dependencies
 

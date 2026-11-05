@@ -1,5 +1,16 @@
 ## Unreleased (XCross Studio)
 
+- App Store Connect refused an IPA with **90426 Invalid Swift Support**: apps that load Swift libraries (Facebook's
+  frameworks, Flutter's plugin library) need `SwiftSupport/iphoneos/` in the IPA. The App Store build now adds it, and
+  the archive too. **Run `xcross sdk install <Xcode.xip>` again once:** the SDK now keeps Xcode's iPhoneOS Swift runtime
+  libraries (about 60 MB), which the build copies from; without them an App Store build stops before signing and says so.
+- `xcross release check` reads the code for what App Store Connect reads: `release.swift_support_missing` (an error, the
+  90426 case) and `release.permission_missing_for_call` (a warning: `requestAlwaysAuthorization` needs
+  `NSLocationAlwaysAndWhenInUseUsageDescription`, 90683). It passed both before.
+- `xcross release check --online` also asks App Store Connect with the saved key, read-only: the app exists, this build
+  number and version are accepted, the App ID has the capabilities the entitlements need. The Studio's Release step 6
+  does this by default and shows whether App Store Connect was asked.
+
 - iOS plugins that ship only a podspec lost their privacy manifest when xcross drafted their `Package.swift`, because the
   file sat outside the source folder: for example `fluttertoast` 8.2.14, `flutter_secure_storage` 9.2.4 and
   `permission_handler_apple` 9.4.7. New drafts copy the manifest in and ship it. **Existing drafts are not changed:** run

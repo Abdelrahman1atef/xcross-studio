@@ -710,8 +710,9 @@ The build signs the app and its extensions with an Apple Distribution certificat
 `build/xcross-ios/ipa/<name>.ipa` and `build/xcross-ios/archive/Runner.xcarchive` (with dSYMs when `dsymutil` is on
 PATH). The certificate is reused across runs; in CI pass its private key (PEM) in `XCROSS_CERTIFICATE_PRIVATE_KEY`.
 Answer the export compliance question once with `uses_non_exempt_encryption: false` (or `true`) under `xcross:` in
-`pubspec.yaml`. `xcross release check [--json]` lists signing, SDK, Info.plist, permission, privacy-manifest, icon and
-iPad issues with `release.*` codes. `xcross publish` resumes an interrupted upload, refuses a build number App Store
+`pubspec.yaml`. `xcross release check [--online] [--json]` lists signing, SDK, SwiftSupport, Info.plist, permission,
+privacy-manifest, icon and iPad issues with `release.*` codes; `--online` also asks App Store Connect (read-only) whether
+the app, build number, version and App ID capabilities are accepted. `xcross publish` resumes an interrupted upload, refuses a build number App Store
 Connect already has, and writes `build/xcross-ios/release.json`; `--build-number auto` on the build picks the next
 number. See [specs/018-app-store-build](specs/018-app-store-build/spec.md) and
 [specs/019-upload-processing](specs/019-upload-processing/spec.md).

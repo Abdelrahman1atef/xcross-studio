@@ -27,6 +27,7 @@ import 'package:studio_ext/target/iphone/device/device_log_backend.dart'; // stu
 import 'package:studio_ext/target/iphone/device/devices_command.dart'; // studio: 008
 import 'package:studio_ext/target/iphone/device/logs_command.dart'; // studio: 010
 import 'package:xcross/src/composition/cli/appstore_commands.dart'; // studio: 021
+import 'package:xcross/src/composition/cli/asc_commands.dart'; // studio: 018
 import 'package:xcross/src/composition/cli/cache_command.dart';
 import 'package:xcross/src/composition/cli/compose_command.dart';
 import 'package:xcross/src/composition/cli/doctor_sections.dart';
@@ -195,6 +196,7 @@ abstract final class XcrossCli {
             output: '${result.stdout}\n${result.stderr}',
           );
         },
+        openApi: () => openAscApi(runtime), // studio: 018 — `--online`
       ),
       // studio: 023 — `xcross icons check|generate`.
       IconsCommand(

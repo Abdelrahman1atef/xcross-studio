@@ -768,6 +768,24 @@ void main() {
       expect((json['configuration']! as Map)['bundleId'], _bundleId);
     });
 
+    test(
+      '--online without a key is one warning and says it was not asked',
+      () async {
+        final project = writeProject();
+        final ipa = FixtureBundle(
+          'Runner.app',
+          _appStoreApp(),
+        ).writeIpa(Directory(project), 'app.ipa');
+        await run([ipa, '--online', '--json'], cwd: project);
+        final json = jsonDecode(out.toString()) as Map<String, Object?>;
+        expect(json['errors'], 0);
+        expect((json['configuration']! as Map)['online'], isFalse);
+        expect([
+          for (final i in json['issues']! as List) (i as Map)['code'],
+        ], contains('release.asc_unavailable'));
+      },
+    );
+
     test('the newest IPA under build/xcross-ios/ipa is the default; errors '
         'exit 1 after the report', () async {
       final project = writeProject();
