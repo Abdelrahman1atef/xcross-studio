@@ -81,7 +81,20 @@ configuration and coded issues (errors first), exits 1 when there is an error.
    Xcode's toolchain (first folder wins; the libraries' own Swift dependencies come too). A library loaded through
    `@rpath` that the SDK lacks stops the build before signing and says to run `xcross sdk install` again.
    `release check` reports `release.swift_support_missing` (error) when an `.ipa` loads Swift libraries and has no
-   SwiftSupport, or lacks an `@rpath` one.
+   SwiftSupport, or lacks an `@rpath` one. App Store Connect also checks SwiftSupport against the app (90429): the
+   build copies the same libraries into `<app>/Frameworks` before signing, as Xcode does, and `release check` reports
+   `release.swift_support_not_embedded` (error) for a SwiftSupport library with no copy in `Frameworks`.
+   **AC-018-19** (how the IPA is put together; 90429): iOS allows dynamic libraries only inside frameworks (the Swift
+   runtime excepted), so an App Store export wraps every loose `Frameworks/lib<X>.dylib` (the plugin library
+   `libFlutterPluginsGenerated.dylib`) in `<X>.framework` with an Info.plist, rewrites its install name and every
+   binary's load of it (into the free header padding, before signing), and refuses to continue when it cannot.
+   `release check` reports `release.loose_dylib` and `release.static_library_in_bundle` (Apple's DTS: a standalone dylib is
+   the real cause behind 90429's Swift file list), and the consistency rules that need no Apple code:
+   `release.nested_not_signed`, `release.nested_team_mismatch`, `release.unsupported_architecture` (x86_64, i386, armv7),
+   `release.dependency_missing` (an `@rpath` library nothing in the app provides),
+   `release.swift_support_incomplete` and `release.framework_plist_incomplete` (warning). `xcross publish` adds, under
+   each rejection, the fix for the codes it knows (`apple_rejections.dart`, each tied to a rule by a test) and says so for
+   the codes the check cannot find yet.
 9. **AC-018-17** (purpose strings from the code, 90683): `release check` reads every binary for calls Apple has warned
    about and reports `release.permission_missing_for_call` (warning) when Info.plist lacks the keys: today
    `requestAlwaysAuthorization` (`NSLocationAlwaysAndWhenInUseUsageDescription` and `NSLocationWhenInUse…`) and

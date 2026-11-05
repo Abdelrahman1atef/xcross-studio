@@ -4,6 +4,19 @@
   frameworks, Flutter's plugin library) need `SwiftSupport/iphoneos/` in the IPA. The App Store build now adds it, and
   the archive too. **Run `xcross sdk install <Xcode.xip>` again once:** the SDK now keeps Xcode's iPhoneOS Swift runtime
   libraries (about 60 MB), which the build copies from; without them an App Store build stops before signing and says so.
+- Apple then answered **90429** twice. The first fix (the Swift libraries also in the app's `Frameworks` folder, signed
+  with the app; `release.swift_support_not_embedded`) was not the cause. Apple's engineers say 90429 names the Swift
+  files when a **standalone `.dylib` sits in `Frameworks`**, and the plugin build leaves one
+  (`libFlutterPluginsGenerated.dylib`). The App Store build now wraps it in `FlutterPluginsGenerated.framework` and
+  repoints everything that loads it. Build again; no new SDK install is needed beyond the one above.
+- `xcross release check` now also tests how the IPA is put together, without needing Apple's code for it:
+  `release.loose_dylib`, `release.static_library_in_bundle`, `release.nested_not_signed`, `release.nested_team_mismatch`,
+  `release.unsupported_architecture`, `release.dependency_missing`, `release.swift_support_incomplete`, and a warning for
+  frameworks without version keys. It reports the loose library of the IPA Apple rejected.
+- `xcross publish` explains a rejection: the fix for the codes it knows (90426, 90429, 90683) and, for any other, that the
+  check has no rule for it yet.
+- Settings has a **Darwin SDK** card (pick the Xcode.xip, Install SDK, link to Apple's download page) and an **Install
+  missing tools** card; the doctor now warns when the SDK has no Swift runtime libraries instead of saying "Installed".
 - `xcross release check` reads the code for what App Store Connect reads: `release.swift_support_missing` (an error, the
   90426 case) and `release.permission_missing_for_call` (a warning: `requestAlwaysAuthorization` needs
   `NSLocationAlwaysAndWhenInUseUsageDescription`, 90683). It passed both before.

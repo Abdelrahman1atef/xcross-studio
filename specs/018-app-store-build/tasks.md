@@ -40,6 +40,10 @@ K = `packages/apple_developer_kit/lib`, X = `packages/xcross/lib/src`, S = `pack
 - [X] T016 `release.permission_missing_for_call` (AC-018-17).
 - [X] T017 `release check --online` and Studio step 6 (AC-018-18). **Still owed on the real account:** an upload that
   App Store Connect accepts with the SwiftSupport folder (needs `xcross sdk install` again, then a rebuild).
+- [X] T018 Loose dylibs become frameworks and the structure rules (AC-018-19, App Store Connect 90429): `LooseDylibs`,
+  `renameDylibPaths`, `release_structure.dart`, `apple_rejections.dart`. Checked against the real doctory IPA Apple
+  rejected (the check reports `release.loose_dylib`; the converted app checks clean). **Still owed:** Apple accepting the
+  rebuilt IPA; `xcross publish --validate` (Apple's Transporter) was not run, Transporter is not installed here.
 
 ## Dependencies
 
