@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../cli/output_line.dart';
 import '../cli/process_launcher.dart';
+import '../cli/secret_redactor.dart';
 import '../cli/xcross_commands.dart';
 import '../cli/xcross_events.dart';
 
@@ -24,6 +25,7 @@ class Job extends ChangeNotifier {
     this.structured = false,
     DateTime Function() clock = DateTime.now,
   }) : _clock = clock,
+       _redactor = SecretRedactor.forCommand(command),
        started = clock();
 
   final String title;
@@ -79,6 +81,7 @@ class Job extends ChangeNotifier {
   }
 
   final DateTime Function() _clock;
+  final SecretRedactor _redactor;
   final DateTime started;
   DateTime? finished;
 
@@ -136,7 +139,9 @@ class Job extends ChangeNotifier {
       final out = _lines(process.stdout)
           .listen(_stdoutLine, onDone: outDone.complete);
       final err = _lines(process.stderr).listen(
-        (line) => _add(OutputLine.classify(line, fromStderr: true)),
+        (line) => _add(
+          OutputLine.classify(_redactor.redactLine(line), fromStderr: true),
+        ),
         onDone: errDone.complete,
       );
       final code = await process.exitCode;
@@ -179,7 +184,11 @@ class Job extends ChangeNotifier {
       return;
     }
     process.writeLine(input);
-    _add(OutputLine('> ${input.isEmpty ? '⏎' : input}', LineKind.command));
+    // Stdin may contain a one-time code, password, or recovery token. Never
+    // retain its contents in the job history or an exported console log.
+    _add(
+      OutputLine(input.isEmpty ? '> ⏎' : '> [input hidden]', LineKind.command),
+    );
   }
 
   /// Ends the command and the tools it started.
@@ -196,7 +205,7 @@ class Job extends ChangeNotifier {
       .transform(const LineSplitter());
 
   void _stdoutLine(String line) {
-    final (:text, :event) = XcrossEvent.split(line);
+    final (:text, :event) = XcrossEvent.split(_redactor.redactLine(line));
     if (event == null) {
       if (text.trim().isEmpty && lines.isNotEmpty && lines.last.text.isEmpty) {
         return;
@@ -277,7 +286,9 @@ class Job extends ChangeNotifier {
   }
 
   void _add(OutputLine line) {
-    lines.add(line);
+    lines.add(
+      OutputLine(_redactor.redact(line.text), line.kind, code: line.code),
+    );
     if (lines.length > maxLines) lines.removeRange(0, lines.length - maxLines);
     notifyListeners();
   }

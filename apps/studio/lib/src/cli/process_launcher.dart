@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:path/path.dart' as p;
+
 import '../host/host_platform.dart';
 
 /// A started child process, as much of it as a job needs.
@@ -40,6 +42,46 @@ class IoProcessLauncher implements ProcessLauncher {
 
   final HostPlatform host;
 
+  /// Batch files are parsed by cmd.exe even when Dart's runInShell is false.
+  /// Require a native executable for the CLI boundary on Windows.
+  static void validateWindowsExecutable(String executable) {
+    final lower = executable.toLowerCase();
+    if (lower.endsWith('.bat') || lower.endsWith('.cmd')) {
+      throw UnsupportedError(
+        'Windows batch shims are not supported; select xcross.exe or dart.exe.',
+      );
+    }
+  }
+
+  static String resolveWindowsExecutable(
+    String executable,
+    Map<String, String> environment,
+  ) {
+    validateWindowsExecutable(executable);
+    final name = executable.toLowerCase().endsWith('.exe')
+        ? executable
+        : '$executable.exe';
+    if (p.windows.isAbsolute(name) ||
+        name.contains('\\') ||
+        name.contains('/')) {
+      if (File(name).existsSync()) return File(name).absolute.path;
+      throw UnsupportedError('Windows native executable not found: $name');
+    }
+    final path = environment.entries
+        .where((entry) => entry.key.toLowerCase() == 'path')
+        .map((entry) => entry.value)
+        .firstOrNull;
+    for (final directory in (path ?? '').split(';')) {
+      if (directory.isEmpty) continue;
+      final candidate = p.windows.join(directory, name);
+      if (File(candidate).existsSync()) return File(candidate).absolute.path;
+    }
+    throw UnsupportedError(
+      'Windows native executable $name was not found on PATH. '
+      'Select an .exe binary in Setup.',
+    );
+  }
+
   @override
   Future<RunningProcess> start(
     String executable,
@@ -51,14 +93,15 @@ class IoProcessLauncher implements ProcessLauncher {
     // Every child gets the variables saved in the OS now (PATH, SDKROOT, …),
     // not the snapshot this app was started with.
     final saved = await host.currentEnvironment(Platform.environment);
+    final nativeCommand = Platform.isWindows
+        ? resolveWindowsExecutable(command, saved)
+        : command;
     final process = await Process.start(
-      command,
+      nativeCommand,
       args,
       workingDirectory: workingDirectory,
       environment: {...saved, ...environment},
-      // Windows: lets `xcross` resolve `xcross.exe`/`.bat` on PATH and run
-      // `dart`/`flutter` (.bat) shims.
-      runInShell: Platform.isWindows,
+      runInShell: false,
     );
     return _IoRunningProcess(process);
   }

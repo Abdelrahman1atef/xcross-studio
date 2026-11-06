@@ -543,8 +543,20 @@ abstract final class XcrossCommands {
   static String display(List<String> command) {
     final shown = <String>[];
     for (var i = 0; i < command.length; i++) {
-      shown.add(command[i]);
-      if (command[i] == '--password' && i + 1 < command.length) {
+      final part = command[i];
+      final sensitive = const {
+        '--password',
+        '--token',
+        '--secret',
+        '--api-key',
+      };
+      final equals = part.indexOf('=');
+      if (equals > 0 && sensitive.contains(part.substring(0, equals))) {
+        shown.add('${part.substring(0, equals)}=••••');
+      } else {
+        shown.add(part);
+      }
+      if (sensitive.contains(part) && i + 1 < command.length) {
         shown.add('••••');
         i++;
       }

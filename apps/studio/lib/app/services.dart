@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 import '../src/cli/process_launcher.dart';
+import '../src/cli/cli_capabilities.dart';
 import '../src/host/host_platform.dart';
 import '../src/state/devices.dart';
 import '../src/state/job.dart';
@@ -22,11 +23,23 @@ class StudioServices {
     DeviceController? devices,
     AppController? app,
     ProjectHealthController? projectHealth,
+    CliCapabilities? capabilities,
   }) : logs = logs ?? LogSession(jobs),
        readiness = readiness ?? ReadinessController(jobs, settings),
        devices = devices ?? DeviceController(jobs, settings),
        app = app ?? AppController(),
-       projectHealth = projectHealth ?? ProjectHealthController(jobs, settings);
+       projectHealth = projectHealth ?? ProjectHealthController(jobs, settings),
+       capabilities =
+           capabilities ??
+           CliCapabilities(
+             launcher: launcher,
+             invocation: settings.effectiveInvocation,
+           ) {
+    settings.addListener(_invocationChanged);
+  }
+
+  void _invocationChanged() =>
+      capabilities.updateInvocation(settings.effectiveInvocation);
 
   final HostPlatform host;
   final ProcessLauncher launcher;
@@ -39,6 +52,7 @@ class StudioServices {
 
   /// What the open project needs (features 027 and 028).
   final ProjectHealthController projectHealth;
+  final CliCapabilities capabilities;
 }
 
 /// Hands [StudioServices] down the widget tree.
