@@ -34,6 +34,28 @@ void main() {
     },
   );
 
+  test('AC-029-7 stdin secret echoed on both streams is sanitized', () async {
+    final launcher = FakeLauncher();
+    final job = Job(
+      title: 'Authentication',
+      command: const ['auth', 'login'],
+      invocation: const XcrossInvocation.binary(),
+      launcher: launcher,
+    );
+    final starting = job.start();
+    await Future<void>.delayed(Duration.zero);
+    job.send('one-time-secret-029');
+    final process = launcher.processes.single;
+    process.out('echo: one-time-secret-029');
+    process.err('error: one-time-secret-029');
+    await process.exit(1);
+    await starting;
+    expect(
+      job.lines.map((line) => line.text).join('\n'),
+      isNot(contains('one-time-secret-029')),
+    );
+  });
+
   test(
     'AC-029-7 password is redacted before lines and event callbacks',
     () async {
@@ -75,6 +97,21 @@ void main() {
       redactor.redact('{"password":"json-value"}'),
       isNot(contains('json-value')),
     );
+  });
+
+  test('AC-029-7 startup errors cannot retain a command secret', () async {
+    final launcher = FakeLauncher(
+      startError: const FormatException('startup-secret-029'),
+    );
+    final job = Job(
+      title: 'Authentication',
+      command: const ['auth', '--password', 'startup-secret-029'],
+      invocation: const XcrossInvocation.binary(),
+      launcher: launcher,
+    );
+    await job.start();
+    expect(job.lines.map((line) => line.text).join('\n'),
+        isNot(contains('startup-secret-029')));
   });
 
   test(

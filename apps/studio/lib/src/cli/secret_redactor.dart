@@ -11,6 +11,12 @@ class SecretRedactor {
   final List<String> _knownSecrets;
   bool _insidePrivateKey = false;
 
+  void addSecret(String value) {
+    if (value.isEmpty || _knownSecrets.contains(value)) return;
+    _knownSecrets.add(value);
+    _knownSecrets.sort((a, b) => b.length.compareTo(a.length));
+  }
+
   static SecretRedactor forCommand(List<String> command) {
     final secrets = <String>[];
     for (var i = 0; i < command.length; i++) {

@@ -160,7 +160,8 @@ class Job extends ChangeNotifier {
     } on Exception catch (error) {
       _add(
         OutputLine(
-          'error: could not start ${invocation.executable}: $error',
+          'error: could not start ${_redactor.redact(invocation.executable)}: '
+          '${_redactor.redact(error.toString())}',
           LineKind.error,
         ),
       );
@@ -178,6 +179,7 @@ class Job extends ChangeNotifier {
   /// Sends [input] to the command's stdin (2FA codes, `q`, …).
   void send(String input) {
     if (!isRunning) return;
+    _redactor.addSecret(input);
     final process = _process;
     if (process == null) {
       _unsent.add(input);
