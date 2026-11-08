@@ -30,10 +30,16 @@ final class CarWriter {
   final List<Rendition> renditions;
 
   Uint8List write() {
+    final assets = CarAssets.of(renditions);
+    final iconSets = IconSets.entries(assets);
     final bom = BomWriter();
     bom.setVariable(
       'CARHEADER',
-      bom.addBlock(CarHeaderBlock.data(renditionCount: renditions.length)),
+      bom.addBlock(
+        CarHeaderBlock.data(
+          renditionCount: renditions.length + iconSets.length,
+        ),
+      ),
     );
 
     bom.setVariable(
@@ -41,10 +47,10 @@ final class CarWriter {
       BomTree.insert(bom, [
         for (final rendition in renditions)
           BomTreeEntry(RenditionKey.of(rendition).encode(), _csi(rendition)),
+        ...iconSets,
       ]),
     );
 
-    final assets = CarAssets.of(renditions);
     bom.setVariable(
       'FACETKEYS',
       BomTree.insert(bom, [
@@ -136,6 +142,51 @@ abstract final class CarAssets {
     BitmapBody() || JpegBody() => FacetKind.image,
     ColorBody() => FacetKind.color,
   };
+}
+
+/// The `SISM` icon set record of each `AppIcon`, one per idiom, as actool
+/// writes them next to the icon images.
+@internal
+abstract final class IconSets {
+  static List<BomTreeEntry> entries(List<CarAsset> assets) {
+    final entries = <BomTreeEntry>[];
+    for (final asset in assets) {
+      if (asset.kind != FacetKind.appIcon) continue;
+      // idiom → Icon Index → point size; the indices are unique per size.
+      final byIdiom = <AssetIdiom, Map<int, int>>{};
+      for (final rendition in asset.renditions) {
+        final points = rendition.iconPoints;
+        if (points == null || rendition.dark) continue;
+        byIdiom.putIfAbsent(rendition.idiom, () => {})[AppIconIndex.of(
+          points,
+        )] = AppIconIndex.sismPoints(
+          points,
+        );
+      }
+      final idioms = byIdiom.keys.toList()
+        ..sort((a, b) => a.code.compareTo(b.code));
+      for (final idiom in idioms) {
+        final key = RenditionKey(
+          scale: 1,
+          idiom: idiom.code,
+          identifier: AssetNameHash.of(asset.name),
+          element: RenditionKey.elementBitmap,
+          part: RenditionKey.partIconSet,
+        );
+        entries.add(
+          BomTreeEntry(
+            key.encode(),
+            CsiWriter.iconSet(asset.name, [
+              for (final MapEntry(key: index, value: points)
+                  in byIdiom[idiom]!.entries)
+                (points, index),
+            ]),
+          ),
+        );
+      }
+    }
+    return entries;
+  }
 }
 
 /// CARHEADER: 436 bytes.
@@ -263,6 +314,21 @@ abstract final class BitmapKeys {
     if (asset.kind == FacetKind.color) return null;
     final appIcon = asset.kind == FacetKind.appIcon;
     final idioms = {for (final rendition in asset.renditions) rendition.idiom};
+    // For an app icon the descriptor lists what exists, as masks: scales
+    // (bit n = n×), idioms (bit n = idiom n) and Icon Indices (bit n = index n,
+    // bit 0 always). Read from Xcode 26.2 catalogs: 0x0e / 0x46 / 0x0fff for a
+    // set with 1×–3×, iPhone, iPad and marketing icons, indices 1 to 11.
+    var scaleMask = 0;
+    var idiomMask = 0;
+    var indexMask = 1;
+    final indices = <int>{};
+    for (final rendition in asset.renditions) {
+      scaleMask |= 1 << (rendition.scale?.factor ?? 0);
+      idiomMask |= 1 << rendition.idiom.code;
+      final index = AppIconIndex.of(rendition.iconPoints);
+      indices.add(index);
+      if (index < 32) indexMask |= 1 << index;
+    }
     final writer = AssetByteWriter()
       ..u32le(1)
       ..u32le(0)
@@ -270,11 +336,11 @@ abstract final class BitmapKeys {
       ..u32le(9)
       ..u32le(0xFFFFFFFF)
       ..u32le(1)
-      ..u32le(appIcon ? 0x0e : 0x04) // asset-kind marker
-      ..u32le(idioms.length)
+      ..u32le(appIcon ? scaleMask : 0x04) // asset-kind marker
+      ..u32le(appIcon ? idiomMask : idioms.length)
       ..u16le(1)
-      ..u16le(appIcon ? 1 : 0)
-      ..u32le(appIcon ? 7 : 1)
+      ..u16le(appIcon && indices.length > 1 ? 1 : 0)
+      ..u32le(appIcon ? indexMask : 1)
       ..u32le(0xFFFFFFFF)
       ..u32le(0xFFFFFFFF)
       ..u32le(0xFFFFFFFF);

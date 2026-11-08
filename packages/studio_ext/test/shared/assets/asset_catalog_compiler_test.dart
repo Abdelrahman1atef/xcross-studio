@@ -94,14 +94,24 @@ void main() {
         ).readAsBytesSync(),
       ).toPremultipliedBgra(),
     );
-    // One app icon rendition per (idiom, scale): the largest size wins.
+    // Every icon size is in the catalog under its own Icon Index (slot 5),
+    // as in actool's: 60 pt is index 6, so 60@2x is the one at index 6.
     final icons = csis.where((r) => r.$1[8] == 220).toList();
-    final iphone2x = icons.singleWhere((r) => r.$1[3] == 1 && r.$1[2] == 2);
+    final iphone2x = icons.singleWhere(
+      (r) => r.$1[3] == 1 && r.$1[2] == 2 && r.$1[5] == 6,
+    );
     expect(iphone2x.$2.width, 120);
-    expect(icons.map((r) => (r.$1[3], r.$1[2])).toSet(), hasLength(6));
+    expect(icons.map((r) => (r.$1[3], r.$1[2], r.$1[5])).toSet(), hasLength(
+      icons.length,
+    ));
+    expect(icons.length, greaterThan(6));
+    // Each idiom of the set has its icon set record (part 218).
+    final sets = csis.where((r) => r.$1[8] == 218).map((r) => r.$1[3]).toSet();
+    expect(sets, {1, 2, 6});
     // App Store Connect reads the large icon from here (error 91111).
     final store = icons.singleWhere((r) => r.$1[3] == 6).$2;
     expect(icons.singleWhere((r) => r.$1[3] == 6).$1[2], 1);
+    expect(icons.singleWhere((r) => r.$1[3] == 6).$1[5], 11);
     expect((store.width, store.height), (1024, 1024));
     expect(store.name, 'Icon-App-1024x1024@1x.png');
     expect(store.flags & CsiWriter.flagOpaque, CsiWriter.flagOpaque);

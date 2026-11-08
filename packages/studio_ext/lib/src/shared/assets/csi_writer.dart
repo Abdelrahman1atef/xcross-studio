@@ -141,6 +141,52 @@ abstract final class CsiWriter {
         .toBytes();
   }
 
+  static const layoutIconSet = 1010;
+
+  /// The icon set record of one idiom: a `SISM` body listing each icon size
+  /// as `(width, height, Icon Index)` in points, in index order.
+  ///
+  /// Matches the records actool writes for `AppIcon` (Xcode 26.2 catalogs).
+  /// Apple's icon lookup by `CFBundleIconName`, which App Store Connect uses,
+  /// starts from this record, not from the images.
+  static Uint8List iconSet(String name, List<(int points, int index)> sizes) {
+    final entries = [...sizes]..sort((a, b) => a.$2.compareTo(b.$2));
+    final payload = AssetByteWriter()
+      ..fourCC('SISM')
+      ..u32le(1)
+      ..u32le(entries.length);
+    for (final (points, index) in entries) {
+      payload
+        ..u32le(points)
+        ..u32le(points)
+        ..u32le(index);
+    }
+    final payloadBytes = payload.toBytes();
+    final tvl = AssetByteWriter();
+    TvlEntries.blendAndOpacity(tvl);
+    TvlEntries.bitmapFlag(tvl);
+    final tvlBytes = tvl.toBytes();
+    return (AssetByteWriter()
+          ..bytes(
+            header(
+              renditionFlags: 0,
+              width: 0,
+              height: 0,
+              scaleFactor: 0,
+              pixelFormat: 0,
+              colorSpace: 0,
+              layout: layoutIconSet,
+              name: name,
+              tvlLength: tvlBytes.length,
+              bitmapCount: 1,
+              renditionLength: payloadBytes.length,
+            ),
+          )
+          ..bytes(tvlBytes)
+          ..bytes(payloadBytes))
+        .toBytes();
+  }
+
   /// The fixed 184-byte CSI header.
   static Uint8List header({
     required int renditionFlags,

@@ -297,6 +297,100 @@ void main() {
     });
   });
 
+  group('AC-004-6 app icon set as actool writes it', () {
+    Rendition icon(AssetIdiom idiom, AssetScale scale, double points, int px) =>
+        Rendition(
+          name: 'AppIcon',
+          idiom: idiom,
+          scale: scale,
+          iconPoints: points,
+          body: _bitmap(px, px, kind: BitmapKind.appIcon),
+        );
+
+    final renditions = [
+      icon(AssetIdiom.iphone, AssetScale.x2, 20, 40),
+      icon(AssetIdiom.iphone, AssetScale.x2, 60, 120),
+      icon(AssetIdiom.iphone, AssetScale.x3, 60, 180),
+      icon(AssetIdiom.ipad, AssetScale.x2, 76, 152),
+      icon(AssetIdiom.ipad, AssetScale.x2, 83.5, 167),
+      icon(AssetIdiom.marketing, AssetScale.x1, 1024, 1024),
+    ];
+
+    late CarFile car;
+    setUp(() {
+      car = CarFile(
+        CarWriter(deploymentTarget: '15.0', renditions: renditions).write(),
+      );
+    });
+
+    test('sizes of one idiom and scale keep their own Icon Index', () {
+      final images = [
+        for (final (key, csi) in car.renditions)
+          if (key[8] == 220) (key, Csi(csi)),
+      ];
+      expect(images, hasLength(6));
+      // dimension2 is the index of the point size: 20 → 1, 60 → 6.
+      final iphone2x = {
+        for (final (key, csi) in images)
+          if (key[3] == 1 && key[2] == 2) key[5]: csi.width,
+      };
+      expect(iphone2x, {1: 40, 6: 120});
+      expect({for (final (key, _) in images) key[5]}, {1, 6, 8, 9, 11});
+    });
+
+    test('every idiom has an icon set record with its sizes', () {
+      final sets = {
+        for (final (key, csi) in car.renditions)
+          if (key[8] == 218) key[3]: (key, Csi(csi)),
+      };
+      expect(sets.keys, [1, 2, 6]);
+      for (final (key, csi) in sets.values) {
+        expect(key[2], 1);
+        expect(key[5], 0);
+        expect(key[6], AssetNameHash.of('AppIcon'));
+        expect(key[7], 85);
+        expect(csi.layout, 1010);
+        expect(csi.name, 'AppIcon');
+        expect((csi.width, csi.height, csi.scaleFactor), (0, 0, 0));
+        expect(csi.tvl.keys, [1004, 1006]);
+      }
+      List<int> entries(int idiom) {
+        final body = sets[idiom]!.$2.body;
+        final data = ByteData.sublistView(body);
+        expect(ascii.decode(body.sublist(0, 4)), 'SISM');
+        expect(data.getUint32(4, Endian.little), 1);
+        final count = data.getUint32(8, Endian.little);
+        expect(body, hasLength(12 + count * 12));
+        return [
+          for (var i = 0; i < count * 3; i++)
+            data.getUint32(12 + i * 4, Endian.little),
+        ];
+      }
+
+      // (width, height, index) per size, in index order; 83.5 is 83.
+      expect(entries(1), [20, 20, 1, 60, 60, 6]);
+      expect(entries(2), [76, 76, 8, 83, 83, 9]);
+      expect(entries(6), [1024, 1024, 11]);
+      expect(
+        ByteData.sublistView(
+          car.variable('CARHEADER'),
+        ).getUint32(16, Endian.little),
+        9,
+      );
+    });
+
+    test('BITMAPKEYS lists the scales, idioms and indices that exist', () {
+      final descriptor = ByteData.sublistView(
+        car.tree('BITMAPKEYS').entries.single.$2,
+      );
+      expect(descriptor.getUint32(24, Endian.little), 0x0e); // 1×, 2×, 3×
+      expect(descriptor.getUint32(28, Endian.little), 0x46); // idioms 1, 2, 6
+      expect(descriptor.getUint16(34, Endian.little), 1); // several indices
+      // Bit 0 and the indices 1, 6, 8, 9 and 11.
+      expect(descriptor.getUint32(36, Endian.little), 0x0b43);
+    });
+  });
+
   group('CAR', () {
     final renditions = [
       Rendition(
@@ -393,7 +487,8 @@ void main() {
             value,
           ).getUint32(24, Endian.little),
       };
-      expect(markers[AssetNameHash.of('AppIcon')], 0x0e);
+      // The marker of an app icon is the mask of its scales: one 2× icon.
+      expect(markers[AssetNameHash.of('AppIcon')], 0x04);
       expect(markers[AssetNameHash.of('LaunchImage')], 0x04);
       for (final (_, value) in bitmapKeys.entries) {
         expect(value, hasLength(52));

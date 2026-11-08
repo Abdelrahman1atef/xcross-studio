@@ -142,6 +142,7 @@ final class Rendition {
     required this.body,
     this.scale,
     this.dark = false,
+    this.iconPoints,
   });
 
   /// The asset name (`AppIcon`, `LaunchImage`, `Folder/Name`, …).
@@ -152,6 +153,42 @@ final class Rendition {
   /// The `luminosity: dark` variant.
   final bool dark;
   final RenditionBody body;
+
+  /// An app icon's size in points (`60` for `60x60@2x`, `1024` for the App
+  /// Store icon). It picks the rendition's Icon Index; see [AppIconIndex].
+  final double? iconPoints;
+}
+
+/// The "Icon Index" (`dimension2`) actool gives an app icon rendition: one
+/// number per point size, shared by every scale and idiom. Read from the
+/// `AppIcon` of Xcode 26.2 catalogs (SideStore, 2026-09): 20 → 1, 29 → 2,
+/// 40 → 3, 50 → 4, 57 → 5, 60 → 6, 72 → 7, 76 → 8, 83.5 → 9, 90 → 10,
+/// 1024 → 11. Without it every size of an idiom and scale shares one key, and
+/// only the first reaches the catalog.
+@internal
+abstract final class AppIconIndex {
+  /// A size actool has no slot for gets a number after the last one, so it
+  /// still keeps its own key.
+  static int of(double? points) {
+    if (points == null) return 1;
+    return switch (points) {
+      20 => 1,
+      29 => 2,
+      40 => 3,
+      50 => 4,
+      57 => 5,
+      60 => 6,
+      72 => 7,
+      76 => 8,
+      83.5 => 9,
+      90 => 10,
+      1024 => 11,
+      _ => 12 + points.round(),
+    };
+  }
+
+  /// The point size written in a SISM entry (83.5 is written as 83).
+  static int sismPoints(double points) => points.floor();
 }
 
 /// `kThemeRenditionAttribute` ids for CoreUI 970 (StorageVersion 17).
@@ -214,8 +251,7 @@ final class RenditionKey {
         appearance: appearance,
         scale: scale,
         idiom: idiom,
-        // The app icon "Icon Index" slot; one logical icon per set.
-        dimension2: 1,
+        dimension2: AppIconIndex.of(rendition.iconPoints),
         identifier: identifier,
         element: elementBitmap,
         part: partAppIcon,
@@ -241,6 +277,9 @@ final class RenditionKey {
 
   static const elementBitmap = 85;
   static const partAppIcon = 220;
+
+  /// The icon set record (`SISM`) listing an idiom's icon sizes.
+  static const partIconSet = 218;
   static const partImage = 181;
 
   /// A named colour. iOS looks colours up under this element and part, so one

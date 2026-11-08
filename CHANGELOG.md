@@ -1,5 +1,6 @@
 ## Unreleased (XCross Studio)
 
+- **App Store Connect showed Apple's grey placeholder grid, not the app icon, for an xcross build** (feature 004). `Assets.car` lacked what actool writes for an `AppIcon`: the `SISM` icon-set record of each idiom (iPhone, iPad, marketing), and the per-size Icon Index (20 pt is 1, 60 pt is 6, 1024 pt is 11, as in Xcode 26.2 catalogs). Every size shared index 1, so only 6 of 19 icons reached the catalog, and Apple could not render the icon set. The catalog now has one icon per size, the icon-set records (the marketing one is byte for byte Apple's) and BITMAPKEYS masks computed from the icons present. A Flutter app build now gets the real rendered icon from `/v1/builds/{id}/icons`, as an Xcode build does. Not yet seen on the App Store Connect website itself.
 - **The iOS splash logo looked very stretched on an iPhone X (TestFlight).** A square logo under `UILaunchScreen` was
   scaled to fill the whole screen. The build now draws the launch image on a canvas the shape of the screen (375 × 812 pt
   for iPhones, 768 × 1024 pt for iPads, at each scale), with the logo in the middle over its background colour. It looks

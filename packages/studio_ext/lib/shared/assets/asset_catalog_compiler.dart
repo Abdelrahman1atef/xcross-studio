@@ -261,8 +261,8 @@ final class AssetCatalogCompiler {
     if (appIcon != null) {
       final decode = _iconDecoder(appIcon, issues);
       files = _appIconFiles(appIcon, decode, issues);
-      // One rendition per (idiom, scale) fits the rendition key; keep the
-      // largest size, the one the home screen asks for.
+      // Every size gets its own Icon Index, as in actool's catalogs, so all of
+      // them are kept; the largest goes first.
       final bySize = [...files]
         ..sort((a, b) => b.pointSize.compareTo(a.pointSize));
       for (final file in bySize) {
@@ -271,6 +271,7 @@ final class AssetCatalogCompiler {
             name: appIcon.name,
             idiom: file.idiom,
             scale: file.scale,
+            iconPoints: file.pointSize,
             body: BitmapBody(
               width: file.image.width,
               height: file.image.height,
@@ -627,6 +628,7 @@ final class AssetCatalogCompiler {
       name: set.name,
       idiom: AssetIdiom.marketing,
       scale: AssetScale.x1,
+      iconPoints: 1024,
       body: BitmapBody(
         width: image.width,
         height: image.height,
