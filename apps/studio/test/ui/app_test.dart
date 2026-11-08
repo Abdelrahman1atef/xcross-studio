@@ -11,6 +11,7 @@ import 'package:xcross_studio/src/host/host_platform.dart';
 import 'package:xcross_studio/src/state/job.dart';
 import 'package:xcross_studio/src/state/log_session.dart';
 import 'package:xcross_studio/src/state/settings.dart';
+import 'package:xcross_studio/src/state/signing_accounts.dart';
 
 import '../support/fake_launcher.dart';
 
@@ -66,6 +67,7 @@ Future<Studio> pumpStudio(
   bool startupChecks = true,
   Settings? settings,
   String? authStatus,
+  SigningAccounts? signingAccounts,
 }) async {
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -93,6 +95,7 @@ Future<Studio> pumpStudio(
     settings: config,
     jobs: jobs,
     logs: LogSession(jobs, notifyEvery: Duration.zero),
+    signingAccounts: signingAccounts,
   );
   await tester.pumpWidget(
     StudioApp(services: services, startupChecks: startupChecks),

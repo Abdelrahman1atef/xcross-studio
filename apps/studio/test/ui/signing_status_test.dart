@@ -54,6 +54,9 @@ Future<void> _open(WidgetTester tester, String status) async {
     tester,
     doctor: _doctor,
     authStatus: status,
+    // Feature 030 added the Accounts card above the form: a taller window
+    // keeps the form built (lists build only what is on screen).
+    size: const Size(1500, 1500),
     settings: Settings()..wizardDismissed = true,
   );
   await go(tester, 'Signing');

@@ -9,6 +9,7 @@ import 'src/cli/xcross_commands.dart';
 import 'src/host/host_platform.dart';
 import 'src/state/job.dart';
 import 'src/state/settings.dart';
+import 'src/state/signing_accounts.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -32,6 +33,18 @@ Future<void> main() async {
   )) {
     settings.invocation = const XcrossInvocation.binary();
   }
+  // studio: 030 — the first run also reads the profiles the `xcross-key`
+  // script saved, so the accounts used before are already listed.
+  final appData = Platform.environment['APPDATA'];
+  final signingAccounts = await SigningAccounts.load(
+    host.configDirectory(Platform.environment),
+    importFrom: appData == null
+        ? null
+        : File(
+            '$appData${Platform.pathSeparator}xcross'
+            '${Platform.pathSeparator}key-profiles.json',
+          ),
+  );
   final launcher = IoProcessLauncher(host);
   final jobs = JobCenter(
     launcher: launcher,
@@ -44,6 +57,7 @@ Future<void> main() async {
         launcher: launcher,
         settings: settings,
         jobs: jobs,
+        signingAccounts: signingAccounts,
       ),
     ),
   );

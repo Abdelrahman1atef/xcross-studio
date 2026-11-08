@@ -11,6 +11,7 @@ import '../../src/state/readiness.dart';
 import '../common/job_views.dart';
 import '../common/readiness_views.dart';
 import 'app_id_card.dart';
+import 'signing_accounts_card.dart';
 
 /// Signing (§6.4): authenticate securely and understand the trade-offs.
 class SigningPage extends StatelessWidget {
@@ -73,6 +74,7 @@ class SigningPage extends StatelessWidget {
                 ],
               ),
             ),
+            const SigningAccountsCard(), // feature 030
             const SigningForm(),
             const AppIdCard(), // feature 016
             const _SignOutCard(),

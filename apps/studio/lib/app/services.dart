@@ -9,6 +9,7 @@ import '../src/state/log_session.dart';
 import '../src/state/project_health.dart';
 import '../src/state/readiness.dart';
 import '../src/state/settings.dart';
+import '../src/state/signing_accounts.dart';
 import 'app_controller.dart';
 
 /// The app's long-lived objects, created once.
@@ -24,11 +25,13 @@ class StudioServices {
     AppController? app,
     ProjectHealthController? projectHealth,
     CliCapabilities? capabilities,
+    SigningAccounts? signingAccounts,
   }) : logs = logs ?? LogSession(jobs),
        readiness = readiness ?? ReadinessController(jobs, settings),
        devices = devices ?? DeviceController(jobs, settings),
        app = app ?? AppController(),
        projectHealth = projectHealth ?? ProjectHealthController(jobs, settings),
+       signingAccounts = signingAccounts ?? SigningAccounts(),
        capabilities =
            capabilities ??
            CliCapabilities(
@@ -36,6 +39,16 @@ class StudioServices {
              invocation: settings.effectiveInvocation,
            ) {
     settings.addListener(_invocationChanged);
+    this.readiness.addListener(_rememberSignedIn);
+  }
+
+  /// studio: 030 — a key Apple accepted joins the history, whether it was
+  /// saved here or with the CLI.
+  void _rememberSignedIn() {
+    final key = readiness.savedSignIn?.apiKey;
+    if (key != null && readiness.signing.health == Health.ok) {
+      signingAccounts.remember(key);
+    }
   }
 
   void _invocationChanged() =>
@@ -53,6 +66,9 @@ class StudioServices {
   /// What the open project needs (features 027 and 028).
   final ProjectHealthController projectHealth;
   final CliCapabilities capabilities;
+
+  /// The API-key accounts used before (feature 030).
+  final SigningAccounts signingAccounts;
 }
 
 /// Hands [StudioServices] down the widget tree.
