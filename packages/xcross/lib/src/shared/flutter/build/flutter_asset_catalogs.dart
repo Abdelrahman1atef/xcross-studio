@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:propertylistserialization/propertylistserialization.dart';
 import 'package:studio_ext/shared/assets/asset_catalog_compiler.dart';
 import 'package:studio_ext/shared/assets/launch_storyboard.dart';
+import 'package:studio_ext/shared/assets/launch_storyboard_bundle.dart'; // studio: 032
 import 'package:xcross/src/shared/diagnostics/xcross_diagnostics.dart';
 import 'package:xcross/src/shared/flutter/build/ios_bundle_resources.dart';
 
@@ -54,12 +55,18 @@ final class FlutterAssetCatalogs {
     required this.paths,
     required this.warn,
     required this.trace,
+    this.compileLaunchStoryboard = true,
   });
 
   final HostFileSystemInterface fileSystem;
   final p.Context paths;
   final AssetWarning warn;
   final void Function(String message) trace;
+
+  /// studio: 032 — write a real `<Name>.storyboardc` when the launch storyboard
+  /// is simple enough (`XCROSS_LAUNCH_STORYBOARD=off` turns this off and falls
+  /// back to the `UILaunchScreen` dictionary).
+  final bool compileLaunchStoryboard;
 
   /// The colour set holding the launch screen background.
   static const launchColorName = 'XCrossLaunchBackground';
@@ -183,6 +190,51 @@ final class FlutterAssetCatalogs {
                 '"${compiled.appIconName}" '
                 '(${compiled.looseFiles.length} loose PNGs)'}',
     );
+
+    // studio: 032 — a launch storyboard Xcode would compile is compiled here,
+    // as Xcode's apps ship it: iOS drew `UILaunchScreen`'s image stretched over
+    // the whole screen from TestFlight.
+    if (compileLaunchStoryboard &&
+        spec != null &&
+        storyboard != null &&
+        launchStoryboardName != null) {
+      String? why;
+      final bundle = LaunchStoryboardBundler.build(
+        fileSystem: fileSystem,
+        paths: paths,
+        catalogs: catalogs,
+        spec: spec,
+        reason: (reason) => why = reason,
+      );
+      if (bundle != null) {
+        final folder = paths.join(
+          bundleDir,
+          '$launchStoryboardName.storyboardc',
+        );
+        fileSystem.directory(folder).createSync(recursive: true);
+        for (final MapEntry(:key, :value) in bundle.storyboardFiles.entries) {
+          fileSystem.file(paths.join(folder, key)).writeAsBytesSync(value);
+        }
+        for (final logo in bundle.logoFiles) {
+          fileSystem
+              .file(paths.join(bundleDir, logo.name))
+              .writeAsBytesSync(logo.bytes);
+        }
+        trace(
+          '$launchStoryboardName.storyboard → compiled '
+          '$launchStoryboardName.storyboardc (${bundle.logoFiles.length} logo '
+          'PNGs)',
+        );
+        return FlutterAssetCatalogResult(
+          infoPlistAdditions: compiled.infoPlistAdditions,
+          handled: {...catalogs, storyboard},
+        );
+      }
+      trace(
+        '$launchStoryboardName.storyboard not compiled ($why); using '
+        'UILaunchScreen',
+      );
+    }
 
     Map<String, Object>? launchScreen;
     if (spec != null && storyboard != null) {

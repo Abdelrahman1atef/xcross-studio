@@ -231,6 +231,10 @@ final class FlutterBundleAssembler<T extends PlatformHostInterface>
         warn: (code, {required subject, required message}) =>
             runtime.warnings.warn(code, subject: subject, message: message),
         trace: runtime.runner.log.logTrace,
+        // studio: 032 — XCROSS_LAUNCH_STORYBOARD=off keeps the UILaunchScreen.
+        compileLaunchStoryboard:
+            runtime.runner.effectiveEnvironment['XCROSS_LAUNCH_STORYBOARD'] !=
+            'off',
       ).compile(
         bundleDir: bundleDir,
         skipped: skipped,

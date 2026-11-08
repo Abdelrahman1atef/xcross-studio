@@ -10,6 +10,7 @@ final class LaunchScreenSpec {
     this.background,
     this.backgroundColorName,
     this.imageName,
+    this.imageContentMode = 'center',
     this.backgroundImageName,
     this.approximations = const [],
   });
@@ -23,6 +24,9 @@ final class LaunchScreenSpec {
 
   /// The centred image (`UIImageName`), an image set name.
   final String? imageName;
+
+  /// `contentMode` of that image view (`center`, `scaleAspectFit`, …).
+  final String imageContentMode;
 
   /// A full-screen (scale-to-fill) image behind everything; `UILaunchScreen`
   /// can only show it when it is a single colour.
@@ -98,6 +102,7 @@ abstract final class LaunchStoryboard {
     }
 
     String? image;
+    var imageMode = 'center';
     String? backgroundImage;
     final subviews = _child(view, 'subviews');
     for (final element in subviews?.descendantElements ?? <XmlElement>[]) {
@@ -111,6 +116,7 @@ abstract final class LaunchStoryboard {
           backgroundImage = name;
         } else if (!fill && image == null) {
           image = name;
+          imageMode = element.getAttribute('contentMode') ?? 'center';
         } else {
           approximations.add('image "$name"');
         }
@@ -127,6 +133,7 @@ abstract final class LaunchStoryboard {
       background: background,
       backgroundColorName: colorName,
       imageName: image,
+      imageContentMode: imageMode,
       backgroundImageName: backgroundImage,
       approximations: approximations,
     );

@@ -32,13 +32,17 @@ void main() {
   });
   tearDown(() => temp.deleteSync(recursive: true));
 
-  FlutterAssetCatalogs catalogs() => FlutterAssetCatalogs(
-    fileSystem: const AssetTestFileSystem(),
-    paths: p.context,
-    warn: (code, {required subject, required message}) =>
-        warnings.add((code.code, subject, message)),
-    trace: (_) {},
-  );
+  // [storyboard] false is the UILaunchScreen fallback
+  // (XCROSS_LAUNCH_STORYBOARD=off).
+  FlutterAssetCatalogs catalogs({bool storyboard = true}) =>
+      FlutterAssetCatalogs(
+        fileSystem: const AssetTestFileSystem(),
+        paths: p.context,
+        warn: (code, {required subject, required message}) =>
+            warnings.add((code.code, subject, message)),
+        trace: (_) {},
+        compileLaunchStoryboard: storyboard,
+      );
 
   void json(String path, Object value) => File(path)
     ..parent.createSync(recursive: true)
@@ -146,7 +150,7 @@ void main() {
       FlutterAssetCatalogs.launchStoryboardName(templatePlist),
       'LaunchScreen',
     );
-    final result = catalogs().compile(
+    final result = catalogs(storyboard: false).compile(
       bundleDir: bundle,
       skipped: [
         SkippedResource(catalog, SkippedResourceReason.assetCatalog),
@@ -327,7 +331,7 @@ void main() {
       '<color key="backgroundColor" name="LaunchBackground"/>',
     );
 
-    final result = catalogs().compile(
+    final result = catalogs(storyboard: false).compile(
       bundleDir: bundle,
       skipped: [
         SkippedResource(catalog, SkippedResourceReason.assetCatalog),
@@ -389,6 +393,87 @@ void main() {
       ),
       isNull,
     );
+  });
+
+  group('AC-033 the launch storyboard is compiled', () {
+    FlutterAssetCatalogResult build(
+      String launch,
+      String catalog, {
+      bool storyboard = true,
+    }) => catalogs(storyboard: storyboard).compile(
+      bundleDir: bundle,
+      skipped: [
+        SkippedResource(catalog, SkippedResourceReason.assetCatalog),
+        SkippedResource(launch, SkippedResourceReason.uncompiledStoryboard),
+      ],
+      deploymentTarget: '13.0',
+      launchStoryboardName: 'LaunchScreen',
+    );
+
+    const blue =
+        '<color key="backgroundColor" red="0.2" green="0.4" blue="0.6" '
+        'alpha="1" colorSpace="custom" customColorSpace="sRGB"/>';
+
+    test('AC-033-2 a colour and a centred image become a storyboardc', () {
+      final catalog = flutterCatalog();
+      final launch = storyboard(blue);
+      final result = build(launch, catalog);
+
+      expect(warnings, isEmpty);
+      // No UILaunchScreen: the plist keeps UILaunchStoryboardName.
+      expect(result.launchScreen, isNull);
+      expect(result.handled, {catalog, launch});
+      final folder = p.join(bundle, 'LaunchScreen.storyboardc');
+      expect(
+        Directory(folder).listSync().map((e) => p.basename(e.path)).toSet(),
+        {
+          '01J-lp-oVM-view-Ze5-6b-2t3.nib',
+          'UIViewController-01J-lp-oVM.nib',
+          'Info.plist',
+        },
+      );
+      final nib = File(
+        p.join(folder, '01J-lp-oVM-view-Ze5-6b-2t3.nib'),
+      ).readAsBytesSync();
+      expect(ascii.decode(nib.sublist(0, 10)), 'NIBArchive');
+      expect(latin1.decode(nib), contains('XCrossLaunchLogo'));
+      expect(latin1.decode(nib), contains('0.2 0.4 0.6'));
+      // The logo is loose, under a name the catalog does not have.
+      for (final name in ['XCrossLaunchLogo.png', 'XCrossLaunchLogo@2x.png']) {
+        final bytes = File(p.join(bundle, name)).readAsBytesSync();
+        expect(bytes.sublist(1, 4), 'PNG'.codeUnits, reason: name);
+      }
+      final merged = FlutterAssetCatalogs.mergeInfoPlist(templatePlist, result);
+      final plist =
+          PropertyListSerialization.propertyListWithString(merged) as Map;
+      expect(plist.containsKey('UILaunchScreen'), isFalse);
+      expect(plist['UILaunchStoryboardName'], 'LaunchScreen');
+    });
+
+    test('AC-033-3 what a storyboard cannot hold keeps the UILaunchScreen', () {
+      final catalog = flutterCatalog();
+      final launch = storyboard(blue, extra: '<label text="Welcome" id="l"/>');
+      final result = build(launch, catalog);
+      expect(result.launchScreen, isNotNull);
+      expect(
+        Directory(p.join(bundle, 'LaunchScreen.storyboardc')).existsSync(),
+        isFalse,
+      );
+      expect(
+        File(p.join(bundle, 'XCrossLaunchLogo.png')).existsSync(),
+        isFalse,
+      );
+    });
+
+    test('AC-033-4 the switch off keeps the UILaunchScreen', () {
+      final catalog = flutterCatalog();
+      final result = build(storyboard(blue), catalog, storyboard: false);
+      expect(result.launchScreen, isNotNull);
+      expect(
+        Directory(p.join(bundle, 'LaunchScreen.storyboardc')).existsSync(),
+        isFalse,
+      );
+    });
   });
 }
 
