@@ -16,5 +16,6 @@ export 'layouts/app_shell.dart';
 export 'layouts/workspace_layout.dart';
 export 'theme/x_theme.dart';
 export 'tokens/colors.dart';
+export 'tokens/dimensions.dart';
 export 'tokens/spacing.dart';
 export 'tokens/typography.dart';

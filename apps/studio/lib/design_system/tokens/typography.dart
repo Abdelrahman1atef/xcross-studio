@@ -66,4 +66,71 @@ abstract final class XType {
     height: 19 / 12.5,
     fontWeight: FontWeight.w400,
   );
+
+  // Workspace styles (Xcode-inspired design system §2.3). Inter ships only
+  // as a licensed bundled font or falls back to the system UI font; Apple's
+  // San Francisco is never referenced.
+
+  /// Main toolbar: 13 px, weight 500.
+  static const toolbar = TextStyle(
+    fontFamily: ui,
+    fontFamilyFallback: _fallback,
+    fontSize: 13,
+    height: 18 / 13,
+    fontWeight: FontWeight.w500,
+  );
+
+  /// Panel headings: 12 px, weight 600.
+  static const panelHeading = TextStyle(
+    fontFamily: ui,
+    fontFamilyFallback: _fallback,
+    fontSize: 12,
+    height: 16 / 12,
+    fontWeight: FontWeight.w600,
+  );
+
+  /// Tree rows and compact body: 12.5 px, weight 400.
+  static const treeRow = TextStyle(
+    fontFamily: ui,
+    fontFamilyFallback: _fallback,
+    fontSize: 12.5,
+    height: 18 / 12.5,
+    fontWeight: FontWeight.w400,
+  );
+
+  /// Inspector labels: 12 px, weight 400.
+  static const inspectorLabel = TextStyle(
+    fontFamily: ui,
+    fontFamilyFallback: _fallback,
+    fontSize: 12,
+    height: 16 / 12,
+    fontWeight: FontWeight.w400,
+  );
+
+  /// Status strip metadata: 11.5 px, weight 500.
+  static const statusMeta = TextStyle(
+    fontFamily: ui,
+    fontFamilyFallback: _fallback,
+    fontSize: 11.5,
+    height: 16 / 11.5,
+    fontWeight: FontWeight.w500,
+  );
+
+  /// Editor text: mono 13 px (the user's size preference scales it).
+  static const editor = TextStyle(
+    fontFamily: code,
+    fontFamilyFallback: _codeFallback,
+    fontSize: 13,
+    height: 20 / 13,
+    fontWeight: FontWeight.w400,
+  );
+
+  /// Console text: mono 12.5 px.
+  static const console = TextStyle(
+    fontFamily: code,
+    fontFamilyFallback: _codeFallback,
+    fontSize: 12.5,
+    height: 19 / 12.5,
+    fontWeight: FontWeight.w400,
+  );
 }

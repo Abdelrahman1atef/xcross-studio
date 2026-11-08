@@ -6,15 +6,19 @@ import '../tokens/typography.dart';
 
 /// The design tokens on the widget tree: `XTheme.of(context).colors`.
 class XTheme extends ThemeExtension<XTheme> {
-  const XTheme(this.colors);
+  const XTheme(this.colors, [this.syntax = XSyntaxColors.dark]);
 
   final XColors colors;
+
+  /// Editor syntax palette matching [colors]' brightness.
+  final XSyntaxColors syntax;
 
   static XTheme of(BuildContext context) =>
       Theme.of(context).extension<XTheme>() ?? const XTheme(XColors.dark);
 
   @override
-  XTheme copyWith({XColors? colors}) => XTheme(colors ?? this.colors);
+  XTheme copyWith({XColors? colors, XSyntaxColors? syntax}) =>
+      XTheme(colors ?? this.colors, syntax ?? this.syntax);
 
   @override
   XTheme lerp(covariant XTheme? other, double t) =>
@@ -22,12 +26,14 @@ class XTheme extends ThemeExtension<XTheme> {
 }
 
 /// The dark theme (default), from the doc's exact tokens.
-ThemeData xDarkTheme() => _theme(XColors.dark, Brightness.dark);
+ThemeData xDarkTheme() =>
+    _theme(XColors.dark, XSyntaxColors.dark, Brightness.dark);
 
 /// The light theme (derived tokens; not part of the design document).
-ThemeData xLightTheme() => _theme(XColors.light, Brightness.light);
+ThemeData xLightTheme() =>
+    _theme(XColors.light, XSyntaxColors.light, Brightness.light);
 
-ThemeData _theme(XColors c, Brightness brightness) {
+ThemeData _theme(XColors c, XSyntaxColors syntax, Brightness brightness) {
   final scheme = ColorScheme(
     brightness: brightness,
     primary: c.primary,
@@ -78,7 +84,9 @@ ThemeData _theme(XColors c, Brightness brightness) {
     textTheme: text,
     dividerColor: c.border,
     dividerTheme: DividerThemeData(color: c.border, thickness: 1, space: 1),
-    extensions: [XTheme(c)],
+    focusColor: c.focus,
+    hoverColor: c.surfaceHover,
+    extensions: [XTheme(c, syntax)],
     splashFactory: NoSplash.splashFactory,
     cardTheme: CardThemeData(
       color: c.surface,

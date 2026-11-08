@@ -33,22 +33,8 @@ double contrast(Color a, Color b) {
 }
 
 void main() {
-  group('AC-013-11 tokens', () {
-    test('dark tokens are the design document values', () {
-      const c = XColors.dark;
-      expect(c.canvas, const Color(0xFF0B1020));
-      expect(c.surface, const Color(0xFF141B2D));
-      expect(c.surfaceElevated, const Color(0xFF1D2840));
-      expect(c.border, const Color(0xFF2F3D56));
-      expect(c.primary, const Color(0xFF4F8CFF));
-      expect(c.primaryHover, const Color(0xFF76A6FF));
-      expect(c.success, const Color(0xFF36C89B));
-      expect(c.warning, const Color(0xFFF4B860));
-      expect(c.error, const Color(0xFFF27676));
-      expect(c.textPrimary, const Color(0xFFF2F6FF));
-      expect(c.textSecondary, const Color(0xFFA6B5CA));
-      expect(c.textMuted, const Color(0xFF8593AA));
-      expect(c.console, const Color(0xFF090E19));
+  group('AC-013-11 shared tokens (palette values: AC-029 tokens_test)', () {
+    test('shared spacing, radii and type scale are unchanged', () {
       expect(
         [XSpace.s1, XSpace.s2, XSpace.s3, XSpace.s4, XSpace.s6, XSpace.s8],
         [4, 8, 12, 16, 24, 32],
@@ -68,10 +54,15 @@ void main() {
           palette.surface,
           palette.surfaceElevated,
         ]) {
+          // textMuted is placeholder/inactive metadata; see tokens_test.dart.
+          expect(
+            contrast(palette.textMuted, background),
+            greaterThanOrEqualTo(3.0),
+            reason: 'textMuted on $background',
+          );
           for (final text in [
             palette.textPrimary,
             palette.textSecondary,
-            palette.textMuted,
             palette.success,
             palette.warning,
             palette.error,
