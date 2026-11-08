@@ -68,6 +68,7 @@ Future<Studio> pumpStudio(
   Settings? settings,
   String? authStatus,
   SigningAccounts? signingAccounts,
+  Map<String, String> accountDetails = const {},
 }) async {
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -80,6 +81,11 @@ Future<Studio> pumpStudio(
       if (command == 'flutter doctor') doctor.forEach(process.out);
       if (command == 'auth status --json' && authStatus != null) {
         process.out(authStatus);
+      }
+      if (command.startsWith('auth account --json')) {
+        // Feature 031: the reply is scripted per Key ID.
+        final keyId = arguments[arguments.indexOf('--key-id') + 1];
+        if (accountDetails[keyId] case final reply?) process.out(reply);
       }
       await process.exit(0);
     },

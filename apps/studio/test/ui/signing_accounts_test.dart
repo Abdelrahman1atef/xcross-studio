@@ -73,13 +73,17 @@ void main() {
   });
   tearDown(() => temp.deleteSync(recursive: true));
 
-  Future<Studio> open(WidgetTester tester) async {
+  Future<Studio> open(
+    WidgetTester tester, {
+    Map<String, String> details = const {},
+  }) async {
     final studio = await pumpStudio(
       tester,
       doctor: _doctor,
       authStatus: _status(p.join(temp.path, 'AuthKey_KEYAAA.p8')),
       settings: Settings()..wizardDismissed = true,
       signingAccounts: accounts,
+      accountDetails: details,
     );
     await go(tester, 'Signing');
     await settle(tester, 5);
@@ -112,7 +116,7 @@ void main() {
     final switched = studio.launcher.starts
         .skip(before)
         .map((s) => s.arguments)
-        .firstWhere((a) => a.first == 'auth');
+        .firstWhere((a) => a.first == 'auth' && a[1] != 'account');
     expect(switched, [
       'auth',
       '--issuer-id',
@@ -173,14 +177,14 @@ void main() {
 
   testWidgets('AC-030-12 renaming changes the name and note', (tester) async {
     await open(tester);
-    await tester.tap(find.byTooltip('Rename').at(1));
+    await tester.tap(find.byTooltip('Edit account').at(1));
     await settle(tester, 3);
     final fields = find.descendant(
       of: find.byType(AlertDialog),
       matching: find.byType(TextField),
     );
     await tester.enterText(fields.at(0), 'Car wash');
-    await tester.enterText(fields.at(1), 'Prod team');
+    await tester.enterText(fields.at(4), 'Prod team');
     await tester.tap(_button('Save'));
     await settle(tester, 12); // the dialog's closing animation
     final renamed = accounts.accounts.firstWhere((a) => a.keyId == 'KEYBBB');
@@ -223,5 +227,103 @@ void main() {
     );
     expect(find.text('Accounts'), findsOneWidget);
     expect(find.text('In use'), findsOneWidget);
+  });
+
+  String reply({String? holder, String? team, String? problem}) => jsonEncode({
+    'v': 1,
+    'type': 'asc_account',
+    'holderName': holder,
+    'teamId': team,
+    'problem': problem,
+  });
+
+  testWidgets('AC-031-6 each row shows who holds the account, from Apple', (
+    tester,
+  ) async {
+    final studio = await open(
+      tester,
+      details: {
+        'KEYAAA': reply(holder: 'Test Holder A', team: 'TEAMAAAAAA'),
+        'KEYBBB': reply(holder: 'Test Holder B'),
+      },
+    );
+    expect(find.text('Account Holder: Test Holder A'), findsOneWidget);
+    expect(find.text('Account Holder: Test Holder B'), findsOneWidget);
+    expect(find.text('Team ID: TEAMAAAAAA'), findsOneWidget);
+
+    // The lookup used each account's own key and never switched the saved
+    // sign-in: no plain `auth --key-id ...` ran.
+    final lookups = studio.launcher.starts
+        .map((s) => s.arguments)
+        .where((a) => a.length > 1 && a[0] == 'auth' && a[1] == 'account')
+        .toList();
+    expect(lookups, hasLength(2));
+    expect(lookups.map((a) => a[a.indexOf('--key-id') + 1]).toSet(), {
+      'KEYAAA',
+      'KEYBBB',
+    });
+    expect(
+      studio.launcher.starts.where(
+        (s) =>
+            s.arguments.first == 'auth' &&
+            s.arguments.length > 1 &&
+            s.arguments[1] != 'account' &&
+            s.arguments[1] != 'status',
+      ),
+      isEmpty,
+    );
+    // Apple is asked once per account, not on every rebuild; the account whose
+    // key file is gone is not asked at all.
+    await settle(tester, 5);
+    expect(
+      studio.commands.where((c) => c.startsWith('auth account')),
+      hasLength(2),
+    );
+    // What was found is kept for the next start.
+    expect(
+      accounts.accounts.firstWhere((a) => a.keyId == 'KEYAAA').holderName,
+      'Test Holder A',
+    );
+  });
+
+  testWidgets('AC-031-7 a key that may not read the holder says so', (
+    tester,
+  ) async {
+    await open(
+      tester,
+      details: {
+        'KEYAAA': reply(problem: 'Only a team key with the Admin role can.'),
+      },
+    );
+    expect(
+      find.text('Only a team key with the Admin role can.'),
+      findsOneWidget,
+    );
+    expect(find.byTooltip('Ask Apple who holds this account'), findsWidgets);
+  });
+
+  testWidgets('AC-031-8 company and team ID are typed once and shown', (
+    tester,
+  ) async {
+    await open(tester);
+    await tester.tap(find.byTooltip('Edit account').at(1));
+    await settle(tester, 3);
+    final fields = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(fields.at(1), 'Typed Holder');
+    await tester.enterText(fields.at(2), 'Example Company');
+    await tester.enterText(fields.at(3), 'TEAMTYPED1');
+    await tester.tap(_button('Save'));
+    await settle(tester, 12);
+    final saved = accounts.accounts.firstWhere((a) => a.keyId == 'KEYBBB');
+    expect(
+      (saved.holderName, saved.company, saved.teamId),
+      ('Typed Holder', 'Example Company', 'TEAMTYPED1'),
+    );
+    expect(find.text('Account Holder: Typed Holder'), findsOneWidget);
+    expect(find.text('Company: Example Company'), findsOneWidget);
+    expect(find.text('Team ID: TEAMTYPED1'), findsOneWidget);
   });
 }

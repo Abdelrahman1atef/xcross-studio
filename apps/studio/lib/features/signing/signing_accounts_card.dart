@@ -58,14 +58,21 @@ class _SigningAccountsCardState extends State<SigningAccountsCard> {
     });
   }
 
-  Future<void> _rename(SigningAccount account) async {
+  Future<void> _edit(SigningAccount account) async {
     final accounts = Services.of(context).signingAccounts;
-    final result = await showDialog<({String name, String note})>(
+    final result = await showDialog<_AccountEdit>(
       context: context,
-      builder: (context) => _RenameDialog(account),
+      builder: (context) => _EditDialog(account),
     );
     if (result != null) {
-      accounts.rename(account, result.name, note: result.note);
+      accounts.edit(
+        account,
+        name: result.name,
+        note: result.note,
+        holderName: result.holder,
+        company: result.company,
+        teamId: result.teamId,
+      );
     }
   }
 
@@ -102,6 +109,17 @@ class _SigningAccountsCardState extends State<SigningAccountsCard> {
       builder: (context, _) {
         final accounts = services.signingAccounts.accounts;
         if (accounts.isEmpty) return const SizedBox.shrink();
+        // Apple is asked once per account about who holds it (feature 031).
+        if (accounts.any(
+          (a) =>
+              a.holderName == null &&
+              !services.signingAccounts.attempted(a) &&
+              a.fileExists,
+        )) {
+          WidgetsBinding.instance.addPostFrameCallback(
+            (_) => services.lookupMissingAccountDetails(),
+          );
+        }
         final saved = services.readiness.savedSignIn?.apiKey;
         final switching = _switch?.isRunning ?? false;
         final failed = _switch?.status == JobStatus.failed;
@@ -121,8 +139,11 @@ class _SigningAccountsCardState extends State<SigningAccountsCard> {
                   busy: switching && _switchingKeyId == account.keyId,
                   switching: switching,
                   when: _when(account.lastUsed),
+                  looking: services.signingAccounts.isLooking(account),
+                  problem: services.signingAccounts.problemFor(account),
                   onUse: () => _use(account),
-                  onRename: () => _rename(account),
+                  onEdit: () => _edit(account),
+                  onRefresh: () => services.lookupAccountDetails(account),
                   onRemove: () => _remove(account),
                 ),
               if (failed && _switch != null) ...[
@@ -155,8 +176,11 @@ class _AccountRow extends StatelessWidget {
     required this.busy,
     required this.switching,
     required this.when,
+    required this.looking,
+    required this.problem,
     required this.onUse,
-    required this.onRename,
+    required this.onEdit,
+    required this.onRefresh,
     required this.onRemove,
   });
 
@@ -165,8 +189,11 @@ class _AccountRow extends StatelessWidget {
   final bool busy;
   final bool switching;
   final String when;
+  final bool looking;
+  final String? problem;
   final VoidCallback onUse;
-  final VoidCallback onRename;
+  final VoidCallback onEdit;
+  final VoidCallback onRefresh;
   final VoidCallback onRemove;
 
   @override
@@ -208,6 +235,29 @@ class _AccountRow extends StatelessWidget {
                     ],
                   ],
                 ),
+                // The account itself, not any app (feature 031).
+                if (account.holderName case final holder?)
+                  Text(
+                    'Account Holder: $holder',
+                    style: TextStyle(color: colors.textPrimary),
+                  )
+                else
+                  Text(
+                    looking
+                        ? 'Asking Apple who holds this account…'
+                        : problem ?? 'Account Holder not known yet.',
+                    style: TextStyle(color: colors.textSecondary),
+                  ),
+                if (account.company case final company?)
+                  Text(
+                    'Company: $company',
+                    style: TextStyle(color: colors.textPrimary),
+                  ),
+                if (account.teamId case final team?)
+                  Text(
+                    'Team ID: $team',
+                    style: TextStyle(color: colors.textSecondary),
+                  ),
                 Text(details, style: TextStyle(color: colors.textSecondary)),
                 if (account.note case final note?)
                   Text(note, style: TextStyle(color: colors.textSecondary)),
@@ -233,10 +283,16 @@ class _AccountRow extends StatelessWidget {
                   : null,
               onPressed: missing || switching ? null : onUse,
             ),
+          if (account.holderName == null && !missing && !looking)
+            XIconButton(
+              icon: Icons.refresh,
+              tooltip: 'Ask Apple who holds this account',
+              onPressed: onRefresh,
+            ),
           XIconButton(
             icon: Icons.edit_outlined,
-            tooltip: 'Rename',
-            onPressed: onRename,
+            tooltip: 'Edit account',
+            onPressed: onEdit,
           ),
           XIconButton(
             icon: Icons.delete_outline,
@@ -250,44 +306,78 @@ class _AccountRow extends StatelessWidget {
   }
 }
 
+typedef _AccountEdit = ({
+  String name,
+  String holder,
+  String company,
+  String teamId,
+  String note,
+});
+
 /// Owns its text controllers, so they live as long as the dialog's closing
 /// animation needs them.
-class _RenameDialog extends StatefulWidget {
-  const _RenameDialog(this.account);
+class _EditDialog extends StatefulWidget {
+  const _EditDialog(this.account);
 
   final SigningAccount account;
 
   @override
-  State<_RenameDialog> createState() => _RenameDialogState();
+  State<_EditDialog> createState() => _EditDialogState();
 }
 
-class _RenameDialogState extends State<_RenameDialog> {
+class _EditDialogState extends State<_EditDialog> {
   late final _name = TextEditingController(text: widget.account.name);
+  late final _holder = TextEditingController(
+    text: widget.account.holderName ?? '',
+  );
+  late final _company = TextEditingController(
+    text: widget.account.company ?? '',
+  );
+  late final _team = TextEditingController(text: widget.account.teamId ?? '');
   late final _note = TextEditingController(text: widget.account.note ?? '');
 
   @override
   void dispose() {
     _name.dispose();
+    _holder.dispose();
+    _company.dispose();
+    _team.dispose();
     _note.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: const Text('Rename account'),
+    title: const Text('Edit account'),
     content: SizedBox(
       width: 380,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          XTextField(controller: _name, label: 'Name'),
-          const SizedBox(height: XSpace.s3),
-          XTextField(
-            controller: _note,
-            label: 'Note (optional)',
-            hint: 'For example the team or the app it signs.',
-          ),
-        ],
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            XTextField(controller: _name, label: 'Name'),
+            const SizedBox(height: XSpace.s3),
+            XTextField(
+              controller: _holder,
+              label: 'Account Holder',
+              hint: 'Filled in from Apple when the key may read it.',
+            ),
+            const SizedBox(height: XSpace.s3),
+            XTextField(
+              controller: _company,
+              label: 'Company',
+              hint: 'Apple does not give this one; type it once.',
+            ),
+            const SizedBox(height: XSpace.s3),
+            XTextField(controller: _team, label: 'Team ID'),
+            const SizedBox(height: XSpace.s3),
+            XTextField(
+              controller: _note,
+              label: 'Note (optional)',
+              hint: 'For example the team or the app it signs.',
+            ),
+          ],
+        ),
       ),
     ),
     actions: [
@@ -298,8 +388,13 @@ class _RenameDialogState extends State<_RenameDialog> {
       ),
       XButton(
         label: 'Save',
-        onPressed: () =>
-            Navigator.pop(context, (name: _name.text, note: _note.text)),
+        onPressed: () => Navigator.pop(context, (
+          name: _name.text,
+          holder: _holder.text,
+          company: _company.text,
+          teamId: _team.text,
+          note: _note.text,
+        )),
       ),
     ],
   );

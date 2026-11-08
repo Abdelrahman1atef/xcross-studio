@@ -21,6 +21,9 @@ class SigningAccount {
     this.issuerId,
     this.note,
     this.lastUsed,
+    this.holderName,
+    this.company,
+    this.teamId,
   });
 
   factory SigningAccount.fromJson(Map<String, Object?> json) {
@@ -40,6 +43,9 @@ class SigningAccount {
       issuerId: text('issuerId'),
       note: text('note'),
       lastUsed: DateTime.tryParse(text('lastUsed') ?? ''),
+      holderName: text('holderName'),
+      company: text('company'),
+      teamId: text('teamId'),
     );
   }
 
@@ -52,6 +58,13 @@ class SigningAccount {
   final String? issuerId;
   final String? note;
   final DateTime? lastUsed;
+
+  /// The account itself, as opposed to any one app (feature 031): the Account
+  /// Holder Apple reports (or the user typed), the company name the user
+  /// typed (the API cannot return it) and the team ID.
+  final String? holderName;
+  final String? company;
+  final String? teamId;
 
   bool get isIndividual => issuerId == null;
 
@@ -73,7 +86,48 @@ class SigningAccount {
     issuerId: issuerId,
     note: note ?? this.note,
     lastUsed: lastUsed ?? this.lastUsed,
+    holderName: holderName,
+    company: company,
+    teamId: teamId,
   );
+
+  /// Sets the descriptive fields exactly as given; a blank one is cleared.
+  SigningAccount withDetails({
+    required String name,
+    String? note,
+    String? holderName,
+    String? company,
+    String? teamId,
+  }) {
+    String? clean(String? value) =>
+        value == null || value.trim().isEmpty ? null : value.trim();
+    return SigningAccount(
+      name: name,
+      keyId: keyId,
+      privateKeyPath: privateKeyPath,
+      issuerId: issuerId,
+      note: clean(note),
+      lastUsed: lastUsed,
+      holderName: clean(holderName),
+      company: clean(company),
+      teamId: clean(teamId),
+    );
+  }
+
+  /// Fills only the fields that are empty: what Apple reports never replaces
+  /// something the user typed.
+  SigningAccount withFetched({String? holderName, String? teamId}) =>
+      SigningAccount(
+        name: name,
+        keyId: keyId,
+        privateKeyPath: privateKeyPath,
+        issuerId: issuerId,
+        note: note,
+        lastUsed: lastUsed,
+        holderName: this.holderName ?? holderName,
+        company: company,
+        teamId: this.teamId ?? teamId,
+      );
 
   Map<String, Object?> toJson() => {
     'name': name,
@@ -82,6 +136,9 @@ class SigningAccount {
     'privateKeyPath': privateKeyPath,
     'note': note,
     'lastUsed': lastUsed?.toUtc().toIso8601String(),
+    'holderName': holderName,
+    'company': company,
+    'teamId': teamId,
   };
 }
 
@@ -222,6 +279,76 @@ class SigningAccounts extends ChangeNotifier {
       note: note?.trim(),
     );
     _changed();
+  }
+
+  /// Saves what the user typed for the account (feature 031); blank clears.
+  void edit(
+    SigningAccount account, {
+    required String name,
+    String? note,
+    String? holderName,
+    String? company,
+    String? teamId,
+  }) {
+    final index = _accounts.indexWhere((a) => a.keyId == account.keyId);
+    final trimmed = name.trim();
+    if (index < 0 || trimmed.isEmpty) return;
+    _accounts[index] = _accounts[index].withDetails(
+      name: trimmed,
+      note: note,
+      holderName: holderName,
+      company: company,
+      teamId: teamId,
+    );
+    _changed();
+  }
+
+  final Set<String> _attempted = {};
+  final Set<String> _looking = {};
+  final Map<String, String> _problems = {};
+
+  /// Whether Apple has been asked about [account] since Studio started.
+  bool attempted(SigningAccount account) => _attempted.contains(account.keyId);
+
+  bool isLooking(SigningAccount account) => _looking.contains(account.keyId);
+
+  /// Why Apple's answer had no holder, from the last lookup this session.
+  String? problemFor(SigningAccount account) => _problems[account.keyId];
+
+  void lookupStarted(SigningAccount account) {
+    _attempted.add(account.keyId);
+    _looking.add(account.keyId);
+    _problems.remove(account.keyId);
+    notifyListeners();
+  }
+
+  /// Records Apple's answer: the fields the user left empty are filled.
+  void lookupFinished(
+    SigningAccount account, {
+    String? holderName,
+    String? teamId,
+    String? problem,
+  }) {
+    _looking.remove(account.keyId);
+    if (problem != null && holderName == null) {
+      _problems[account.keyId] = problem;
+    }
+    final index = _accounts.indexWhere((a) => a.keyId == account.keyId);
+    if (index >= 0) {
+      final fetched = _accounts[index].withFetched(
+        holderName: holderName,
+        teamId: teamId,
+      );
+      final changed =
+          fetched.holderName != _accounts[index].holderName ||
+          fetched.teamId != _accounts[index].teamId;
+      _accounts[index] = fetched;
+      if (changed) {
+        _changed();
+        return;
+      }
+    }
+    notifyListeners();
   }
 
   /// Forgets the account. The `.p8` file and Apple's key are not touched.

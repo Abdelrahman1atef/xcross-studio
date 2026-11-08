@@ -116,6 +116,10 @@ void main() {
         'privateKeyPath',
         'note',
         'lastUsed',
+        // Feature 031: who holds the account; text only, no secrets.
+        'holderName',
+        'company',
+        'teamId',
       });
 
       final reloaded = await SigningAccounts.load(temp.path);
@@ -163,5 +167,78 @@ void main() {
         .writeAsStringSync('{not json');
     final accounts = await SigningAccounts.load(temp.path);
     expect(accounts.accounts, isEmpty);
+  });
+
+  test(
+    'AC-031-9 what Apple reports fills empty fields and never replaces typed '
+    'ones',
+    () async {
+      final accounts = await SigningAccounts.load(temp.path);
+      accounts.remember(_key('DET1'));
+      final account = accounts.accounts.single;
+
+      accounts.lookupStarted(account);
+      expect(accounts.isLooking(account), isTrue);
+      expect(accounts.attempted(account), isTrue);
+      accounts.lookupFinished(
+        account,
+        holderName: 'Holder From Apple',
+        teamId: 'TEAMAPPLE1',
+      );
+      expect(accounts.isLooking(account), isFalse);
+      var now = accounts.accounts.single;
+      expect((now.holderName, now.teamId), ('Holder From Apple', 'TEAMAPPLE1'));
+
+      // The user types over it; a later answer from Apple does not undo that.
+      accounts.edit(
+        now,
+        name: 'Team A',
+        holderName: 'Typed Holder',
+        company: 'Example Company',
+        teamId: '',
+      );
+      now = accounts.accounts.single;
+      expect(
+        (now.holderName, now.company, now.teamId),
+        ('Typed Holder', 'Example Company', null),
+      );
+      accounts.lookupFinished(now, holderName: 'Someone Else', teamId: 'T2');
+      now = accounts.accounts.single;
+      expect(
+        (now.holderName, now.company),
+        ('Typed Holder', 'Example Company'),
+      );
+      expect(now.teamId, 'T2'); // was empty, so Apple's value fills it
+
+      // A refused lookup is a note for this session only.
+      accounts.lookupStarted(now);
+      accounts.lookupFinished(now, problem: 'Needs an Admin key.');
+      expect(accounts.problemFor(now), 'Needs an Admin key.');
+
+      // Kept for the next start.
+      await accounts.saved;
+      final reloaded = await SigningAccounts.load(temp.path);
+      final again = reloaded.accounts.single;
+      expect(
+        (again.holderName, again.company, again.teamId),
+        ('Typed Holder', 'Example Company', 'T2'),
+      );
+      expect(reloaded.problemFor(again), isNull);
+    },
+  );
+
+  test('AC-031-10 details survive the key being used again', () {
+    final accounts = SigningAccounts()..remember(_key('DET2'));
+    accounts.edit(
+      accounts.accounts.single,
+      name: 'Team B',
+      company: 'Example Company',
+    );
+    accounts.remember(
+      _key('DET2'),
+      now: DateTime.now().add(const Duration(hours: 1)),
+    );
+    expect(accounts.accounts.single.company, 'Example Company');
+    expect(accounts.accounts.single.name, 'Team B');
   });
 }

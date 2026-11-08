@@ -454,6 +454,23 @@ abstract final class XcrossCommands {
     privateKeyPath,
   ];
 
+  /// studio: 031 — whose account a key is, asked of Apple with that key; the
+  /// saved sign-in is not touched.
+  static List<String> authAccount({
+    String? issuerId,
+    required String keyId,
+    required String privateKeyPath,
+  }) => [
+    'auth',
+    'account',
+    '--json',
+    if (_set(issuerId)) ...['--issuer-id', issuerId!.trim()],
+    '--key-id',
+    keyId.trim(),
+    '--private-key',
+    privateKeyPath,
+  ];
+
   static List<String> authClean() => const ['auth', 'clean'];
 
   /// studio: 026 — what is saved about signing in; reads files only.

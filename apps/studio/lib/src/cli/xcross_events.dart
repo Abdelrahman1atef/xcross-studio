@@ -77,6 +77,8 @@ sealed class XcrossEvent {
       'plugin_status' => PluginStatusReport.fromJson(json),
       // Feature 026: how the user signed in.
       'auth_status' => AuthStatusReport.fromJson(json),
+      // Feature 031: whose account a key belongs to.
+      'asc_account' => AccountDetailsReport.fromJson(json),
       'done' => BuildDone(
         json['exitCode'] is int ? json['exitCode']! as int : 1,
       ),
@@ -1040,6 +1042,25 @@ class AuthStatusReport extends XcrossEvent {
   final String? appStoreBuilds;
   final SavedAppleId? appleId;
   final SavedApiKey? apiKey;
+}
+
+/// `asc_account`: `xcross auth account --json` (feature 031). What Apple says
+/// about the account behind a key; the company name is not available.
+class AccountDetailsReport extends XcrossEvent {
+  const AccountDetailsReport({this.holderName, this.teamId, this.problem});
+
+  factory AccountDetailsReport.fromJson(Map<String, Object?> json) =>
+      AccountDetailsReport(
+        holderName: _string(json['holderName']),
+        teamId: _string(json['teamId']),
+        problem: _string(json['problem']),
+      );
+
+  final String? holderName;
+  final String? teamId;
+
+  /// Why the holder could not be read.
+  final String? problem;
 }
 
 /// The saved Apple ID session, without its token.

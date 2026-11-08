@@ -239,4 +239,40 @@ void main() {
       expect((json['appleId']! as Map)['problem'], isNotNull);
     });
   });
+
+  group('AC-031-5 xcross auth account', () {
+    test(
+      'needs a key ID and a key file, and asks Apple for nothing else',
+      () async {
+        await expectLater(run(['account']), throwsA(isA<XcrossError>()));
+        await expectLater(
+          run(['account', '--key-id', 'KEY123']),
+          throwsA(isA<XcrossError>()),
+        );
+        await expectLater(
+          run([
+            'account',
+            '--key-id',
+            'KEY123',
+            '--private-key',
+            fixture.path('missing.p8'),
+          ]),
+          throwsA(
+            isA<XcrossError>().having(
+              (e) => '$e',
+              'message',
+              contains('No file'),
+            ),
+          ),
+        );
+      },
+    );
+
+    test('--json stays refused for other commands', () async {
+      await expectLater(
+        run(['--key-id', 'K', '--json']),
+        throwsA(isA<XcrossError>()),
+      );
+    });
+  });
 }

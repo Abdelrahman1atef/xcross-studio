@@ -8,6 +8,7 @@ import 'dart:io';
 import 'package:apple_developer_kit/host/shared/adi/loader/loader.dart';
 import 'package:apple_developer_kit/host/shared/apple_host_services.dart';
 import 'package:apple_developer_kit/shared/adi/apk_fetch.dart';
+import 'package:apple_developer_kit/shared/appstoreconnect/asc_api.dart'; // studio: 031
 import 'package:apple_developer_kit/shared/appstoreconnect/asc_client.dart'; // studio: 015
 import 'package:apple_developer_kit/shared/appstoreconnect/asc_config.dart';
 import 'package:apple_developer_kit/shared/appstoreconnect/developer_services_team_discovery_client.dart';
@@ -22,6 +23,7 @@ import 'package:build_cli_annotations/build_cli_annotations.dart';
 import 'package:cli_kit/shared/logging/logging.dart';
 import 'package:http/http.dart' as http;
 import 'package:meta/meta.dart';
+import 'package:studio_ext/shared/auth/account_lookup.dart'; // studio: 031
 import 'package:studio_ext/shared/auth/saved_sign_in.dart'; // studio: 026
 import 'package:xcross/src/shared/auth/signing_availability.dart';
 import 'package:xcross/src/shared/cli/command_prompt.dart';
@@ -131,7 +133,9 @@ final class AuthCommand extends ParsedCommand<AuthArgs, void> {
       _$populateAuthArgsParser(parser)..addFlag(
         'json',
         negatable: false,
-        help: 'With "status": print one JSON object instead of the report.',
+        help:
+            'With "status" or "account": print one JSON object instead of '
+            'the report.',
       );
   @override
   AuthArgs parseOptions(ArgResults results) => _$parseAuthArgsResult(results);
@@ -154,6 +158,8 @@ final class AuthCommand extends ParsedCommand<AuthArgs, void> {
   String get invocation =>
       'xcross auth [arguments]\n'
       '       xcross auth status [--json]\n'
+      '       xcross auth account --key-id <id> --private-key <file> '
+      '[--issuer-id <id>] [--json]\n'
       '       xcross auth clean';
 
   @override
@@ -168,8 +174,12 @@ final class AuthCommand extends ParsedCommand<AuthArgs, void> {
   Future<void> run() {
     final rest = argResults!.rest;
     if (rest case ['status']) return _status(); // studio: 026
+    if (rest case ['account']) return _account(); // studio: 031
     if (argResults!.flag('json')) {
-      throw XcrossError('--json only applies to "xcross auth status".');
+      throw XcrossError(
+        '--json only applies to "xcross auth status" and "xcross auth '
+        'account".',
+      );
     }
     if (rest.isNotEmpty) {
       if (rest case ['clean']) return _clean();
@@ -206,6 +216,52 @@ final class AuthCommand extends ParsedCommand<AuthArgs, void> {
           ? '${jsonEncode(status.toJson())}\n'
           : status.render(),
     );
+  }
+
+  // studio: 031 — whose account a key is, asked of Apple with that key. The
+  // saved sign-in is not touched.
+  Future<void> _account() async {
+    final keyId = options.keyId;
+    final path = options.privateKey;
+    if (!_present(keyId) ||
+        !_present(path) ||
+        (options.issuerIdWasParsed && !_present(options.issuerId))) {
+      throw XcrossError(
+        'Usage: xcross auth account --key-id <id> --private-key <file> '
+        '[--issuer-id <id>]',
+      );
+    }
+    final logicalPath = hostServices.host.paths.context.absolute(path!);
+    if (!hostServices.host.fileSystem.file(logicalPath).existsSync()) {
+      throw XcrossError('No file found at "$path".');
+    }
+    final api = AscApi.fromCredentials(
+      AscCredentials(
+        issuerId: _present(options.issuerId) ? options.issuerId! : '',
+        keyId: keyId!,
+        privateKeyPath: logicalPath,
+        hostServices: hostServices,
+        keyType: _present(options.issuerId)
+            ? AscKeyType.team
+            : AscKeyType.individual,
+      ),
+      httpClient: createHttpClient(),
+    );
+    try {
+      final details = await lookupAccountDetails(api);
+      if (argResults!.flag('json')) {
+        commandPrompt.write('${jsonEncode(details.toJson())}\n');
+      } else {
+        final problem = details.problem;
+        commandPrompt.write(
+          'Account Holder: ${details.holderName ?? 'unknown'}\n'
+          'Team ID: ${details.teamId ?? 'unknown'}\n'
+          '${problem == null ? '' : '$problem\n'}',
+        );
+      }
+    } finally {
+      api.close();
+    }
   }
 
   // ------------------------------------------------------------------ clean

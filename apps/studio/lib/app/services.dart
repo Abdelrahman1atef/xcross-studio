@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 
 import '../src/cli/process_launcher.dart';
 import '../src/cli/cli_capabilities.dart';
+import '../src/cli/xcross_commands.dart';
+import '../src/cli/xcross_events.dart';
 import '../src/host/host_platform.dart';
 import '../src/state/devices.dart';
 import '../src/state/job.dart';
@@ -48,6 +52,46 @@ class StudioServices {
     final key = readiness.savedSignIn?.apiKey;
     if (key != null && readiness.signing.health == Health.ok) {
       signingAccounts.remember(key);
+    }
+  }
+
+  /// studio: 031 — asks Apple, with [account]'s own key, who holds the account.
+  /// The saved sign-in is not touched. A refusal is kept as a note on the row.
+  Future<void> lookupAccountDetails(SigningAccount account) async {
+    if (signingAccounts.isLooking(account)) return;
+    signingAccounts.lookupStarted(account);
+    AccountDetailsReport? report;
+    final job = jobs.background(
+      'Account details',
+      XcrossCommands.authAccount(
+        issuerId: account.issuerId,
+        keyId: account.keyId,
+        privateKeyPath: account.privateKeyPath,
+      ),
+      onEvent: (event) {
+        if (event is AccountDetailsReport) report = event;
+      },
+    );
+    await job.done;
+    signingAccounts.lookupFinished(
+      account,
+      holderName: report?.holderName,
+      teamId: report?.teamId,
+      problem: report == null
+          ? 'Apple could not be asked with this key.'
+          : report!.problem,
+    );
+  }
+
+  /// Looks up each saved account that has no holder yet and has not been
+  /// asked about since Studio started.
+  void lookupMissingAccountDetails() {
+    for (final account in signingAccounts.accounts) {
+      if (account.holderName == null &&
+          !signingAccounts.attempted(account) &&
+          account.fileExists) {
+        unawaited(lookupAccountDetails(account));
+      }
     }
   }
 
