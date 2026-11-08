@@ -79,6 +79,8 @@ sealed class XcrossEvent {
       'auth_status' => AuthStatusReport.fromJson(json),
       // Feature 031: whose account a key belongs to.
       'asc_account' => AccountDetailsReport.fromJson(json),
+      // Feature 032: a fresh iOS project made ready.
+      'ios_prepare' => IosPrepareReport.fromJson(json),
       'done' => BuildDone(
         json['exitCode'] is int ? json['exitCode']! as int : 1,
       ),
@@ -1061,6 +1063,91 @@ class AccountDetailsReport extends XcrossEvent {
 
   /// Why the holder could not be read.
   final String? problem;
+}
+
+/// `ios_prepare`: `xcross ios prepare --json` (feature 032).
+class IosPrepareReport extends XcrossEvent {
+  const IosPrepareReport({
+    this.ready = false,
+    this.steps = const [],
+    this.plugins = const [],
+    this.bundleId,
+    this.deploymentTarget,
+  });
+
+  factory IosPrepareReport.fromJson(Map<String, Object?> json) =>
+      IosPrepareReport(
+        ready: json['ready'] == true,
+        steps: [
+          for (final step in _maps(json['steps']))
+            PrepareStepInfo(
+              id: _string(step['id']) ?? '',
+              title: _string(step['title']) ?? '',
+              state: _string(step['state']) ?? 'ok',
+              detail: _string(step['detail']) ?? '',
+              hint: _string(step['hint']),
+            ),
+        ],
+        plugins: [
+          for (final plugin in _maps(json['plugins']))
+            PreparedPluginInfo(
+              name: _string(plugin['name']) ?? '',
+              version: _string(plugin['version']),
+              kind: _string(plugin['kind']),
+              state: _string(plugin['state']) ?? 'ready',
+              detail: _string(plugin['detail']) ?? '',
+            ),
+        ],
+        bundleId: _string(json['bundleId']),
+        deploymentTarget: _string(json['deploymentTarget']),
+      );
+
+  /// No blocker (a plugin left out does not block).
+  final bool ready;
+  final List<PrepareStepInfo> steps;
+  final List<PreparedPluginInfo> plugins;
+  final String? bundleId;
+  final String? deploymentTarget;
+
+  List<PreparedPluginInfo> get leftOut => [
+    for (final plugin in plugins)
+      if (plugin.state == 'left_out') plugin,
+  ];
+}
+
+/// One step of `ios prepare`: `ok`, `warning` or `failed`.
+class PrepareStepInfo {
+  const PrepareStepInfo({
+    required this.id,
+    required this.title,
+    required this.state,
+    required this.detail,
+    this.hint,
+  });
+
+  final String id;
+  final String title;
+  final String state;
+  final String detail;
+  final String? hint;
+}
+
+/// What a build does with one plugin: `ready`, `drafted`, `left_out` or
+/// `attention`.
+class PreparedPluginInfo {
+  const PreparedPluginInfo({
+    required this.name,
+    required this.state,
+    required this.detail,
+    this.version,
+    this.kind,
+  });
+
+  final String name;
+  final String? version;
+  final String? kind;
+  final String state;
+  final String detail;
 }
 
 /// The saved Apple ID session, without its token.

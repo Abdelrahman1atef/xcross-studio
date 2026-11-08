@@ -556,6 +556,11 @@ abstract final class XcrossCommands {
     bool force = false,
   }) => ['plugin', 'shim', plugin, '--project', project, if (force) '--force'];
 
+  /// studio: 032 — makes a fresh project ready to build and says what a build
+  /// would leave out (runs `flutter pub get` unless [pub] is false).
+  static List<String> iosPrepare({required String project, bool pub = true}) =>
+      ['ios', 'prepare', '--json', '--project', project, if (!pub) '--no-pub'];
+
   /// [command] for display: secrets (`--password`) replaced by `••••`.
   static String display(List<String> command) {
     final shown = <String>[];

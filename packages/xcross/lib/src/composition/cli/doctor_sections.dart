@@ -85,6 +85,7 @@ final class DoctorSections<T extends PlatformHostInterface> {
       _flutterEntrypoint(),
       await _flutterSdk(),
       await _flutterPackages(),
+      _flutterIosProject(), // studio: 032
       ...await _aotCompilers(),
     ];
   }
@@ -227,6 +228,36 @@ final class DoctorSections<T extends PlatformHostInterface> {
     } on Object catch (error) {
       return DoctorCheck.failure('Flutter SDK', '$error');
     }
+  }
+
+  /// studio: 032 - whether the project has what an iOS build starts from; the
+  /// fix for either gap is `xcross ios prepare`, not a Mac.
+  DoctorCheck _flutterIosProject() {
+    final paths = runtime.host.paths.context;
+    final ios = paths.join(projectRoot, 'ios');
+    final hasProject =
+        runtime.host.fileSystem
+            .file(paths.join(ios, 'Runner.xcodeproj', 'project.pbxproj'))
+            .existsSync() ||
+        runtime.host.fileSystem
+            .file(paths.join(ios, 'Runner', 'Info.plist'))
+            .existsSync();
+    if (!hasProject) {
+      return const DoctorCheck.warning(
+        'iOS project',
+        'No ios/ Runner project. Run: flutter create --platforms=ios .',
+      );
+    }
+    if (!_exists('.flutter-plugins-dependencies')) {
+      return const DoctorCheck.warning(
+        'iOS project',
+        'No plugin list yet. Run: xcross ios prepare',
+      );
+    }
+    return const DoctorCheck.success(
+      'iOS project',
+      'Ready. No pod install needed; xcross ios prepare lists each plugin.',
+    );
   }
 
   Future<DoctorCheck> _flutterPackages() async {

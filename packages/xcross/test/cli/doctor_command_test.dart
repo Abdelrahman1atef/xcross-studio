@@ -472,6 +472,52 @@ void main() {
     },
   );
 
+  test(
+    'AC-032-12 the iOS project check says what a fresh app still needs',
+    () async {
+      Future<DoctorCheck> iosCheck(
+        void Function(DoctorServiceFileSystem) setup,
+      ) async {
+        final files = logicalProjectFiles();
+        files.file('/project/pubspec.yaml')
+          ..parent.createSync(recursive: true)
+          ..writeAsStringSync('name: demo');
+        setup(files);
+        final checks = await doctorSections(
+          testRuntime(configuration: XcrossConfig(), fileSystem: files),
+          '/project',
+        ).flutterProject();
+        return checks.singleWhere((check) => check.name == 'iOS project');
+      }
+
+      // No ios/ folder: the fix is flutter create, not a Mac.
+      final none = await iosCheck((_) {});
+      expect(none.status, DoctorStatus.warning);
+      expect(none.message, contains('flutter create --platforms=ios'));
+
+      // An ios/ project but no plugin list yet (pub get has not run).
+      final noList = await iosCheck(
+        (files) => files.file('/project/ios/Runner/Info.plist')
+          ..parent.createSync(recursive: true)
+          ..writeAsStringSync('<plist/>'),
+      );
+      expect(noList.status, DoctorStatus.warning);
+      expect(noList.message, contains('xcross ios prepare'));
+
+      // Both there: ready, with no Podfile, Pods or workspace.
+      final ready = await iosCheck((files) {
+        files.file('/project/ios/Runner/Info.plist')
+          ..parent.createSync(recursive: true)
+          ..writeAsStringSync('<plist/>');
+        files
+            .file('/project/.flutter-plugins-dependencies')
+            .writeAsStringSync('{}');
+      });
+      expect(ready.status, DoctorStatus.success);
+      expect(ready.message, contains('No pod install needed'));
+    },
+  );
+
   test('AC-005-1 device checks reject devices older than iOS 15', () async {
     final fixture = DoctorServiceFixture(
       baseHost: LinuxHost(

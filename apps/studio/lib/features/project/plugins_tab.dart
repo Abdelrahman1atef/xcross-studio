@@ -19,6 +19,10 @@ class PluginsTab extends StatefulWidget {
 class _PluginsTabState extends State<PluginsTab> {
   Job? _shim;
 
+  /// Feature 032: the last "Prepare iOS project" run and what it reported.
+  Job? _prepare;
+  IosPrepareReport? _prepared;
+
   @override
   void initState() {
     super.initState();
@@ -36,6 +40,107 @@ class _PluginsTabState extends State<PluginsTab> {
     setState(() => _shim = job);
     await job.done;
     await services.projectHealth.refresh();
+  }
+
+  Future<void> _prepareProject(String project) async {
+    final services = Services.of(context);
+    IosPrepareReport? report;
+    final job = services.jobs.run(
+      'Prepare iOS project',
+      XcrossCommands.iosPrepare(project: project),
+      onEvent: (event) {
+        if (event is IosPrepareReport) report = event;
+      },
+    );
+    setState(() {
+      _prepare = job;
+      _prepared = null;
+    });
+    await job.done;
+    if (!mounted) return;
+    setState(() => _prepared = report);
+    await services.projectHealth.refresh();
+  }
+
+  static XStatus _stepStatus(String state) => switch (state) {
+    'failed' => XStatus.failed,
+    'warning' => XStatus.warning,
+    _ => XStatus.ready,
+  };
+
+  Widget _prepareCard(String project) {
+    final running = _prepare?.isRunning ?? false;
+    final report = _prepared;
+    final colors = XTheme.of(context).colors;
+    return XCard(
+      title: 'Get this project ready for iOS',
+      subtitle:
+          'No pod install and no Mac needed: plugins are built as Swift '
+          'packages. This runs flutter pub get, writes a draft package for '
+          'each plugin that only has a podspec, and lists what a build would '
+          'leave out, before the long build.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: XButton(
+              label: 'Prepare iOS project',
+              icon: Icons.build_circle_outlined,
+              loading: running,
+              loadingLabel: 'Preparing…',
+              onPressed: running ? null : () => _prepareProject(project),
+            ),
+          ),
+          if (report != null) ...[
+            const SizedBox(height: XSpace.s3),
+            for (final step in report.steps)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    XStatusBadge(
+                      status: _stepStatus(step.state),
+                      label: step.title,
+                      compact: true,
+                    ),
+                    const SizedBox(width: XSpace.s2),
+                    Expanded(
+                      child: Text(
+                        step.hint == null
+                            ? step.detail
+                            : '${step.detail} ${step.hint}',
+                        style: TextStyle(color: colors.textSecondary),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            if (report.leftOut.isNotEmpty) ...[
+              const SizedBox(height: XSpace.s2),
+              XCallout(
+                status: XStatus.warning,
+                title:
+                    'A build leaves out the native code of '
+                    '${report.leftOut.map((plugin) => plugin.name).join(', ')}',
+                children: [
+                  for (final plugin in report.leftOut)
+                    XNote('${plugin.name}: ${plugin.detail}'),
+                ],
+              ),
+            ],
+          ] else if (!running && _prepare?.status == JobStatus.failed) ...[
+            const SizedBox(height: XSpace.s3),
+            XCallout(
+              status: XStatus.failed,
+              title: 'Could not prepare the project',
+              children: [JobDiagnostics(job: _prepare!, limit: 2)],
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   /// Badge for the integration mode.
@@ -89,6 +194,8 @@ class _PluginsTabState extends State<PluginsTab> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            _prepareCard(project), // feature 032
+            const SizedBox(height: XSpace.s3),
             const XCallout(
               title: 'How plugins are built',
               children: [

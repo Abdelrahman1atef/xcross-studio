@@ -18,6 +18,7 @@ import 'package:meta/meta.dart';
 import 'package:studio_ext/shared/appstore/command_exit.dart'; // studio: 019
 import 'package:studio_ext/shared/icons/icons_command.dart'; // studio: 023
 import 'package:studio_ext/shared/inspect/inspect_command.dart'; // studio:
+import 'package:studio_ext/shared/ios/ios_prepare.dart'; // studio: 032
 import 'package:studio_ext/shared/permissions/permissions_command.dart'; // studio: 027
 import 'package:studio_ext/shared/plugins/plugin_command.dart'; // studio: 006
 import 'package:studio_ext/shared/release/release_check_command.dart'; // studio: 018
@@ -226,6 +227,28 @@ abstract final class XcrossCli {
         projectRoot: () => runtime.host.paths.context.current,
         environment: runtime.runner.effectiveEnvironment,
         write: runtime.log.output.write,
+      ),
+      // studio: 032 — `xcross ios prepare`.
+      IosCommand(
+        fileSystem: runtime.host.fileSystem,
+        paths: runtime.host.paths.context,
+        currentDirectory: () => runtime.host.paths.context.current,
+        write: runtime.log.output.write,
+        environment: runtime.runner.effectiveEnvironment,
+        pubGet: (projectRoot) async {
+          final flutter = runtime.host.paths.context.join(
+            await physical.flutterRuntime.resolveFlutterRoot(
+              projectRoot: projectRoot,
+            ),
+            'bin',
+            runtime.runner.hostExecutableName('flutter', extension: '.bat'),
+          );
+          final result = await runtime.runner.run(flutter, const [
+            'pub',
+            'get',
+          ], workingDirectory: projectRoot);
+          return result.exitCode == 0;
+        },
       ),
       // studio: 006 — `xcross plugin list|shim`.
       PluginCommand(
