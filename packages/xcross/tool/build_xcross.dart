@@ -357,7 +357,10 @@ void _validateIdentity(
     return;
   }
   final parsed = XcrossSemver.tryParse(version);
-  if (parsed == null || parsed.isPreRelease) {
+  // studio: XCross Studio releases are upstream's version plus `-xs.N`
+  // (2.0.9-xs.2): a fork release, not a pre-release.
+  final forkRelease = RegExp(r'^xs\.\d+$').hasMatch(parsed?.preRelease ?? '');
+  if (parsed == null || (parsed.isPreRelease && !forkRelease)) {
     throw ArgumentError.value(
       version,
       'encodedVersion',

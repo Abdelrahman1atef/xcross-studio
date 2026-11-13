@@ -415,6 +415,42 @@ void main() {
       expect(File(generatedPath).readAsStringSync(), original);
     },
   );
+
+  test(
+    testOn: '!windows',
+    'studio: a fork release (v1.2.1-xs.3) builds; other pre-releases do not',
+    () async {
+      seed();
+      String? generatedDuringBuild;
+      Future<int> release(String tag) => buildXcross(
+        output: fixtureSink(),
+        errors: fixtureSink(),
+        runner: fixtureRunner(
+          LinuxHost(architecture: 'x64'),
+          log: fixtureLog(),
+        ),
+        dartExecutable: '/fixture/dart',
+        packageRoot: sandbox,
+        encodedVersion: Uri.encodeComponent(tag),
+        released: true,
+        runBuild: (executable, arguments, {required workingDirectory}) async {
+          generatedDuringBuild = File(generatedPath).readAsStringSync();
+          return 0;
+        },
+      );
+
+      expect(await release('v1.2.1-xs.3'), 0);
+      expect(generatedDuringBuild, contains('"1.2.1-xs.3"'));
+      for (final tag in ['v1.2.1-dev', 'v1.2.1-xs', 'v1.2.1-xs.3.1']) {
+        await expectLater(() => release(tag), throwsArgumentError, reason: tag);
+      }
+      await expectLater(
+        () => release('v1.2.2-xs.1'),
+        throwsArgumentError,
+        reason: 'the core still matches pubspec.yaml',
+      );
+    },
+  );
 }
 
 @internal
