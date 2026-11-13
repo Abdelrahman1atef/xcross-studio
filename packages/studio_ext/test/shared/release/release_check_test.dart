@@ -7,6 +7,8 @@ import 'package:args/command_runner.dart';
 import 'package:cli_kit/shared/errors/errors.dart';
 import 'package:path/path.dart' as p;
 import 'package:studio_ext/shared/release/release_check_command.dart';
+import 'package:studio_ext/src/shared/assets/car_writer.dart'; // studio: 004
+import 'package:studio_ext/src/shared/assets/rendition.dart'; // studio: 004
 import 'package:studio_ext/src/shared/inspect/inspect_source.dart';
 import 'package:studio_ext/src/shared/release/macho_build_version.dart';
 import 'package:studio_ext/src/shared/release/release_checks.dart';
@@ -1026,6 +1028,111 @@ void main() {
           ),
         ),
       );
+    });
+  });
+
+  // studio: 004 — the Nov 6 engine wrote Assets.car without the icon set
+  // records, and App Store Connect showed a placeholder icon.
+  group('release.icon_catalog', () {
+    Rendition icon(
+      AssetIdiom idiom,
+      AssetScale scale,
+      double? points,
+      int px,
+    ) => Rendition(
+      name: 'AppIcon',
+      idiom: idiom,
+      scale: scale,
+      iconPoints: points,
+      body: BitmapBody(
+        width: px,
+        height: px,
+        pixelsBgra: Uint8List(px * px * 4),
+        colorSpaceId: 1,
+        kind: BitmapKind.appIcon,
+        renditionName: 'AppIcon${px}x$px.png',
+      ),
+    );
+
+    Uint8List car({bool marketing = true, bool iconSets = true}) {
+      double? points(double value) => iconSets ? value : null;
+      return CarWriter(
+        deploymentTarget: '15.0',
+        renditions: [
+          icon(AssetIdiom.iphone, AssetScale.x2, points(60), 120),
+          icon(AssetIdiom.iphone, AssetScale.x3, points(60), 180),
+          icon(AssetIdiom.ipad, AssetScale.x2, points(76), 152),
+          if (marketing)
+            icon(AssetIdiom.marketing, AssetScale.x1, points(1024), 1024),
+        ],
+      ).write();
+    }
+
+    final declared = <String, Object>{
+      'CFBundleIcons': <String, Object>{
+        'CFBundlePrimaryIcon': <String, Object>{
+          'CFBundleIconFiles': ['AppIcon60x60'],
+          'CFBundleIconName': 'AppIcon',
+        },
+      },
+    };
+
+    List<ReleaseIssue> iconIssues(Map<String, Uint8List> app) => [
+      for (final issue in check(writeApp(app), project: writeProject()).issues)
+        if (issue.code == 'release.icon_catalog') issue,
+    ];
+
+    test('an icon set for iPhone, iPad and the App Store passes', () {
+      expect(
+        iconIssues({..._appStoreApp(info: declared), 'Assets.car': car()}),
+        isEmpty,
+      );
+    });
+
+    test('a catalog without icon set records fails (old engine)', () {
+      final issues = iconIssues({
+        ..._appStoreApp(info: declared),
+        'Assets.car': car(iconSets: false),
+      });
+      expect(issues, hasLength(1));
+      expect(issues.single.severity, ReleaseSeverity.error);
+      expect(issues.single.message, contains('no icon set record'));
+      expect(issues.single.message, contains('placeholder icon'));
+      expect(issues.single.message, contains('xcross engine'));
+      expect(issues.single.hint, contains('build the IPA again'));
+    });
+
+    test('a declared icon without Assets.car fails', () {
+      final issues = iconIssues(_appStoreApp(info: declared));
+      expect(issues, hasLength(1));
+      expect(issues.single.message, contains('has no Assets.car'));
+    });
+
+    test('a catalog without the App Store icon set fails', () {
+      final issues = iconIssues({
+        ..._appStoreApp(info: declared),
+        'Assets.car': car(marketing: false),
+      });
+      expect(issues, hasLength(1));
+      expect(issues.single.message, contains('ios-marketing'));
+    });
+
+    test('top-level CFBundleIconName names the icon to look for', () {
+      final issues = iconIssues({
+        ..._appStoreApp(info: {'CFBundleIconName': 'OtherIcon'}),
+        'Assets.car': car(),
+      });
+      expect(issues, hasLength(1));
+      expect(issues.single.message, contains('no app icon named "OtherIcon"'));
+    });
+
+    test('a damaged catalog is reported, not thrown', () {
+      final issues = iconIssues({
+        ..._appStoreApp(info: declared),
+        'Assets.car': Uint8List.fromList(utf8.encode('BOMStore broken')),
+      });
+      expect(issues, hasLength(1));
+      expect(issues.single.message, contains('could not be read'));
     });
   });
 }

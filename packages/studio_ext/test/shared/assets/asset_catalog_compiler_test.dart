@@ -101,9 +101,10 @@ void main() {
       (r) => r.$1[3] == 1 && r.$1[2] == 2 && r.$1[5] == 6,
     );
     expect(iphone2x.$2.width, 120);
-    expect(icons.map((r) => (r.$1[3], r.$1[2], r.$1[5])).toSet(), hasLength(
-      icons.length,
-    ));
+    expect(
+      icons.map((r) => (r.$1[3], r.$1[2], r.$1[5])).toSet(),
+      hasLength(icons.length),
+    );
     expect(icons.length, greaterThan(6));
     // Each idiom of the set has its icon set record (part 218).
     final sets = csis.where((r) => r.$1[8] == 218).map((r) => r.$1[3]).toSet();

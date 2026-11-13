@@ -12,6 +12,7 @@ import 'package:studio_ext/src/shared/inspect/inspect_source.dart';
 import 'package:studio_ext/src/shared/inspect/inspector.dart';
 import 'package:studio_ext/src/shared/inspect/macho_reader.dart';
 import 'package:studio_ext/src/shared/inspect/plist_reader.dart';
+import 'package:studio_ext/src/shared/release/app_icon_catalog.dart'; // studio: 004
 import 'package:studio_ext/src/shared/release/macho_build_version.dart';
 import 'package:studio_ext/src/shared/release/release_structure.dart'; // studio: 018
 import 'package:studio_ext/src/shared/release/release_tables.dart';
@@ -874,6 +875,7 @@ final class ReleaseChecker {
         }
       }
     }
+    _iconCatalog();
     if (_report.resources.launchScreen.kind == LaunchScreenKind.none) {
       _add(
         'release.launch_screen_missing',
@@ -910,6 +912,66 @@ final class ReleaseChecker {
         );
       }
     }
+  }
+
+  /// The icon set records App Store Connect reads the app icon from. Without
+  /// them (an IPA from an xcross engine older than the icon fix) it shows its
+  /// grey placeholder instead of the logo, and nothing else reports it.
+  void _iconCatalog() {
+    final declared = _iconName();
+    final bytes = source.read('Assets.car');
+    if (bytes == null) {
+      if (declared == null) return; // no asset catalog icon at all
+      _iconCatalogError(
+        'Info.plist names the app icon "$declared" but the app has no '
+        'Assets.car',
+      );
+      return;
+    }
+    final name = declared ?? 'AppIcon';
+    final AppIconCatalogEntry entry;
+    try {
+      entry = AppIconCatalog.read(bytes, name);
+    } on FormatException catch (error) {
+      _iconCatalogError('Assets.car could not be read (${error.message})');
+      return;
+    }
+    if (entry.idioms.isEmpty) {
+      _iconCatalogError(
+        entry.named
+            ? 'Assets.car has no icon set record for "$name"'
+            : 'Assets.car has no app icon named "$name"',
+      );
+    } else if (!entry.idioms.contains(AppIconCatalog.idiomMarketing)) {
+      _iconCatalogError(
+        'Assets.car has no App Store (1024 px, ios-marketing) icon set for '
+        '"$name"',
+      );
+    }
+  }
+
+  void _iconCatalogError(String problem) => _add(
+    'release.icon_catalog',
+    ReleaseSeverity.error,
+    '$problem: App Store Connect will show a blank placeholder icon instead '
+        'of the app icon. The IPA was built with an xcross engine that does '
+        'not have the app icon fix.',
+    path: 'Assets.car',
+    hint:
+        'Update or rebuild the xcross engine (XCross Studio: install the '
+        'engine again; from source: dart run tool/build_xcross.dart), then '
+        'build the IPA again.',
+  );
+
+  /// `CFBundleIconName`, top level or in `CFBundleIcons`' primary icon.
+  String? _iconName() {
+    if (_string('CFBundleIconName') case final name?) return name;
+    if (_info['CFBundleIcons'] case {
+      'CFBundlePrimaryIcon': {'CFBundleIconName': final String name},
+    } when name.isNotEmpty) {
+      return name;
+    }
+    return null;
   }
 
   /// Why a marketing icon PNG is unacceptable, or `null`.
