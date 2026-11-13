@@ -10,8 +10,8 @@ void main() {
 
     test('reads PRODUCT_NAME from the environment', () {
       expect(
-        productNameFrom(const [], const {'PRODUCT_NAME': 'Markab'}),
-        'Markab',
+        productNameFrom(const [], const {'PRODUCT_NAME': 'Example Studio'}),
+        'Example Studio',
       );
     });
 
@@ -19,16 +19,16 @@ void main() {
       expect(
         productNameFrom(
           const ['--product-name=Faluka'],
-          const {'PRODUCT_NAME': 'Markab'},
+          const {'PRODUCT_NAME': 'Example Studio'},
         ),
         'Faluka',
       );
       expect(
         productNameFrom(
           const ['--product-name= '],
-          const {'PRODUCT_NAME': 'Markab'},
+          const {'PRODUCT_NAME': 'Example Studio'},
         ),
-        'Markab',
+        'Example Studio',
       );
     });
 
@@ -36,8 +36,8 @@ void main() {
       const entry =
           '[Desktop Entry]\nType=Application\nName=XCross Studio\n'
           'Exec=xcross-studio\nGenericName=iOS builds\n';
-      final out = desktopEntryWithName(entry, 'Markab');
-      expect(out, contains('\nName=Markab\n'));
+      final out = desktopEntryWithName(entry, 'Example Studio');
+      expect(out, contains('\nName=Example Studio\n'));
       expect(out, contains('GenericName=iOS builds'));
       expect(out, isNot(contains('Name=XCross Studio')));
     });
