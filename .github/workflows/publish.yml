@@ -4,10 +4,12 @@ name: Publish xcross to pub.dev
 # match the tag-pattern configured under
 # pub.dev/packages/xcross/admin -> Automated publishing.
 # Pattern to configure there: 'v{{version}}'.
+#
+# studio: off in the XCross Studio fork. The `xcross` package on pub.dev is
+# upstream's; this fork ships its engine only as GitHub releases
+# (release.yml), so a release tag must never try to publish here.
 on:
-  push:
-    tags:
-      - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
 
 jobs:
   check:

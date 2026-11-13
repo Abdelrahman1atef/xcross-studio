@@ -61,6 +61,18 @@ void main() {
       expect(_parse('1.0.0').isNewerThan(_parse('1.0.0-dev')), isTrue);
     });
 
+    test('studio: fork releases count up as numbers (xs.10 after xs.9)', () {
+      expect(_parse('v2.0.9-xs.10').isNewerThan(_parse('v2.0.9-xs.9')), isTrue);
+      expect(
+        _parse('v2.0.9-xs.2').isNewerThan(_parse('v2.0.9-xs.10')),
+        isFalse,
+      );
+      expect(_parse('2.0.9-xs.1').isNewerThan(_parse('2.0.9-xs.1')), isFalse);
+      // SemVer §11: numbers below text, and a longer set above its prefix.
+      expect(_parse('1.0.0-alpha').isNewerThan(_parse('1.0.0-1')), isTrue);
+      expect(_parse('1.0.0-xs.1.1').isNewerThan(_parse('1.0.0-xs.1')), isTrue);
+    });
+
     test('sorts a mixed list', () {
       final versions = [
         _parse('1.3.0'),

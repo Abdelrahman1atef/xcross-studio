@@ -57,7 +57,22 @@ final class XcrossSemver implements Comparable<XcrossSemver> {
     if (a == null && b == null) return 0;
     if (a == null) return 1;
     if (b == null) return -1;
-    return a.compareTo(b);
+    // studio: SemVer 2.0 §11 — dot-separated identifiers, numbers compared as
+    // numbers, so the fork's `2.0.9-xs.10` is newer than `2.0.9-xs.9`.
+    final left = a.split('.');
+    final right = b.split('.');
+    for (var i = 0; i < left.length && i < right.length; i++) {
+      final x = int.tryParse(left[i]);
+      final y = int.tryParse(right[i]);
+      final order = switch ((x, y)) {
+        (final int x, final int y) => x.compareTo(y),
+        (int(), null) => -1, // numeric identifiers sort below text
+        (null, int()) => 1,
+        (null, null) => left[i].compareTo(right[i]),
+      };
+      if (order != 0) return order;
+    }
+    return left.length.compareTo(right.length);
   }
 
   @override
