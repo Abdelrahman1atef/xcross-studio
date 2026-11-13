@@ -434,6 +434,34 @@ void main() {
     expect(await latestBuildNumber(asc.api(), 'app-1'), 11);
   });
 
+  test('--build-number keep: the chosen number unless this version has it '
+      'or a higher one', () async {
+    // 2.0.0 (1) with build 1 uploaded becomes 2.0.0 (2).
+    expect(keptBuildNumber(chosen: 1, existing: [1]), 2);
+    // Free for this version: kept as chosen.
+    expect(keptBuildNumber(chosen: 1, existing: []), 1);
+    expect(keptBuildNumber(chosen: 15, existing: [9, 10]), 15);
+    // Lower than the version's newest: App Store Connect refuses it, so one
+    // past the newest (release.asc_build_not_higher).
+    expect(keptBuildNumber(chosen: 2, existing: [1, 10]), 11);
+
+    asc.on(
+      'GET',
+      '/v1/builds',
+      (_) => (
+        status: 200,
+        body: FakeAsc.doc([
+          FakeAsc.resource('builds', 'a', {'version': '1'}),
+          FakeAsc.resource('builds', 'b', {'version': 'x'}),
+        ]),
+      ),
+    );
+    expect(await buildNumbersOfVersion(asc.api(), 'app-1', '2.0.0'), [1]);
+    final query = asc.requests.last.url.queryParameters;
+    expect(query['filter[app]'], 'app-1');
+    expect(query['filter[preReleaseVersion.version]'], '2.0.0');
+  });
+
   test('AC-019-9 Transporter is looked up, never downloaded', () {
     expect(
       Transporter.locate(const {

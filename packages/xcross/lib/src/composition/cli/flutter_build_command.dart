@@ -89,7 +89,12 @@ final class FlutterBuildArgs extends CommonFlutterArgs {
   @CliOption(help: 'Version name (CFBundleShortVersionString).')
   late String? buildName;
 
-  @CliOption(help: 'Version code (CFBundleVersion).')
+  @CliOption(
+    help:
+        'Version code (CFBundleVersion). "auto": one past the newest build on '
+        'App Store Connect. "keep": the pubspec.yaml number, or the next one '
+        'App Store Connect takes for this version when it is already used.',
+  )
   late String? buildNumber;
 
   @CliOption(
@@ -182,10 +187,15 @@ final class FlutterBuildCommand<T extends PlatformHostInterface>
     // compiles, not after.
     if (appStore) await _appStoreExport().credentials();
     // studio: 019 — `--build-number auto`: one past App Store Connect's newest.
-    final buildNumber = options.buildNumber?.trim() == 'auto'
+    // `--build-number keep`: the pubspec number unless this version already
+    // has it (or a higher one) on App Store Connect.
+    final requested = options.buildNumber?.trim();
+    final buildNumber = requested == 'auto' || requested == 'keep'
         ? await _autoBuildNumber(
             projectRoot,
             buildRuntime.bundleIds.resolve(projectRoot),
+            keep: requested == 'keep',
+            buildName: options.buildName,
           )
         : options.buildNumber;
     final buildOptions = await buildRuntime.options.resolve(
@@ -260,20 +270,25 @@ final class FlutterBuildCommand<T extends PlatformHostInterface>
 
   // studio: 019 — max(pubspec build, newest App Store Connect build + 1);
   // the pubspec number when App Store Connect cannot be asked.
-  Future<String> _autoBuildNumber(String projectRoot, String bundleId) async {
+  // [keep]: the pubspec number unless [buildName] (else the pubspec version)
+  // already has it or a higher one; then one past that version's newest.
+  Future<String> _autoBuildNumber(
+    String projectRoot,
+    String bundleId, {
+    bool keep = false,
+    String? buildName,
+  }) async {
     final pubspec = runtime.host.fileSystem.file(
       runtime.host.paths.context.join(projectRoot, 'pubspec.yaml'),
     );
-    final local =
-        int.tryParse(
-          RegExp(r'^version:\s*[^+\s]+\+(\d+)', multiLine: true)
-                  .firstMatch(
-                    pubspec.existsSync() ? pubspec.readAsStringSync() : '',
-                  )
-                  ?.group(1) ??
-              '',
-        ) ??
-        1;
+    final version = RegExp(
+      r'^version:\s*([^+\s]+)(?:\+(\d+))?',
+      multiLine: true,
+    ).firstMatch(pubspec.existsSync() ? pubspec.readAsStringSync() : '');
+    final local = int.tryParse(version?.group(2) ?? '') ?? 1;
+    final name = (buildName?.trim().isNotEmpty ?? false)
+        ? buildName!.trim()
+        : version?.group(1);
     try {
       final api = await openAscApi(runtime);
       try {
@@ -288,6 +303,25 @@ final class FlutterBuildCommand<T extends PlatformHostInterface>
             '$local from pubspec.yaml.',
           );
           return '$local';
+        }
+        if (keep) {
+          if (name == null) {
+            runtime.log.logWarn(
+              'Build number: pubspec.yaml has no version; using $local.',
+            );
+            return '$local';
+          }
+          final existing = await buildNumbersOfVersion(api, app.id, name);
+          final kept = keptBuildNumber(chosen: local, existing: existing);
+          runtime.log.logInfo(
+            'Build number',
+            kept == local
+                ? '$kept (free for $name on App Store Connect)'
+                : '$kept ($name already has build '
+                      '${existing.reduce((a, b) => a > b ? a : b)} on App '
+                      'Store Connect; $local is taken or lower)',
+          );
+          return '$kept';
         }
         final latest = await latestBuildNumber(api, app.id);
         final next = nextBuildNumber(local: local, latest: latest);

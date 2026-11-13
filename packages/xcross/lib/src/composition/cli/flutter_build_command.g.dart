@@ -70,7 +70,13 @@ ArgParser _$populateFlutterBuildArgsParser(ArgParser parser) => parser
     negatable: false,
   )
   ..addOption('build-name', help: 'Version name (CFBundleShortVersionString).')
-  ..addOption('build-number', help: 'Version code (CFBundleVersion).')
+  ..addOption(
+    'build-number',
+    help:
+        'Version code (CFBundleVersion). "auto": one past the newest build on '
+        'App Store Connect. "keep": the pubspec.yaml number, or the next one '
+        'App Store Connect takes for this version when it is already used.',
+  )
   ..addFlag(
     'tree-shake-icons',
     help:
