@@ -95,15 +95,17 @@ final class WindowsSwiftPmDependencyPreparation<T extends PlatformHostInterface>
   /// Returns whether there was anything to remove.
   Future<bool> _removeDamagedRepositories(String scratchPath) async {
     final repositories = SwiftPmDamagedRepositories(runner.host.fileSystem);
-    final home = runner.environmentValue(
-      runner.effectiveEnvironment,
-      'USERPROFILE',
-    );
+    String? env(String name) =>
+        runner.environmentValue(runner.effectiveEnvironment, name);
     final removed = [
       ...await repositories.removeFrom(p.join(scratchPath, 'repositories')),
-      if (home != null)
+      for (final cache in SwiftPmDamagedRepositories.sharedCaches(
+        home: env('USERPROFILE'),
+        temp: env('TEMP') ?? env('TMP'),
+        localAppData: env('LOCALAPPDATA'),
+      ))
         ...await repositories.removeFrom(
-          SwiftPmDamagedRepositories.sharedCache(home),
+          cache,
           minimumAge: SwiftPmDamagedRepositories.sharedCacheMinimumAge,
         ),
     ];

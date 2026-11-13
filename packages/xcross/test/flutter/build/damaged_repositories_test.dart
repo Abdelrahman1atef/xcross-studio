@@ -59,18 +59,57 @@ void main() {
     final tool = repositories();
     expect(
       tool.isUsable(
-        repository('packed', ['HEAD', 'objects/', 'refs/', 'packed-refs']),
+        repository('packed', [
+          'config',
+          'HEAD',
+          'objects/',
+          'refs/',
+          'packed-refs',
+        ]),
       ),
       isTrue,
     );
     expect(
-      tool.isUsable(repository('loose', ['HEAD', 'objects/', 'refs/tags/1.0'])),
+      tool.isUsable(
+        repository('loose', ['config', 'HEAD', 'objects/', 'refs/tags/1.0']),
+      ),
+      isTrue,
+    );
+  });
+
+  test('a repository without its config lost files to Windows cleanup, even '
+      'with tags (app-check, 2026-11-12)', () {
+    expect(
+      repositories().isUsable(
+        repository('app-check', [
+          'FETCH_HEAD',
+          'HEAD',
+          'objects/',
+          'refs/',
+          'packed-refs',
+        ]),
+      ),
+      isFalse,
+    );
+  });
+
+  test('missing git objects are taken as a damaged cache', () {
+    expect(
+      SwiftPmDamagedRepositories.explains(
+        r"error: the package at '\' cannot be accessed (Couldn't read "
+        "'11.3.2':\n    fatal: not a tree object)",
+      ),
+      isTrue,
+    );
+    expect(
+      SwiftPmDamagedRepositories.explains('fatal: bad object 1a2b3c'),
       isTrue,
     );
   });
 
   test('AC-025-9 only unusable repositories are removed', () async {
     final good = repository('good', [
+      'config',
       'HEAD',
       'objects/',
       'refs/',
@@ -133,10 +172,45 @@ void main() {
     expect(SwiftPmDamagedRepositories.explains('network down'), isFalse);
   });
 
-  test('the shared cache is under the home folder', () {
+  test('the no-versions failure at the end of a dependency chain is a '
+      'damaged cache too (2026-11-12, gtm-session-fetcher)', () {
     expect(
-      SwiftPmDamagedRepositories.sharedCache('home'),
-      p.join('home', '.swiftpm', 'cache', 'repositories'),
+      SwiftPmDamagedRepositories.explains(
+        "error: Dependencies could not be resolved because 'firebase_messaging' "
+        "depends on 'firebase-ios-sdk' 13.0.0.\n'firebase-ios-sdk' 13.0.0 "
+        "cannot be used because 'firebase-ios-sdk' 13.0.0 depends on "
+        "'gtm-session-fetcher' 4.0.0..<6.0.0 and no versions of "
+        "'gtm-session-fetcher' match the requirement 4.0.0..<6.0.0.",
+      ),
+      isTrue,
     );
+    expect(
+      SwiftPmDamagedRepositories.explains(
+        "error: Dependencies could not be resolved because 'a' depends on "
+        "'b' 2.0.0 and root depends on 'b' 1.0.0.",
+      ),
+      isFalse,
+      reason: 'a real version conflict is not a damaged cache',
+    );
+  });
+
+  test("the shared caches: the home folder and Swift 6's Temp folder", () {
+    expect(SwiftPmDamagedRepositories.sharedCaches(home: 'home'), [
+      p.join('home', '.swiftpm', 'cache', 'repositories'),
+    ]);
+    final temp = p.join('U', 'AppData', 'Local', 'Temp');
+    expect(
+      SwiftPmDamagedRepositories.sharedCaches(
+        home: 'U',
+        temp: temp,
+        localAppData: p.join('U', 'AppData', 'Local'),
+      ),
+      [
+        p.join('U', '.swiftpm', 'cache', 'repositories'),
+        p.join(temp, 'org.swift.swiftpm', 'repositories'),
+      ],
+      reason: r'TEMP and LOCALAPPDATA\Temp are the same folder: listed once',
+    );
+    expect(SwiftPmDamagedRepositories.sharedCaches(), isEmpty);
   });
 }
