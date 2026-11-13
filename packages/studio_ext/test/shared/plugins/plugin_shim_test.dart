@@ -313,6 +313,129 @@ end
       ]);
     });
 
+    group('Swift that calls the Objective-C side back', () {
+      // flutter_background_service_ios 5.0.3: the Swift workers call
+      // `FlutterBackgroundServicePlugin.register(engine)` (2026-11-11).
+      const header =
+          '#import <Flutter/Flutter.h>\n\n'
+          '@interface OldSwiftPlugin : NSObject<FlutterPlugin>\n'
+          '+ (void)registerEngine:(FlutterEngine*)engine;\n'
+          '@end\n';
+      const swift =
+          'import Flutter\n'
+          'public class SwiftOldSwiftPlugin: NSObject, FlutterPlugin {\n'
+          '  func run(_ engine: FlutterEngine) {\n'
+          '    OldSwiftPlugin.register(engine)\n'
+          '  }\n'
+          '}\n';
+
+      test('the headers it uses are found; its own classes, comments, '
+          'forward declarations and Swift-importing headers do not count', () {
+        expect(
+          swiftUsedHeaders(
+            plugin: 'old_swift_plugin',
+            swift: const [swift],
+            headers: const {
+              'OldSwiftPlugin.h': header,
+              'Unused.h': '@interface Unused : NSObject\n@end\n',
+              'Forward.h': '@protocol OldSwiftPlugin;\n',
+              'Cycle.h':
+                  '#import "old_swift_plugin-Swift.h"\n'
+                  '@interface OldSwiftPlugin (Cycle)\n@end\n',
+            },
+          ),
+          ['OldSwiftPlugin.h'],
+        );
+        const mentionsOnly =
+            '// OldSwiftPlugin.register(engine)\n'
+            'public class SwiftOldSwiftPlugin {}\n';
+        expect(
+          swiftUsedHeaders(
+            plugin: 'old_swift_plugin',
+            swift: const [mentionsOnly],
+            headers: const {'OldSwiftPlugin.h': header},
+          ),
+          isEmpty,
+          reason: 'only a comment and a longer name mention it',
+        );
+      });
+
+      test('the Swift target reads the one header it uses', () {
+        final sources = {
+          'Classes/OldSwiftPlugin.h': header,
+          'Classes/OldSwiftPlugin.m': '#import "OldSwiftPlugin.h"\n',
+          'Classes/SwiftOldSwiftPlugin.swift': swift,
+        };
+        final draft = draftPackageSwift(
+          plugin: 'old_swift_plugin',
+          spec: Podspec.parse(_mixedPodspec),
+          files: sources.keys.toList(),
+          read: (path) => sources[path],
+        );
+        final text = draft.text;
+        expect(text, contains('let packageDirectory = String('));
+        expect(text, contains('"-import-objc-header",'));
+        expect(
+          text,
+          contains('packageDirectory + "/Classes/OldSwiftPlugin.h",'),
+        );
+        // lastIndexOf: the package itself has the same name first.
+        final swiftTarget = text.substring(
+          text.indexOf('name: "old_swift_plugin_swift"'),
+          text.lastIndexOf('name: "old_swift_plugin",'),
+        );
+        expect(swiftTarget, contains('swiftSettings: ['));
+        expect(
+          text.substring(text.lastIndexOf('name: "old_swift_plugin",')),
+          isNot(contains('swiftSettings')),
+          reason: 'only the Swift target',
+        );
+        expect(draft.generatedFiles, isEmpty);
+        expect(draft.notes.last, contains('OldSwiftPlugin.h'));
+      });
+
+      test('several headers go through a bridging header the draft writes', () {
+        final sources = {
+          'Classes/OldSwiftPlugin.h': header,
+          'Classes/Helper.h': '@interface Helper : NSObject\n@end\n',
+          'Classes/OldSwiftPlugin.m': '#import "OldSwiftPlugin.h"\n',
+          'Classes/SwiftOldSwiftPlugin.swift': '$swift\nlet h = Helper()\n',
+        };
+        final draft = draftPackageSwift(
+          plugin: 'old_swift_plugin',
+          spec: Podspec.parse(_mixedPodspec),
+          files: sources.keys.toList(),
+          read: (path) => sources[path],
+        );
+        const bridging = 'old_swift_plugin_swift-Bridging.h';
+        expect(draft.generatedFiles.keys, ['Classes/$bridging']);
+        expect(
+          draft.generatedFiles.values.single,
+          allOf(
+            contains('#import "Helper.h"'),
+            contains('#import "OldSwiftPlugin.h"'),
+          ),
+        );
+        expect(draft.text, contains('packageDirectory + "/Classes/$bridging"'));
+        // Neither target compiles or publishes it.
+        expect('"$bridging"'.allMatches(draft.text), hasLength(2));
+      });
+
+      test('without the sources (or with no back-calls) nothing changes', () {
+        final draft = draftPackageSwift(
+          plugin: 'old_swift_plugin',
+          spec: Podspec.parse(_mixedPodspec),
+          files: const [
+            'Classes/OldSwiftPlugin.h',
+            'Classes/OldSwiftPlugin.m',
+            'Classes/SwiftOldSwiftPlugin.swift',
+          ],
+        );
+        expect(draft.text, isNot(contains('import-objc-header')));
+        expect(draft.text, isNot(contains('packageDirectory')));
+      });
+    });
+
     test('AC-006-9 the Swift-header imports become @import of the Swift '
         'target', () {
       const pusherStyle = '''

@@ -221,6 +221,19 @@ final class PluginDraftWriter {
     );
   }
 
+  /// Reads [target]'s files by their path relative to the podspec folder, for
+  /// a draft to see what the sources use; null for a file that is not there.
+  String? Function(String path) readerFor(ProjectPlugin target) {
+    final fs = plugins.fileSystem;
+    final paths = plugins.paths;
+    return (relative) {
+      final file = fs.file(
+        paths.joinAll([target.platformDirectory, ...relative.split('/')]),
+      );
+      return file.existsSync() ? file.readAsStringSync() : null;
+    };
+  }
+
   /// Where the draft of [target] goes under [base].
   String packagePath(ProjectPlugin target, String base) {
     final paths = plugins.paths;
@@ -241,6 +254,7 @@ final class PluginDraftWriter {
       files: plugins.platformFiles(target),
       pluginVersion: target.version,
       defines: macrosFor(target, projectRootOf(base)),
+      read: readerFor(target),
     );
     // The logical path, for messages: the host file's path carries the
     // Windows long-path prefix ("✔ Wrote \\?\D:\…").
@@ -351,6 +365,14 @@ final class PluginDraftWriter {
       copy.parent.createSync(recursive: true);
       copy.writeAsBytesSync(source.readAsBytesSync());
       patched[to] = 'copied from $from';
+    }
+    for (final MapEntry(key: relative, value: text)
+        in draft.generatedFiles.entries) {
+      final file = fs.file(paths.joinAll([folder, ...relative.split('/')]));
+      file.parent.createSync(recursive: true);
+      file.writeAsStringSync(text);
+      patched[relative] =
+          'written by xcross: the headers the Swift target uses';
     }
     // studio: 028 — xcross wrote this one; the developer has yet to look.
     DraftLedger(fs, paths, base).record(name, target.version);

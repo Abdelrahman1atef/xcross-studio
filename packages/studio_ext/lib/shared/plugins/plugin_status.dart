@@ -193,6 +193,7 @@ List<PluginStatus> readPluginStatus(
             files: plugins.platformFiles(plugin),
             pluginVersion: version,
             defines: macros,
+            read: writer.readerFor(plugin),
           );
           final written = fs.file(manifest).readAsStringSync();
           final off = [
