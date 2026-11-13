@@ -91,9 +91,8 @@ void main() {
   );
 
   group('AC-026-5 the Status section', () {
-    testWidgets('shows both methods and what each kind of build uses', (
-      tester,
-    ) async {
+    testWidgets('AC-TK-1 shows the team key; a CLI Apple ID session is flagged '
+        'as not used', (tester) async {
       await _open(
         tester,
         _status(
@@ -104,9 +103,6 @@ void main() {
         ),
       );
       for (final text in [
-        'me@example.invalid',
-        'TEAM123',
-        'https://anisette.example.invalid',
         'Team key',
         'issuer-uuid',
         'KEY123',
@@ -123,27 +119,20 @@ void main() {
           reason: text,
         );
       }
-      expect(find.text('Needs attention'), findsNothing);
+      expect(find.text('me@example.invalid'), findsNothing);
+      expect(find.textContaining('does not use Apple ID'), findsOneWidget);
     });
 
-    testWidgets('warns about an expired session and a missing key file', (
-      tester,
-    ) async {
+    testWidgets('warns about a missing key file', (tester) async {
       await _open(
         tester,
         _status(
-          device: 'apple-id',
+          device: 'api-key',
           appStore: 'api-key',
-          appleId: {
-            ..._appleId,
-            'expires': '2001-01-02T00:00:00.000Z',
-            'expired': true,
-          },
           apiKey: {..._teamKey, 'privateKeyFound': false},
         ),
       );
       expect(find.text('Needs attention'), findsOneWidget);
-      expect(find.textContaining('session expired on 2001'), findsOneWidget);
       expect(find.textContaining('private key file is gone'), findsOneWidget);
     });
 
@@ -168,17 +157,19 @@ void main() {
   });
 
   group('AC-026-6 the sign-in form', () {
-    testWidgets('starts on Apple ID with its details, never a password', (
-      tester,
-    ) async {
-      await _open(tester, _status(device: 'apple-id', appleId: _appleId));
-      expect(_field(tester, 'Apple ID (email)'), 'me@example.invalid');
-      expect(
-        _field(tester, 'Anisette server (optional)'),
-        'https://anisette.example.invalid',
-      );
-      expect(_field(tester, 'Password'), isEmpty);
-    });
+    testWidgets(
+      'AC-TK-1 never offers Apple ID sign-in, even when one is saved',
+      (tester) async {
+        await _open(tester, _status(device: 'apple-id', appleId: _appleId));
+        expect(
+          find.widgetWithText(TextField, 'Apple ID (email)'),
+          findsNothing,
+        );
+        expect(find.widgetWithText(TextField, 'Password'), findsNothing);
+        expect(find.text('Individual key'), findsNothing);
+        expect(_field(tester, 'Issuer ID'), isEmpty);
+      },
+    );
 
     testWidgets('starts on the API key when device builds use it', (
       tester,
@@ -192,38 +183,44 @@ void main() {
       expect(find.text(r'C:\keys\AuthKey_KEY123.p8'), findsWidgets);
     });
 
-    testWidgets('an individual key starts on Individual key, with no issuer', (
-      tester,
-    ) async {
+    testWidgets(
+      'AC-TK-4 a saved individual key is not filled in, and is flagged',
+      (tester) async {
+        await _open(
+          tester,
+          _status(
+            device: 'api-key',
+            apiKey: const {
+              'keyType': 'individual',
+              'issuerId': null,
+              'keyId': 'KEY999',
+              'privateKeyPath': r'C:\keys\AuthKey_KEY999.p8',
+              'privateKeyFound': true,
+            },
+          ),
+        );
+        expect(_field(tester, 'Issuer ID'), isEmpty);
+        expect(_field(tester, 'Key ID'), isEmpty);
+        expect(
+          find.textContaining('individual key, which cannot sign'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets('a later refresh leaves what the user typed', (tester) async {
       await _open(
         tester,
-        _status(
-          device: 'api-key',
-          apiKey: const {
-            'keyType': 'individual',
-            'issuerId': null,
-            'keyId': 'KEY999',
-            'privateKeyPath': r'C:\keys\AuthKey_KEY999.p8',
-            'privateKeyFound': true,
-          },
-        ),
+        _status(device: 'api-key', appStore: 'api-key', apiKey: _teamKey),
       );
-      expect(find.widgetWithText(TextField, 'Issuer ID'), findsNothing);
-      expect(_field(tester, 'Key ID'), 'KEY999');
-    });
-
-    testWidgets('a later refresh leaves what the user typed and chose', (
-      tester,
-    ) async {
-      await _open(tester, _status(device: 'apple-id', appleId: _appleId));
       await tester.enterText(
-        find.widgetWithText(TextField, 'Apple ID (email)'),
-        'other@example.invalid',
+        find.widgetWithText(TextField, 'Issuer ID'),
+        'typed-issuer',
       );
       await tester.ensureVisible(find.text('Re-check'));
       await tester.tap(find.text('Re-check'));
       await settle(tester, 5);
-      expect(_field(tester, 'Apple ID (email)'), 'other@example.invalid');
+      expect(_field(tester, 'Issuer ID'), 'typed-issuer');
     });
   });
 
@@ -232,7 +229,7 @@ void main() {
   ) async {
     await _open(tester, _status());
     expect(find.text('No sign-in is saved on this computer.'), findsOneWidget);
-    expect(_field(tester, 'Apple ID (email)'), isEmpty);
+    expect(_field(tester, 'Issuer ID'), isEmpty);
     expect(find.byType(XCallout), findsWidgets, reason: 'the risk notes stay');
   });
 }

@@ -72,6 +72,11 @@ IDI_APP_ICON            ICON                    "resources\\app_icon.ico"
 #define VERSION_AS_STRING "1.0.0"
 #endif
 
+// The user-visible product name; CMake passes it (runbook S13).
+#ifndef PRODUCT_NAME
+#define PRODUCT_NAME "XCross Studio"
+#endif
+
 VS_VERSION_INFO VERSIONINFO
  FILEVERSION VERSION_AS_NUMBER
  PRODUCTVERSION VERSION_AS_NUMBER
@@ -90,12 +95,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "dev.xcrossstudio" "\0"
-            VALUE "FileDescription", "xcross_studio" "\0"
+            VALUE "FileDescription", PRODUCT_NAME "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "xcross_studio" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 dev.xcrossstudio. All rights reserved." "\0"
             VALUE "OriginalFilename", "xcross_studio.exe" "\0"
-            VALUE "ProductName", "xcross_studio" "\0"
+            VALUE "ProductName", PRODUCT_NAME "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

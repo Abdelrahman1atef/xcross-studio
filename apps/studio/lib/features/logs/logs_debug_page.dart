@@ -8,6 +8,7 @@ import '../../app/services.dart';
 import '../../design_system/design_system.dart';
 import '../../src/cli/xcross_commands.dart';
 import '../../src/cli/xcross_events.dart';
+import '../../src/product.dart';
 import '../../src/state/job.dart';
 import '../../src/state/log_session.dart';
 import '../common/app_info_view.dart';
@@ -642,7 +643,7 @@ class _ToolOutputViewState extends State<ToolOutputView> {
                       icon: Icons.terminal,
                       title: 'No commands run yet',
                       message:
-                          'Every xcross command started from XCross Studio '
+                          'Every xcross command started from $productName '
                           'appears here with its full output.',
                     )
                   : Padding(

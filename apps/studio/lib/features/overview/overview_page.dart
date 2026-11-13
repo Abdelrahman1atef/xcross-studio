@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import '../../app/app_controller.dart';
 import '../../app/services.dart';
 import '../../design_system/design_system.dart';
+import '../../src/product.dart';
 import '../../src/state/job.dart';
 import '../../src/state/project_info.dart';
 import '../../src/state/readiness.dart';
@@ -96,7 +97,7 @@ class _OverviewPageState extends State<OverviewPage> {
                   title: 'No Flutter project open',
                   message:
                       'Open the folder of a Flutter app (it has pubspec.yaml '
-                      'and an ios/ folder). XCross Studio builds it for '
+                      'and an ios/ folder). $productName builds it for '
                       'iPhone from this computer.',
                   action: XButton(
                     label: 'Open Flutter Project',

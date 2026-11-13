@@ -36,19 +36,9 @@ Future<void> _fill(WidgetTester tester, String label, String text) async {
   await tester.enterText(field, text);
 }
 
-Future<void> _signInWithKey(
-  WidgetTester tester, {
-  bool individual = false,
-}) async {
-  await tester.tap(find.text('App Store Connect API key'));
-  await settle(tester, 2);
-  if (individual) {
-    await tester.ensureVisible(find.text('Individual key'));
-    await tester.tap(find.text('Individual key'));
-    await settle(tester, 2);
-  } else {
-    await _fill(tester, 'Issuer ID', 'issuer-uuid');
-  }
+/// Runbook F18: the form is team-key only (Issuer ID, Key ID, .p8).
+Future<void> _signInWithKey(WidgetTester tester) async {
+  await _fill(tester, 'Issuer ID', 'issuer-uuid');
   await _fill(tester, 'Key ID', 'KEY123');
   await _fill(tester, 'Private key (.p8)', r'C:\keys\AuthKey_KEY123.p8');
   await tester.testTextInput.receiveAction(TextInputAction.done);
@@ -75,7 +65,8 @@ void main() {
   );
 
   testWidgets(
-    'AC-013-10 a refused API key gets steps, App Store Connect and Apple ID actions',
+    'AC-013-10 AC-TK-1 a refused team key gets steps and App Store Connect, '
+    'never an Apple ID action',
     (tester) async {
       final studio = await pumpStudio(
         tester,
@@ -115,18 +106,13 @@ void main() {
         contains('https://appstoreconnect.apple.com/access/integrations/api'),
       );
 
-      await tester.ensureVisible(find.text('Use Apple ID instead'));
-      await tester.tap(find.text('Use Apple ID instead'));
-      await settle(tester, 2);
-      expect(
-        find.widgetWithText(TextField, 'Apple ID (email)'),
-        findsOneWidget,
-      );
+      expect(find.text('Use Apple ID instead'), findsNothing);
+      expect(find.widgetWithText(TextField, 'Apple ID (email)'), findsNothing);
     },
   );
 
   testWidgets(
-    'AC-015-6 an individual key needs no Issuer ID and explains its limit',
+    'AC-TK-4 an individual key gets the team-key message, with no Apple ID way out',
     (tester) async {
       final studio = await pumpStudio(
         tester,
@@ -134,23 +120,20 @@ void main() {
         settings: Settings()..wizardDismissed = true,
       );
       await go(tester, 'Signing');
-      await tester.tap(find.text('App Store Connect API key'));
-      await settle(tester, 2);
-      expect(find.widgetWithText(TextField, 'Issuer ID'), findsOneWidget);
-      await _signInWithKey(tester, individual: true);
-      expect(find.widgetWithText(TextField, 'Issuer ID'), findsNothing);
+      await _signInWithKey(tester);
 
       expect(
         studio.commands,
         contains(
-          r'auth --key-id KEY123 --private-key C:\keys\AuthKey_KEY123.p8',
+          r'auth --issuer-id issuer-uuid --key-id KEY123 '
+          r'--private-key C:\keys\AuthKey_KEY123.p8',
         ),
       );
-      expect(studio.commands.where((c) => c.contains('--issuer-id')), isEmpty);
-      expect(find.text('This individual key cannot sign apps'), findsOneWidget);
+      expect(find.text('This is an individual key'), findsOneWidget);
+      expect(find.text('Use Apple ID instead'), findsNothing);
 
-      await tester.ensureVisible(find.text('Create a Team key'));
-      await tester.tap(find.text('Create a Team key'));
+      await tester.ensureVisible(find.text('Create a team key'));
+      await tester.tap(find.text('Create a team key'));
       await settle(tester, 2);
       expect(
         studio.launcher.opened,

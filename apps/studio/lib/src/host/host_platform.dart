@@ -53,6 +53,8 @@ class WindowsHost extends HostPlatform {
     final base =
         environment['APPDATA'] ??
         p.windows.join(environment['USERPROFILE'] ?? '.', 'AppData', 'Roaming');
+    // A fixed folder name, deliberately not productName: renaming the product
+    // must not move or orphan existing settings (runbook S13).
     return p.windows.join(base, 'XCross Studio');
   }
 

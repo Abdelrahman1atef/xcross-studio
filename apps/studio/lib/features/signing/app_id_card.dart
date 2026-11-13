@@ -158,8 +158,7 @@ class _AppIdCardState extends State<AppIdCard> {
           'The real App ID is the bundle ID in your project, the one Firebase, '
           'push and the App Store record use. The prefixed form '
           'XCR-<identity>.<bundle ID> is only for a bundle ID another team '
-          'owns. App Groups are registered for you with an Apple ID (set '
-          'XCROSS_APP_GROUP with an API key).',
+          'owns. With a team key, set App Groups with XCROSS_APP_GROUP.',
         ),
       ],
     );

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../app/services.dart';
 import '../../design_system/design_system.dart';
 import '../../src/cli/xcross_commands.dart';
+import '../../src/product.dart';
 import '../../src/state/job.dart';
 import '../../src/state/settings.dart';
 import '../common/doctor_checklist.dart';
@@ -85,7 +86,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   const SizedBox(height: XSpace.s3),
                   if (fromSource)
                     XFilePickerField(
-                      label: 'XCross Studio repository folder',
+                      label: '$productName repository folder',
                       hint: 'Runs: dart run <folder>/packages/xcross/bin/xcross.dart',
                       value: settings.sourceRepository,
                       onChanged: (path) => settings.update((s) {
@@ -254,7 +255,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const XNote(
-                    'XCross Studio is free, open-source software (AGPL-3.0) '
+                    '$productName is free, open-source software (AGPL-3.0) '
                     'and is not affiliated with or endorsed by Apple. It never '
                     'downloads or ships Xcode, iOS SDKs or developer disk '
                     'images: you provide your own and sign with your own Apple '

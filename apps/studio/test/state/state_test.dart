@@ -90,7 +90,7 @@ void main() {
       final launcher = FakeLauncher();
       final job = Job(
         title: 'Auth',
-        command: XcrossCommands.authAppleId('me@example.com', password: 'pw'),
+        command: const ['auth', '--key-id', 'K1'],
         invocation: const XcrossInvocation.binary(),
         launcher: launcher,
       );

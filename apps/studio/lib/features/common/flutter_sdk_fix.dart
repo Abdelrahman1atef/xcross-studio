@@ -6,6 +6,7 @@ import '../../app/services.dart';
 import '../../design_system/design_system.dart';
 import '../../src/cli/xcross_commands.dart';
 import '../../src/cli/xcross_events.dart';
+import '../../src/product.dart';
 import '../../src/state/job.dart';
 import 'job_views.dart';
 
@@ -82,9 +83,9 @@ class GenSnapshotProblem {
     final newer =
         current != null && suggested != null && _newer(current!, suggested!);
     final what = newer
-        ? '$yours is newer than the iOS compiler XCross Studio can use on $os.'
-        : '$yours has no iOS compiler that XCross Studio can use on $os.';
-    return '$what iPhone release builds need $needed. XCross Studio can '
+        ? '$yours is newer than the iOS compiler $productName can use on $os.'
+        : '$yours has no iOS compiler that $productName can use on $os.';
+    return '$what iPhone release builds need $needed. $productName can '
         'install it just for iPhone builds (one time, about 1 GB); your own '
         'Flutter is not changed.';
   }
@@ -288,7 +289,7 @@ class _FlutterSdkSettingsCardState extends State<FlutterSdkSettingsCard> {
               status: XStatus.ready,
               label: 'iOS builds use Flutter ${status.activeVersion ?? '?'}',
               detail: status.activeManaged
-                  ? 'Installed by XCross Studio for iPhone builds · '
+                  ? 'Installed by $productName for iPhone builds · '
                         '${status.activeRoot ?? ''}'
                   : 'Your own Flutter · ${status.activeRoot ?? ''}',
             ),

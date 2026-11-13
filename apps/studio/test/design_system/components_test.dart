@@ -179,11 +179,13 @@ void main() {
   testWidgets('AC-013-15 the command preview never shows a password', (
     tester,
   ) async {
-    final command = XcrossCommands.authAppleId(
-      'me@example.com',
-      password: 'hunter2',
-      anisetteUrl: 'https://ani.example',
-    );
+    const command = [
+      'auth',
+      '--apple-id=me@example.com',
+      '--password',
+      'hunter2',
+      '--anisette-url=https://ani.example',
+    ];
     expect(
       XCommandPreview.render('xcross', command),
       'xcross auth --apple-id=me@example.com --password •••• '

@@ -9,6 +9,14 @@ set(BINARY_NAME "xcross_studio")
 # https://wiki.gnome.org/HowDoI/ChooseApplicationID
 set(APPLICATION_ID "dev.xcrossstudio.xcross_studio")
 
+# The product name shown to users (window title). One value, set at build time:
+# tool/package.dart passes PRODUCT_NAME in the environment (runbook S13).
+if(DEFINED ENV{PRODUCT_NAME} AND NOT "$ENV{PRODUCT_NAME}" STREQUAL "")
+  set(PRODUCT_NAME "$ENV{PRODUCT_NAME}")
+else()
+  set(PRODUCT_NAME "XCross Studio")
+endif()
+
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.
 cmake_policy(SET CMP0063 NEW)

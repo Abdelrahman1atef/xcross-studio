@@ -8,6 +8,7 @@ import 'package:xcross_studio/app/services.dart';
 import 'package:xcross_studio/design_system/design_system.dart';
 import 'package:xcross_studio/src/cli/xcross_commands.dart';
 import 'package:xcross_studio/src/host/host_platform.dart';
+import 'package:xcross_studio/src/product.dart';
 import 'package:xcross_studio/src/state/job.dart';
 import 'package:xcross_studio/src/state/log_session.dart';
 import 'package:xcross_studio/src/state/settings.dart';
@@ -306,17 +307,32 @@ void main() {
   });
 
   testWidgets(
-    'AC-013-8 Signing explains Apple ID risks and the anisette server',
+    'AC-TK-1 Signing offers only App Store Connect team-key sign-in',
     (tester) async {
       await pumpStudio(tester);
       await go(tester, 'Signing');
-      expect(find.textContaining('secondary Apple ID'), findsOneWidget);
       expect(
-        find.textContaining(XcrossCommands.defaultAnisetteUrl),
-        findsWidgets,
+        find.text('Sign in with an App Store Connect team key'),
+        findsOneWidget,
       );
+      expect(find.widgetWithText(TextField, 'Issuer ID'), findsOneWidget);
+      expect(find.widgetWithText(TextField, 'Apple ID (email)'), findsNothing);
+      expect(find.textContaining('anisette'), findsNothing);
     },
   );
+
+  test('AC-TK-2 Studio never builds an Apple ID sign-in command', () {
+    for (final file in Directory('lib').listSync(recursive: true)) {
+      if (file is! File || !file.path.endsWith('.dart')) continue;
+      final code = file
+          .readAsLinesSync()
+          .where((l) => !l.trimLeft().startsWith('//'))
+          .join('\n');
+      expect(code, isNot(contains('--apple-id')), reason: file.path);
+      expect(code, isNot(contains('--anisette-url')), reason: file.path);
+      expect(code, isNot(contains('authAppleId')), reason: file.path);
+    }
+  });
 
   testWidgets('AC-013-9 the console dock shows the newest command', (
     tester,
@@ -361,5 +377,35 @@ void main() {
       expect(source, isNot(contains('src/state/')), reason: file.path);
       expect(source, isNot(contains('dart:io')), reason: file.path);
     }
+  });
+
+  testWidgets('AC-RB-1 the app title and the window header show productName', (
+    tester,
+  ) async {
+    await pumpStudio(tester);
+    await settle(tester);
+    final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
+    expect(app.title, productName);
+    expect(find.text(productName), findsWidgets);
+    expect(productName, 'XCross Studio', reason: 'default until release day');
+  });
+
+  test('AC-RB-2 no user-visible product name is hard-coded in lib/', () {
+    // Allowed: comments, the constant's default, and the settings folder name
+    // (renaming the product must not orphan settings).
+    const allowed = {'product.dart', 'host_platform.dart'};
+    final literal = RegExp(r'''['"][^'"\n]*XCross Studio[^'"\n]*['"]''');
+    final offenders = <String>[];
+    for (final file in Directory('lib').listSync(recursive: true)) {
+      if (file is! File || !file.path.endsWith('.dart')) continue;
+      if (allowed.contains(file.uri.pathSegments.last)) continue;
+      final lines = file.readAsLinesSync();
+      for (var i = 0; i < lines.length; i++) {
+        final code = lines[i].trimLeft();
+        if (code.startsWith('//')) continue;
+        if (literal.hasMatch(code)) offenders.add('${file.path}:${i + 1}');
+      }
+    }
+    expect(offenders, isEmpty);
   });
 }

@@ -81,6 +81,8 @@ sealed class XcrossEvent {
       'asc_account' => AccountDetailsReport.fromJson(json),
       // Feature 032: a fresh iOS project made ready.
       'ios_prepare' => IosPrepareReport.fromJson(json),
+      // Which engine answered (`xcross engine info --json`).
+      'engine_info' => EngineInfoReport(json),
       'done' => BuildDone(
         json['exitCode'] is int ? json['exitCode']! as int : 1,
       ),
@@ -306,6 +308,13 @@ class CrashReport extends XcrossEvent {
 class Notice extends XcrossEvent {
   const Notice(this.message);
   final String message;
+}
+
+/// `engine_info`: `xcross engine info --json`, kept raw (engine name,
+/// protocol and version).
+class EngineInfoReport extends XcrossEvent {
+  const EngineInfoReport(this.json);
+  final Map<String, Object?> json;
 }
 
 // Build events (XCROSS_EVENTS=ndjson, feature 012).

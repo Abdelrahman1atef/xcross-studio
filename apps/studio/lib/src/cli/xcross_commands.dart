@@ -382,20 +382,8 @@ abstract final class XcrossCommands {
     if (_set(udid)) ...['--udid', udid!],
   ];
 
-  static List<String> authAppleId(
-    String appleId, {
-    String? password,
-    String? anisetteUrl,
-  }) => [
-    'auth',
-    '--apple-id=${appleId.trim()}',
-    if (_set(password)) ...['--password', password!],
-    if (_set(anisetteUrl)) '--anisette-url=${anisetteUrl!.trim()}',
-  ];
-
-  /// Omnisette server `xcross auth` uses for Apple ID sign-in when neither
-  /// `--anisette-url` nor `XCROSS_ANISETTE_URL` is set (from its `--help`).
-  static const defaultAnisetteUrl = 'https://mac-ani.jkcoxson.com';
+  // Runbook F18: Studio signs with an App Store Connect team key only. It has
+  // no Apple ID sign-in command (`auth --apple-id` stays in the CLI, unused).
 
   // studio: 013 — commands behind the setup wizard, Settings and Devices.
 

@@ -19,6 +19,9 @@ apply_standard_settings(${BINARY_NAME})
 # Add preprocessor definitions for the application ID.
 add_definitions(-DAPPLICATION_ID="${APPLICATION_ID}")
 
+# The user-visible product name (window title); see the top-level CMakeLists.txt.
+target_compile_definitions(${BINARY_NAME} PRIVATE "PRODUCT_NAME=\"${PRODUCT_NAME}\"")
+
 # Add dependency libraries. Add any application-specific dependencies here.
 target_link_libraries(${BINARY_NAME} PRIVATE flutter)
 target_link_libraries(${BINARY_NAME} PRIVATE PkgConfig::GTK)

@@ -5,6 +5,7 @@ import '../../app/app_controller.dart';
 import '../../app/services.dart';
 import '../../design_system/design_system.dart';
 import '../../src/cli/xcross_commands.dart';
+import '../../src/product.dart';
 import '../../src/state/job.dart';
 import '../../src/state/readiness.dart';
 import '../common/doctor_checklist.dart';
@@ -151,7 +152,7 @@ class _SetupWizardState extends State<SetupWizard> {
       builder: (context, _) => Scaffold(
         appBar: AppBar(
           backgroundColor: c.surface,
-          title: const Text('Set up XCross Studio'),
+          title: const Text('Set up $productName'),
           automaticallyImplyLeading: false,
           actions: [
             XButton(
@@ -388,7 +389,7 @@ class _SetupWizardState extends State<SetupWizard> {
           const XNote(
             'xcross extracts a private Darwin SDK from your own Xcode.xip '
             '(download it with your Apple ID from Apple). Nothing from Apple '
-            'is shipped with XCross Studio. The SDK is tied to the Swift '
+            'is shipped with $productName. The SDK is tied to the Swift '
             'toolchain active now; reinstall it after changing Swift.',
           ),
           const SizedBox(height: XSpace.s3),

@@ -5,9 +5,11 @@ import '../../app/services.dart';
 import '../../design_system/design_system.dart';
 import '../../src/cli/xcross_commands.dart';
 import '../../src/cli/xcross_events.dart';
+import '../../src/product.dart';
 import '../../src/state/job.dart';
 import '../common/app_info_view.dart';
 import '../common/job_views.dart';
+import '../signing/team_key.dart';
 
 /// Devices (§6.3): connected iPhones with each readiness requirement shown
 /// explicitly, app installation and installed apps.
@@ -73,7 +75,7 @@ class _DevicesPageState extends State<DevicesPage> {
         XRequirement(
           XStatus.failed,
           'iOS ${device.osVersion} is not supported',
-          detail: 'XCross Studio needs iOS 15 or newer',
+          detail: '$productName needs iOS 15 or newer',
         )
       else if (device.legacy)
         XRequirement(
@@ -181,8 +183,8 @@ class _DevicesPageState extends State<DevicesPage> {
             XCard(
               title: 'Install an app (.ipa)',
               subtitle:
-                  'Signs with your Apple ID or API key and installs over USB '
-                  '(iOS 15+). Your file is never modified.',
+                  'Signs with your App Store Connect team key and installs '
+                  'over USB (iOS 15+). Your file is never modified.',
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -223,9 +225,19 @@ class _DevicesPageState extends State<DevicesPage> {
                             (_install?.isRunning ?? false) &&
                             _install!.title == 'Install',
                         loadingLabel: 'Installing…',
-                        disabledReason: 'Choose an .ipa file first.',
+                        disabledReason:
+                            teamKeyMissingReason(
+                              Services.of(context).readiness.savedSignIn,
+                            ) ??
+                            'Choose an .ipa file first.',
                         onPressed:
-                            settings.lastIpa == null ||
+                            teamKeyMissingReason(
+                                      Services.of(context)
+                                          .readiness
+                                          .savedSignIn,
+                                    ) !=
+                                    null ||
+                                settings.lastIpa == null ||
                                 (_install?.isRunning ?? false)
                             ? null
                             : () => setState(

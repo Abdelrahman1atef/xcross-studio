@@ -13,6 +13,7 @@ import '../../src/state/project_info.dart';
 import '../common/attention_widgets.dart';
 import '../common/flutter_sdk_fix.dart';
 import '../common/job_views.dart';
+import '../signing/team_key.dart';
 
 /// Build & Run (§6.2): build, sign, install and launch with every step the
 /// CLI reports visible.
@@ -98,6 +99,8 @@ class _BuildRunPageState extends State<BuildRunPage> {
         final reason = !ready
             ? 'Open a Flutter project first (Overview).'
             : (running ? 'A build is running.' : null);
+        // Runbook F18: signing for the iPhone needs a team key.
+        final teamKey = teamKeyMissingReason(services.readiness.savedSignIn);
         return WorkspaceLayout(
           title: 'Build & Run',
           subtitle:
@@ -233,8 +236,10 @@ class _BuildRunPageState extends State<BuildRunPage> {
                         loadingLabel: 'Running…',
                         disabledReason:
                             reason ??
+                            teamKey ??
                             (device == null ? 'Select an iPhone first.' : null),
-                        onPressed: reason != null || device == null
+                        onPressed:
+                            reason != null || teamKey != null || device == null
                             ? null
                             : () => setState(
                                 () => _job = services.jobs.run(

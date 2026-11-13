@@ -3,6 +3,7 @@ import 'dart:ui' show AppExitResponse;
 import 'package:flutter/material.dart';
 
 import '../design_system/theme/x_theme.dart';
+import '../src/product.dart';
 import '../src/state/settings.dart';
 import 'services.dart';
 import 'shell.dart';
@@ -59,7 +60,7 @@ class _StudioAppState extends State<StudioApp> {
     child: ListenableBuilder(
       listenable: services.settings,
       builder: (context, _) => MaterialApp(
-        title: 'XCross Studio',
+        title: productName,
         debugShowCheckedModeBanner: false,
         theme: xLightTheme(),
         darkTheme: xDarkTheme(),

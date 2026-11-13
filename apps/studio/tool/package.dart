@@ -8,13 +8,39 @@
 // The GUI finds xcross/bin/xcross next to itself (see
 // XcrossInvocation.bundledNextTo). Run from apps/studio:
 //
-//   dart run tool/package.dart [--skip-cli] [--skip-gui]
+//   dart run tool/package.dart [--skip-cli] [--skip-gui] [--product-name=<name>]
+//
+// The product name (window title, file properties, desktop entry) is one value:
+// --product-name, else the PRODUCT_NAME environment variable, else today's
+// name (runbook S13). The installer takes the same value as /DAppName=<name>.
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+const _defaultProductName = 'XCross Studio';
+
+/// The user-visible product name for this build.
+String productNameFrom(List<String> args, Map<String, String> environment) {
+  for (final arg in args) {
+    if (arg.startsWith('--product-name=')) {
+      final value = arg.substring('--product-name='.length).trim();
+      if (value.isNotEmpty) return value;
+    }
+  }
+  final fromEnv = environment['PRODUCT_NAME']?.trim() ?? '';
+  return fromEnv.isNotEmpty ? fromEnv : _defaultProductName;
+}
+
+/// [entry] (a .desktop file) with its `Name=` line set to [productName].
+String desktopEntryWithName(String entry, String productName) => entry
+    .split('\n')
+    .map((line) => line.startsWith('Name=') ? 'Name=$productName' : line)
+    .join('\n');
+
 Future<void> main(List<String> args) async {
   final studio = Directory.current.path;
+  final productName = productNameFrom(args, Platform.environment);
+  stdout.writeln('Product name: $productName');
   final repo = p.normalize(p.join(studio, '..', '..'));
   if (!File(p.join(repo, 'packages', 'xcross', 'bin', 'xcross.dart'))
       .existsSync()) {
@@ -31,7 +57,12 @@ Future<void> main(List<String> args) async {
     ], p.join(repo, 'packages', 'xcross'));
   }
   if (!args.contains('--skip-gui')) {
-    await _run('flutter', ['build', os, '--release'], studio);
+    await _run(
+      'flutter',
+      ['build', os, '--release', '--dart-define=PRODUCT_NAME=$productName'],
+      studio,
+      environment: {'PRODUCT_NAME': productName}, // read by the runner CMake
+    );
   }
 
   final gui = windows
@@ -84,12 +115,12 @@ Future<void> main(List<String> args) async {
 
   if (!windows) {
     final version = Platform.environment['XCROSS_STUDIO_VERSION'] ?? '0.1.0';
-    await _debian(studio, dist, out, version);
+    await _debian(studio, dist, out, version, productName);
     final appimagetool = Platform.environment['APPIMAGETOOL'];
     if (appimagetool == null || appimagetool.isEmpty) {
       stdout.writeln('AppImage: skipped (set APPIMAGETOOL to appimagetool).');
     } else {
-      await _appImage(studio, dist, out, appimagetool);
+      await _appImage(studio, dist, out, appimagetool, productName);
     }
   }
 }
@@ -103,6 +134,7 @@ Future<void> _debian(
   String dist,
   String folder,
   String version,
+  String productName,
 ) async {
   final root = p.join(dist, 'deb-root');
   if (Directory(root).existsSync()) Directory(root).deleteSync(recursive: true);
@@ -114,8 +146,11 @@ Future<void> _debian(
   final packaging = p.join(studio, 'linux', 'packaging');
   final applications = Directory(p.join(root, 'usr', 'share', 'applications'))
     ..createSync(recursive: true);
-  File(p.join(packaging, '$_appId.desktop'))
-      .copySync(p.join(applications.path, '$_appId.desktop'));
+  _writeDesktopEntry(
+    packaging,
+    p.join(applications.path, '$_appId.desktop'),
+    productName,
+  );
   final icons = Directory(
     p.join(root, 'usr', 'share', 'icons', 'hicolor', '256x256', 'apps'),
   )..createSync(recursive: true);
@@ -157,6 +192,7 @@ Future<void> _appImage(
   String dist,
   String folder,
   String appimagetool,
+  String productName,
 ) async {
   final appDir = p.join(dist, 'XCrossStudio.AppDir');
   if (Directory(appDir).existsSync()) {
@@ -164,8 +200,7 @@ Future<void> _appImage(
   }
   _copy(folder, appDir);
   final packaging = p.join(studio, 'linux', 'packaging');
-  File(p.join(packaging, '$_appId.desktop'))
-      .copySync(p.join(appDir, '$_appId.desktop'));
+  _writeDesktopEntry(packaging, p.join(appDir, '$_appId.desktop'), productName);
   File(p.join(packaging, 'xcross-studio.png'))
       .copySync(p.join(appDir, '$_appId.png'));
   final appRun = File(p.join(appDir, 'AppRun'))
@@ -183,6 +218,17 @@ Future<void> _appImage(
   );
   Directory(appDir).deleteSync(recursive: true);
   stdout.writeln('AppImage: ${p.join(dist, 'xcross-studio-x86_64.AppImage')}');
+}
+
+/// Copies the desktop entry from [packaging] to [destination], naming the app
+/// [productName].
+void _writeDesktopEntry(
+  String packaging,
+  String destination,
+  String productName,
+) {
+  final entry = File(p.join(packaging, '$_appId.desktop')).readAsStringSync();
+  File(destination).writeAsStringSync(desktopEntryWithName(entry, productName));
 }
 
 Future<void> _run(

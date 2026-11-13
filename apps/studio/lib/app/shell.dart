@@ -15,6 +15,7 @@ import '../features/release/archives_page.dart';
 import '../features/release/release_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/signing/signing_page.dart';
+import '../src/product.dart';
 import '../src/state/job.dart';
 import '../src/state/readiness.dart';
 import 'app_controller.dart';
@@ -243,10 +244,7 @@ class _TopBar extends StatelessWidget {
           Icon(Icons.close_rounded, color: c.primary, size: 26),
           if (!compact) ...[
             const SizedBox(width: XSpace.s2),
-            Text(
-              'XCross Studio',
-              style: XType.card.copyWith(color: c.textPrimary),
-            ),
+            Text(productName, style: XType.card.copyWith(color: c.textPrimary)),
           ],
           SizedBox(width: compact ? XSpace.s3 : XSpace.s6),
           Expanded(

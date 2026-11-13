@@ -177,10 +177,14 @@ void main() {
     });
 
     test('passwords never appear in the shown command', () {
-      final command = XcrossCommands.authAppleId(
-        'me@example.com',
-        password: 'hunter2',
-      );
+      // A literal command: Studio itself no longer builds Apple ID sign-in
+      // (runbook F18), but the redaction must hold for any command.
+      const command = [
+        'auth',
+        '--apple-id=me@example.com',
+        '--password',
+        'hunter2',
+      ];
       expect(command, contains('hunter2'));
       final shown = XcrossCommands.display(command);
       expect(shown, isNot(contains('hunter2')));
