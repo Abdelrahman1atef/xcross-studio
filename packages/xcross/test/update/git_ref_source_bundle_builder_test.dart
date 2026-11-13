@@ -301,7 +301,7 @@ void main() {
           equals([
             FixtureProcessCall('git', [
               'clone',
-              'https://github.com/arxdeus/xcross.git',
+              'https://github.com/Abdelrahman1atef/xcross-studio.git',
               repo.path,
             ]),
             FixtureProcessCall('git', const [

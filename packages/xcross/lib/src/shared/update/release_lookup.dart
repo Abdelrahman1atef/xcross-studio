@@ -7,8 +7,13 @@ import 'package:xcross/src/shared/runtime/version.dart';
 import 'package:xcross/src/shared/update/internal/http_result.dart';
 
 /// GitHub repository publishing the xcross releases.
+///
+/// studio: the XCross Studio engine, not upstream arxdeus/xcross: `xcross
+/// update` from upstream would replace this engine with one that has none of
+/// XCross Studio's commands or build fixes (such as the App Store icon set
+/// records). XCross Studio installs its engine from the same releases.
 @internal
-const xcrossRepo = 'arxdeus/xcross';
+const xcrossRepo = 'Abdelrahman1atef/xcross-studio';
 
 /// Base URL for a release's downloadable assets.
 @internal

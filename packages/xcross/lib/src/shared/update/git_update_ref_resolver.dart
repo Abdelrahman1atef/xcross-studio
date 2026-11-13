@@ -59,7 +59,10 @@ final class GitUpdateRefResolver {
                .createTemp(prefix)),
        _deleteDirectory = deleteDirectory ?? _defaultDeleteDirectory;
 
-  static const repoUrl = 'https://github.com/arxdeus/xcross.git';
+  // studio: the XCross Studio engine repository, as for releases
+  // (release_lookup.dart): `update --ref` must not build upstream xcross.
+  static const repoUrl =
+      'https://github.com/Abdelrahman1atef/xcross-studio.git';
 
   final RunGitProcess _run;
   final CreateTempDirectory _createTempDirectory;

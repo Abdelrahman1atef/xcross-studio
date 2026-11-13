@@ -1,0 +1,2040 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:xcross:events:schema:1",
+  "title": "xcross NDJSON events, protocol v1",
+  "description": "One JSON object per line with \"v\": 1 and \"type\". Consumers must ignore unknown types and unknown fields. See docs/protocol/xcross-events-v1.md.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/event_app"
+    },
+    {
+      "$ref": "#/$defs/event_appinfo"
+    },
+    {
+      "$ref": "#/$defs/event_appstore_app"
+    },
+    {
+      "$ref": "#/$defs/event_appstore_status"
+    },
+    {
+      "$ref": "#/$defs/event_appstore_version"
+    },
+    {
+      "$ref": "#/$defs/event_artifact"
+    },
+    {
+      "$ref": "#/$defs/event_asc_account"
+    },
+    {
+      "$ref": "#/$defs/event_auth_status"
+    },
+    {
+      "$ref": "#/$defs/event_bundle_id"
+    },
+    {
+      "$ref": "#/$defs/event_capabilities"
+    },
+    {
+      "$ref": "#/$defs/event_capabilities_change"
+    },
+    {
+      "$ref": "#/$defs/event_check"
+    },
+    {
+      "$ref": "#/$defs/event_crash"
+    },
+    {
+      "$ref": "#/$defs/event_device"
+    },
+    {
+      "$ref": "#/$defs/event_devicelog"
+    },
+    {
+      "$ref": "#/$defs/event_devices"
+    },
+    {
+      "$ref": "#/$defs/event_diagnosis"
+    },
+    {
+      "$ref": "#/$defs/event_done"
+    },
+    {
+      "$ref": "#/$defs/event_engine_info"
+    },
+    {
+      "$ref": "#/$defs/event_error"
+    },
+    {
+      "$ref": "#/$defs/event_flutter_sdks"
+    },
+    {
+      "$ref": "#/$defs/event_icons_check"
+    },
+    {
+      "$ref": "#/$defs/event_icons_generate"
+    },
+    {
+      "$ref": "#/$defs/event_icons_preview"
+    },
+    {
+      "$ref": "#/$defs/event_ios_prepare"
+    },
+    {
+      "$ref": "#/$defs/event_log"
+    },
+    {
+      "$ref": "#/$defs/event_notice"
+    },
+    {
+      "$ref": "#/$defs/event_permissions"
+    },
+    {
+      "$ref": "#/$defs/event_permissions_change"
+    },
+    {
+      "$ref": "#/$defs/event_plugin_ack"
+    },
+    {
+      "$ref": "#/$defs/event_plugin_status"
+    },
+    {
+      "$ref": "#/$defs/event_progress"
+    },
+    {
+      "$ref": "#/$defs/event_project_version"
+    },
+    {
+      "$ref": "#/$defs/event_publish"
+    },
+    {
+      "$ref": "#/$defs/event_release_check"
+    },
+    {
+      "$ref": "#/$defs/event_release_gate"
+    },
+    {
+      "$ref": "#/$defs/event_splash_check"
+    },
+    {
+      "$ref": "#/$defs/event_splash_generate"
+    },
+    {
+      "$ref": "#/$defs/event_step"
+    },
+    {
+      "$ref": "#/$defs/event_testflight_groups"
+    },
+    {
+      "$ref": "#/$defs/event_testflight_status"
+    },
+    {
+      "$ref": "#/$defs/event_testflight_testers"
+    },
+    {
+      "$ref": "#/$defs/event_warning"
+    }
+  ],
+  "$defs": {
+    "event_app": {
+      "title": "app",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "app"
+        },
+        "build": {},
+        "bundleId": {},
+        "executable": {},
+        "name": {},
+        "version": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "InstalledApp",
+      "x-studio-reads": [
+        "build",
+        "bundleId",
+        "executable",
+        "name",
+        "version"
+      ],
+      "x-cli-writes": [
+        "build",
+        "bundleId",
+        "executable",
+        "name",
+        "version"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/target/iphone/device/app_command.dart"
+      ],
+      "examples": [
+        {
+          "v": 1,
+          "type": "app",
+          "bundleId": "b",
+          "name": null,
+          "version": "1",
+          "build": "1",
+          "executable": "Runner"
+        }
+      ],
+      "x-example-source": "apps/studio/test/cli/cli_test.dart"
+    },
+    "event_appinfo": {
+      "title": "appinfo",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "appinfo"
+        },
+        "associatedDomains": {},
+        "build": {},
+        "bundleId": {},
+        "entitlements": {},
+        "executable": {},
+        "name": {},
+        "push": {},
+        "signer": {},
+        "teamId": {},
+        "version": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "AppInfo",
+      "x-studio-reads": [
+        "associatedDomains",
+        "build",
+        "bundleId",
+        "entitlements",
+        "executable",
+        "name",
+        "push",
+        "signer",
+        "teamId",
+        "version"
+      ],
+      "x-cli-writes": [
+        "associatedDomains",
+        "build",
+        "bundleId",
+        "entitlements",
+        "executable",
+        "name",
+        "push",
+        "signer",
+        "teamId",
+        "version"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/src/target/iphone/device/installed_app_info.dart"
+      ],
+      "examples": [
+        {
+          "v": 1,
+          "type": "appinfo",
+          "bundleId": "com.example.app",
+          "name": "A",
+          "version": "1",
+          "build": "2",
+          "executable": "Runner",
+          "signer": "development",
+          "teamId": "TEAM",
+          "entitlements": {
+            "aps-environment": "development"
+          },
+          "push": "development",
+          "associatedDomains": [
+            "applinks:x.com"
+          ]
+        }
+      ],
+      "x-example-source": "apps/studio/test/cli/cli_test.dart"
+    },
+    "event_appstore_app": {
+      "title": "appstore_app",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "appstore_app"
+        },
+        "bundleId": {},
+        "found": {},
+        "id": {},
+        "name": {},
+        "newAppUrl": {},
+        "primaryLocale": {},
+        "sku": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": false,
+      "x-cli-writes": [
+        "bundleId",
+        "found",
+        "id",
+        "name",
+        "newAppUrl",
+        "primaryLocale",
+        "sku"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/shared/appstore/appstore_command.dart"
+      ]
+    },
+    "event_appstore_status": {
+      "title": "appstore_status",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "appstore_status"
+        },
+        "build": {},
+        "state": {},
+        "submissions": {},
+        "version": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "AppStoreStatus",
+      "x-studio-reads": [
+        "build",
+        "state",
+        "submissions",
+        "version"
+      ],
+      "x-cli-writes": [
+        "build",
+        "state",
+        "submissions",
+        "version"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/src/shared/appstore/app_store_review.dart"
+      ]
+    },
+    "event_appstore_version": {
+      "title": "appstore_version",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "appstore_version"
+        },
+        "created": {},
+        "id": {},
+        "state": {},
+        "version": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": false,
+      "x-cli-writes": [
+        "created",
+        "id",
+        "state",
+        "version"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/shared/appstore/appstore_command.dart"
+      ]
+    },
+    "event_artifact": {
+      "title": "artifact",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "artifact"
+        },
+        "kind": {},
+        "path": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "BuildArtifact",
+      "x-studio-reads": [
+        "kind",
+        "path"
+      ],
+      "x-cli-writes": [
+        "kind",
+        "path"
+      ],
+      "x-cli-emitters": [
+        "packages/xcross/lib/src/composition/cli/flutter_build_command.dart",
+        "packages/xcross/lib/src/shared/flutter/build/flutter_pack_operation.dart"
+      ],
+      "examples": [
+        {
+          "v": 1,
+          "type": "artifact",
+          "kind": "app",
+          "path": "/w/build/xcross-ios/Runner.app"
+        }
+      ],
+      "x-example-source": "apps/studio/test/state/build_events_test.dart"
+    },
+    "event_asc_account": {
+      "title": "asc_account",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "asc_account"
+        },
+        "holderName": {},
+        "problem": {},
+        "teamId": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "AccountDetailsReport",
+      "x-studio-reads": [
+        "holderName",
+        "problem",
+        "teamId"
+      ],
+      "x-cli-writes": [
+        "holderName",
+        "problem",
+        "teamId"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/shared/auth/account_lookup.dart"
+      ]
+    },
+    "event_auth_status": {
+      "title": "auth_status",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "auth_status"
+        },
+        "apiKey": {},
+        "appStoreBuilds": {},
+        "appleId": {},
+        "deviceBuilds": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "AuthStatusReport",
+      "x-studio-reads": [
+        "apiKey",
+        "appStoreBuilds",
+        "appleId",
+        "deviceBuilds"
+      ],
+      "x-cli-writes": [
+        "apiKey",
+        "appStoreBuilds",
+        "appleId",
+        "deviceBuilds"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/shared/auth/saved_sign_in.dart"
+      ]
+    },
+    "event_bundle_id": {
+      "title": "bundle_id",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "bundle_id"
+        },
+        "bundleId": {},
+        "next": {},
+        "override": {},
+        "saved": {},
+        "settingsPath": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "BundleIdStatus",
+      "x-studio-reads": [
+        "bundleId",
+        "next",
+        "override",
+        "saved",
+        "settingsPath"
+      ],
+      "x-cli-writes": [
+        "bundleId",
+        "next",
+        "override",
+        "saved",
+        "settingsPath"
+      ],
+      "x-cli-emitters": [
+        "packages/xcross/lib/src/target/iphone/cli/basic/project_command.dart"
+      ]
+    },
+    "event_capabilities": {
+      "title": "capabilities",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "capabilities"
+        },
+        "capabilities": {},
+        "entitlements": {},
+        "project": {},
+        "unknownEntitlements": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "CapabilitiesReport",
+      "x-studio-reads": [
+        "capabilities",
+        "entitlements",
+        "unknownEntitlements"
+      ],
+      "x-cli-writes": [
+        "capabilities",
+        "entitlements",
+        "project",
+        "unknownEntitlements"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/shared/permissions/permissions_command.dart"
+      ]
+    },
+    "event_capabilities_change": {
+      "title": "capabilities_change",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "capabilities_change"
+        },
+        "action": {},
+        "backup": {},
+        "changed": {},
+        "id": {},
+        "key": {},
+        "notes": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "ProjectChange",
+      "x-studio-reads": [
+        "action",
+        "backup",
+        "changed",
+        "id",
+        "key",
+        "notes"
+      ],
+      "x-cli-writes": [
+        "action",
+        "backup",
+        "changed",
+        "id",
+        "notes"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/shared/permissions/permissions_command.dart"
+      ],
+      "examples": [
+        {
+          "v": 1,
+          "type": "capabilities_change",
+          "action": "add",
+          "id": "push",
+          "changed": true,
+          "backup": null,
+          "notes": [
+            "n"
+          ]
+        }
+      ],
+      "x-example-source": "apps/studio/test/cli/cli_test.dart"
+    },
+    "event_check": {
+      "title": "check",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "check"
+        },
+        "message": {},
+        "name": {},
+        "path": {},
+        "section": {},
+        "status": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "DoctorCheckResult",
+      "x-studio-reads": [
+        "message",
+        "name",
+        "path",
+        "section",
+        "status"
+      ],
+      "x-cli-writes": [
+        "message",
+        "name",
+        "path",
+        "section",
+        "status"
+      ],
+      "x-cli-emitters": [
+        "packages/xcross/lib/src/shared/cli/basic/doctor_command.dart"
+      ],
+      "examples": [
+        {
+          "v": 1,
+          "type": "check",
+          "section": "iOS toolchain",
+          "name": "swift",
+          "status": "failure",
+          "message": "Not found.",
+          "path": null
+        }
+      ],
+      "x-example-source": "apps/studio/test/design_system/components_test.dart"
+    },
+    "event_crash": {
+      "title": "crash",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "crash"
+        },
+        "exceptionType": {},
+        "name": {},
+        "process": {},
+        "time": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "CrashReport",
+      "x-studio-reads": [
+        "exceptionType",
+        "name",
+        "process",
+        "time"
+      ],
+      "x-cli-writes": [
+        "exceptionType",
+        "name",
+        "process",
+        "time"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/target/iphone/device/crashes_command.dart"
+      ],
+      "examples": [
+        {
+          "v": 1,
+          "type": "crash",
+          "name": "Runner-2026.ips",
+          "process": "Runner",
+          "time": "2026-11-01T10:00:00",
+          "exceptionType": "EXC_CRASH"
+        }
+      ],
+      "x-example-source": "apps/studio/test/cli/cli_test.dart"
+    },
+    "event_device": {
+      "title": "device",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "device"
+        },
+        "connection": {},
+        "legacy": {},
+        "name": {},
+        "osVersion": {},
+        "udid": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "ConnectedDevice",
+      "x-studio-reads": [
+        "connection",
+        "name",
+        "osVersion",
+        "udid"
+      ],
+      "x-cli-writes": [
+        "connection",
+        "legacy",
+        "name",
+        "osVersion",
+        "udid"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/target/iphone/device/devices_command.dart",
+        "packages/xcross/lib/src/target/iphone/device/device_precheck.dart"
+      ],
+      "examples": [
+        {
+          "v": 1,
+          "type": "device",
+          "udid": "U1",
+          "name": "Phone",
+          "osVersion": "16.7.16",
+          "connection": "usb"
+        }
+      ],
+      "x-example-source": "apps/studio/test/cli/cli_test.dart"
+    },
+    "event_devicelog": {
+      "title": "devicelog",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "devicelog"
+        },
+        "category": {},
+        "highlight": {},
+        "level": {},
+        "message": {},
+        "pid": {},
+        "process": {},
+        "subsystem": {},
+        "time": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "DeviceLogLine",
+      "x-studio-reads": [
+        "category",
+        "highlight",
+        "level",
+        "message",
+        "pid",
+        "process",
+        "subsystem",
+        "time"
+      ],
+      "x-cli-writes": [
+        "category",
+        "highlight",
+        "level",
+        "message",
+        "pid",
+        "process",
+        "subsystem",
+        "time"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/src/target/iphone/device/log_output.dart"
+      ],
+      "examples": [
+        {
+          "v": 1,
+          "type": "devicelog",
+          "time": "2026-11-01T16:55:51.0186",
+          "process": "Runner",
+          "pid": 12,
+          "subsystem": null,
+          "category": null,
+          "level": "error",
+          "message": "boom",
+          "highlight": "error"
+        }
+      ],
+      "x-example-source": "apps/studio/test/cli/cli_test.dart"
+    },
+    "event_devices": {
+      "title": "devices",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "devices"
+        },
+        "devices": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "DeviceSnapshot",
+      "x-studio-reads": [
+        "devices"
+      ],
+      "x-cli-writes": [
+        "devices"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/target/iphone/device/devices_command.dart"
+      ]
+    },
+    "event_diagnosis": {
+      "title": "diagnosis",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "diagnosis"
+        },
+        "appSeen": {},
+        "bundleId": {},
+        "deliverySeen": {},
+        "entitlement": {},
+        "hint": {},
+        "permissionDenied": {},
+        "registrationSeen": {},
+        "verdict": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "PushDiagnosis",
+      "x-studio-reads": [
+        "appSeen",
+        "bundleId",
+        "deliverySeen",
+        "entitlement",
+        "hint",
+        "permissionDenied",
+        "registrationSeen",
+        "verdict"
+      ],
+      "x-cli-writes": [
+        "appSeen",
+        "bundleId",
+        "deliverySeen",
+        "entitlement",
+        "hint",
+        "permissionDenied",
+        "registrationSeen",
+        "verdict"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/src/target/iphone/device/push_diagnosis.dart"
+      ],
+      "examples": [
+        {
+          "v": 1,
+          "type": "diagnosis",
+          "bundleId": "b",
+          "entitlement": null,
+          "appSeen": true,
+          "registrationSeen": false,
+          "deliverySeen": false,
+          "permissionDenied": false,
+          "verdict": "missing_entitlement",
+          "hint": "Add aps-environment."
+        }
+      ],
+      "x-example-source": "apps/studio/test/cli/cli_test.dart"
+    },
+    "event_done": {
+      "title": "done",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "done"
+        },
+        "exitCode": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "BuildDone",
+      "x-studio-reads": [
+        "exitCode"
+      ],
+      "x-cli-writes": [
+        "exitCode"
+      ],
+      "x-cli-emitters": [
+        "packages/xcross/lib/src/composition/cli/runner.dart"
+      ],
+      "examples": [
+        {
+          "v": 1,
+          "type": "done",
+          "exitCode": 0
+        }
+      ],
+      "x-example-source": "apps/studio/test/state/build_events_test.dart"
+    },
+    "event_engine_info": {
+      "title": "engine_info",
+      "type": "object",
+      "required": [
+        "v",
+        "type",
+        "engine",
+        "protocol",
+        "version"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "engine_info"
+        },
+        "engine": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "integer"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "EngineInfoReport",
+      "x-studio-reads": [
+        "engine",
+        "protocol",
+        "version"
+      ],
+      "x-cli-writes": [
+        "engine",
+        "protocol",
+        "version"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/shared/engine/engine_info_command.dart"
+      ]
+    },
+    "event_error": {
+      "title": "error",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "error"
+        },
+        "code": {},
+        "hint": {},
+        "message": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "BuildIssue",
+      "x-studio-reads": [
+        "code",
+        "hint",
+        "message"
+      ],
+      "x-cli-writes": [
+        "code",
+        "hint",
+        "message"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/shared/events/ndjson_events.dart"
+      ],
+      "examples": [
+        {
+          "v": 1,
+          "type": "error",
+          "code": null,
+          "message": "m",
+          "hint": null
+        }
+      ],
+      "x-example-source": "apps/studio/test/state/build_events_test.dart"
+    },
+    "event_flutter_sdks": {
+      "title": "flutter_sdks",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "flutter_sdks"
+        },
+        "active": {},
+        "available": {},
+        "catalogError": {},
+        "catalogStale": {},
+        "managed": {},
+        "platform": {},
+        "suggested": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "FlutterSdkStatus",
+      "x-studio-reads": [
+        "active",
+        "available",
+        "managed",
+        "platform",
+        "suggested"
+      ],
+      "x-cli-writes": [
+        "active",
+        "available",
+        "catalogError",
+        "catalogStale",
+        "managed",
+        "platform",
+        "suggested"
+      ],
+      "x-cli-emitters": [
+        "packages/xcross/lib/src/shared/cli/flutter/subcommands/flutter_sdk_command.dart"
+      ]
+    },
+    "event_icons_check": {
+      "title": "icons_check",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "icons_check"
+        },
+        "errors": {},
+        "issues": {},
+        "path": {},
+        "placement": {},
+        "set": {},
+        "slots": {},
+        "source": {},
+        "style": {},
+        "warnings": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "IconsCheckReport",
+      "x-studio-reads": [
+        "issues",
+        "path",
+        "placement",
+        "slots",
+        "source",
+        "style"
+      ],
+      "x-cli-writes": [
+        "errors",
+        "issues",
+        "path",
+        "placement",
+        "set",
+        "slots",
+        "source",
+        "style",
+        "warnings"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/src/shared/icons/icon_check.dart"
+      ]
+    },
+    "event_icons_generate": {
+      "title": "icons_generate",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "icons_generate"
+        },
+        "background": {},
+        "backup": {},
+        "check": {},
+        "issues": {},
+        "notes": {},
+        "padding": {},
+        "path": {},
+        "source": {},
+        "targets": {},
+        "upscaled": {},
+        "written": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "IconsGenerateResult",
+      "x-studio-reads": [
+        "background",
+        "backup",
+        "check",
+        "issues",
+        "path",
+        "written"
+      ],
+      "x-cli-writes": [
+        "background",
+        "backup",
+        "check",
+        "issues",
+        "notes",
+        "padding",
+        "path",
+        "source",
+        "targets",
+        "upscaled",
+        "written"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/shared/icons/icons_generate_command.dart"
+      ]
+    },
+    "event_icons_preview": {
+      "title": "icons_preview",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "icons_preview"
+        },
+        "error": {},
+        "paths": {},
+        "seq": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "IconsPreview",
+      "x-studio-reads": [
+        "error",
+        "paths",
+        "seq"
+      ],
+      "x-cli-writes": [
+        "error",
+        "paths",
+        "seq"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/shared/icons/icons_generate_command.dart"
+      ]
+    },
+    "event_ios_prepare": {
+      "title": "ios_prepare",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "ios_prepare"
+        },
+        "bundleId": {},
+        "deploymentTarget": {},
+        "leftOut": {},
+        "permissionMacros": {},
+        "plugins": {},
+        "ready": {},
+        "steps": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "IosPrepareReport",
+      "x-studio-reads": [
+        "bundleId",
+        "deploymentTarget",
+        "plugins",
+        "ready",
+        "steps"
+      ],
+      "x-cli-writes": [
+        "bundleId",
+        "deploymentTarget",
+        "leftOut",
+        "permissionMacros",
+        "plugins",
+        "ready",
+        "steps"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/shared/ios/ios_prepare.dart"
+      ]
+    },
+    "event_log": {
+      "title": "log",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "log"
+        },
+        "level": {},
+        "message": {},
+        "step": {},
+        "stream": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "BuildLog",
+      "x-studio-reads": [
+        "level",
+        "message",
+        "step",
+        "stream"
+      ],
+      "x-cli-writes": [
+        "level",
+        "message",
+        "step",
+        "stream"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/shared/events/ndjson_events.dart"
+      ],
+      "examples": [
+        {
+          "v": 1,
+          "type": "log",
+          "level": "trace",
+          "message": "swiftc -c main.swift",
+          "step": "Compiling Runner"
+        }
+      ],
+      "x-example-source": "apps/studio/test/state/build_events_test.dart"
+    },
+    "event_notice": {
+      "title": "notice",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "notice"
+        },
+        "message": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "Notice",
+      "x-studio-reads": [
+        "message"
+      ],
+      "x-cli-writes": [
+        "message"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/target/iphone/device/devices_command.dart",
+        "packages/studio_ext/lib/target/iphone/device/logs_command.dart"
+      ],
+      "examples": [
+        {
+          "v": 1,
+          "type": "notice",
+          "message": "waiting"
+        }
+      ],
+      "x-example-source": "apps/studio/test/cli/cli_test.dart"
+    },
+    "event_permissions": {
+      "title": "permissions",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "permissions"
+        },
+        "catalog": {},
+        "infoPlist": {},
+        "missing": {},
+        "permissions": {},
+        "project": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "PermissionsReport",
+      "x-studio-reads": [
+        "catalog",
+        "missing",
+        "permissions"
+      ],
+      "x-cli-writes": [
+        "catalog",
+        "infoPlist",
+        "missing",
+        "permissions",
+        "project"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/shared/permissions/permissions_command.dart"
+      ],
+      "examples": [
+        {
+          "v": 1,
+          "type": "permissions",
+          "permissions": [
+            {
+              "key": "NSMicrophoneUsageDescription",
+              "name": "Microphone",
+              "value": "TODO",
+              "status": "placeholder",
+              "neededBy": [
+                "record"
+              ]
+            }
+          ],
+          "missing": [
+            {
+              "resource": "camera",
+              "keys": [
+                "NSCameraUsageDescription"
+              ],
+              "plugins": [
+                "image_picker_ios"
+              ]
+            }
+          ],
+          "catalog": [
+            {
+              "key": "NSCameraUsageDescription",
+              "name": "Camera",
+              "description": "d",
+              "suggestion": "Scan codes."
+            }
+          ]
+        }
+      ],
+      "x-example-source": "apps/studio/test/cli/cli_test.dart"
+    },
+    "event_permissions_change": {
+      "title": "permissions_change",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "permissions_change"
+        },
+        "action": {},
+        "backup": {},
+        "changed": {},
+        "id": {},
+        "key": {},
+        "notes": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "ProjectChange",
+      "x-studio-reads": [
+        "action",
+        "backup",
+        "changed",
+        "id",
+        "key",
+        "notes"
+      ],
+      "x-cli-writes": [
+        "action",
+        "backup",
+        "changed",
+        "key",
+        "notes"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/shared/permissions/permissions_command.dart"
+      ]
+    },
+    "event_plugin_ack": {
+      "title": "plugin_ack",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "plugin_ack"
+        },
+        "plugin": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": false,
+      "x-cli-writes": [
+        "plugin"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/shared/plugins/plugin_status.dart"
+      ]
+    },
+    "event_plugin_status": {
+      "title": "plugin_status",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "plugin_status"
+        },
+        "plugins": {},
+        "project": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "PluginStatusReport",
+      "x-studio-reads": [
+        "plugins"
+      ],
+      "x-cli-writes": [
+        "plugins",
+        "project"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/shared/plugins/plugin_status.dart"
+      ],
+      "examples": [
+        {
+          "v": 1,
+          "type": "plugin_status",
+          "project": "/p",
+          "plugins": [
+            {
+              "name": "fluttertoast",
+              "version": "8.2.14",
+              "kind": "draft",
+              "overridePath": "xcross_overrides/fluttertoast/8.2.14",
+              "edited": false,
+              "problems": [
+                {
+                  "code": "manifest_missing",
+                  "message": "no manifest"
+                }
+              ],
+              "action": "regenerate",
+              "canRegenerate": true,
+              "command": [
+                "plugin",
+                "shim",
+                "fluttertoast",
+                "--force"
+              ]
+            }
+          ]
+        }
+      ],
+      "x-example-source": "apps/studio/test/cli/cli_test.dart"
+    },
+    "event_progress": {
+      "title": "progress",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "progress"
+        },
+        "current": {},
+        "fraction": {},
+        "label": {},
+        "total": {},
+        "unit": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "BuildProgress",
+      "x-studio-reads": [
+        "fraction",
+        "label"
+      ],
+      "x-cli-writes": [
+        "current",
+        "fraction",
+        "label",
+        "total",
+        "unit"
+      ],
+      "x-cli-emitters": [
+        "packages/cli_kit/lib/shared/progress/progress.dart"
+      ],
+      "examples": [
+        {
+          "v": 1,
+          "type": "progress",
+          "label": "Downloading engine",
+          "fraction": 0.5,
+          "current": 5,
+          "total": 10,
+          "unit": "bytes"
+        }
+      ],
+      "x-example-source": "apps/studio/test/state/build_events_test.dart"
+    },
+    "event_project_version": {
+      "title": "project_version",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "project_version"
+        },
+        "build": {},
+        "changed": {},
+        "previous": {},
+        "pubspec": {},
+        "version": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "ProjectVersion",
+      "x-studio-reads": [
+        "build",
+        "changed",
+        "previous",
+        "version"
+      ],
+      "x-cli-writes": [
+        "build",
+        "changed",
+        "previous",
+        "pubspec",
+        "version"
+      ],
+      "x-cli-emitters": [
+        "packages/xcross/lib/src/target/iphone/cli/basic/project_command.dart"
+      ]
+    },
+    "event_publish": {
+      "title": "publish",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "publish"
+        },
+        "event": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "PublishEvent",
+      "x-studio-reads": [
+        "event"
+      ],
+      "x-cli-writes": [
+        "event",
+        "…plus event-specific fields"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/shared/appstore/publish_command.dart"
+      ]
+    },
+    "event_release_check": {
+      "title": "release_check",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "release_check"
+        },
+        "configuration": {},
+        "errors": {},
+        "input": {},
+        "issues": {},
+        "warnings": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "ReleaseCheckReport",
+      "x-studio-reads": [
+        "configuration",
+        "input",
+        "issues"
+      ],
+      "x-cli-writes": [
+        "configuration",
+        "errors",
+        "input",
+        "issues",
+        "warnings"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/src/shared/release/release_checks.dart"
+      ]
+    },
+    "event_release_gate": {
+      "title": "release_gate",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "release_gate"
+        },
+        "steps": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "ReleaseGateResult",
+      "x-studio-reads": [
+        "steps"
+      ],
+      "x-cli-writes": [
+        "steps"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/shared/release/release_gate_command.dart"
+      ]
+    },
+    "event_splash_check": {
+      "title": "splash_check",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "splash_check"
+        },
+        "android": {},
+        "errors": {},
+        "ios": {},
+        "issues": {},
+        "warnings": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "SplashCheckReport",
+      "x-studio-reads": [
+        "android",
+        "errors",
+        "ios",
+        "issues"
+      ],
+      "x-cli-writes": [
+        "android",
+        "errors",
+        "ios",
+        "issues",
+        "warnings"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/src/shared/splash/splash_check.dart"
+      ]
+    },
+    "event_splash_generate": {
+      "title": "splash_generate",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "splash_generate"
+        },
+        "backup": {},
+        "check": {},
+        "issues": {},
+        "path": {},
+        "platforms": {},
+        "removed": {},
+        "written": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "SplashGenerateResult",
+      "x-studio-reads": [
+        "backup",
+        "check",
+        "issues",
+        "path",
+        "removed",
+        "written"
+      ],
+      "x-cli-writes": [
+        "backup",
+        "check",
+        "issues",
+        "path",
+        "platforms",
+        "removed",
+        "written"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/shared/splash/splash_command.dart"
+      ]
+    },
+    "event_step": {
+      "title": "step",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "step"
+        },
+        "done": {},
+        "elapsedMs": {},
+        "message": {},
+        "name": {},
+        "status": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "BuildStep",
+      "x-studio-reads": [
+        "elapsedMs",
+        "message",
+        "name",
+        "status"
+      ],
+      "x-cli-writes": [
+        "done",
+        "elapsedMs",
+        "message",
+        "name",
+        "status"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/shared/events/ndjson_events.dart"
+      ],
+      "examples": [
+        {
+          "v": 1,
+          "type": "step",
+          "name": "Resolving dependencies",
+          "status": "done",
+          "message": null,
+          "elapsedMs": 1200
+        }
+      ],
+      "x-example-source": "apps/studio/test/state/build_events_test.dart"
+    },
+    "event_testflight_groups": {
+      "title": "testflight_groups",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "testflight_groups"
+        },
+        "groups": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": false,
+      "x-cli-writes": [
+        "groups"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/shared/appstore/testflight_command.dart"
+      ]
+    },
+    "event_testflight_status": {
+      "title": "testflight_status",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "testflight_status"
+        },
+        "appId": {},
+        "builds": {},
+        "bundleId": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "TestFlightStatus",
+      "x-studio-reads": [
+        "builds"
+      ],
+      "x-cli-writes": [
+        "appId",
+        "builds",
+        "bundleId"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/shared/appstore/testflight_command.dart"
+      ]
+    },
+    "event_testflight_testers": {
+      "title": "testflight_testers",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "testflight_testers"
+        },
+        "group": {},
+        "testers": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": false,
+      "x-cli-writes": [
+        "group",
+        "testers"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/shared/appstore/testflight_command.dart"
+      ]
+    },
+    "event_warning": {
+      "title": "warning",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "warning"
+        },
+        "code": {},
+        "hint": {},
+        "message": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "BuildIssue",
+      "x-studio-reads": [
+        "code",
+        "hint",
+        "message"
+      ],
+      "x-cli-writes": [
+        "code",
+        "hint",
+        "message"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/shared/events/ndjson_events.dart"
+      ],
+      "examples": [
+        {
+          "v": 1,
+          "type": "warning",
+          "code": "build.asset_catalog_skipped",
+          "message": "Assets.xcassets was not compiled.",
+          "hint": "Install AssetKit."
+        }
+      ],
+      "x-example-source": "apps/studio/test/state/build_events_test.dart"
+    }
+  }
+}

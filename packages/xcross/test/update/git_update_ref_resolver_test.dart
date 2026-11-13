@@ -46,7 +46,7 @@ void main() {
           FixtureGitCall(
             arguments: const [
               'ls-remote',
-              'https://github.com/arxdeus/xcross.git',
+              'https://github.com/Abdelrahman1atef/xcross-studio.git',
               'refs/tags/release',
               'refs/tags/release^{}',
             ],
@@ -76,7 +76,7 @@ void main() {
         FixtureGitCall(
           arguments: const [
             'ls-remote',
-            'https://github.com/arxdeus/xcross.git',
+            'https://github.com/Abdelrahman1atef/xcross-studio.git',
             'refs/tags/v1.2.3',
             'refs/tags/v1.2.3^{}',
           ],
@@ -105,7 +105,7 @@ void main() {
         FixtureGitCall(
           arguments: const [
             'ls-remote',
-            'https://github.com/arxdeus/xcross.git',
+            'https://github.com/Abdelrahman1atef/xcross-studio.git',
             'refs/tags/v1.2.3',
             'refs/tags/v1.2.3^{}',
           ],
@@ -131,7 +131,7 @@ void main() {
         FixtureGitCall(
           arguments: const [
             'ls-remote',
-            'https://github.com/arxdeus/xcross.git',
+            'https://github.com/Abdelrahman1atef/xcross-studio.git',
             'refs/tags/main',
             'refs/tags/main^{}',
           ],
@@ -140,7 +140,7 @@ void main() {
         FixtureGitCall(
           arguments: const [
             'ls-remote',
-            'https://github.com/arxdeus/xcross.git',
+            'https://github.com/Abdelrahman1atef/xcross-studio.git',
             'refs/heads/main',
           ],
           result: _result(
@@ -165,13 +165,13 @@ void main() {
         equals([
           [
             'ls-remote',
-            'https://github.com/arxdeus/xcross.git',
+            'https://github.com/Abdelrahman1atef/xcross-studio.git',
             'refs/tags/main',
             'refs/tags/main^{}',
           ],
           [
             'ls-remote',
-            'https://github.com/arxdeus/xcross.git',
+            'https://github.com/Abdelrahman1atef/xcross-studio.git',
             'refs/heads/main',
           ],
         ]),
@@ -183,7 +183,7 @@ void main() {
         FixtureGitCall(
           arguments: const [
             'ls-remote',
-            'https://github.com/arxdeus/xcross.git',
+            'https://github.com/Abdelrahman1atef/xcross-studio.git',
             'refs/heads/stable',
           ],
           result: _result(
@@ -210,7 +210,7 @@ void main() {
         FixtureGitCall(
           arguments: const [
             'ls-remote',
-            'https://github.com/arxdeus/xcross.git',
+            'https://github.com/Abdelrahman1atef/xcross-studio.git',
             'refs/heads/stable',
           ],
           result: _result(
@@ -236,7 +236,7 @@ void main() {
         FixtureGitCall(
           arguments: const [
             'ls-remote',
-            'https://github.com/arxdeus/xcross.git',
+            'https://github.com/Abdelrahman1atef/xcross-studio.git',
             'refs/heads/stable',
           ],
           result: _result(stdout: 'not-a-full-sha\trefs/heads/stable\n'),
@@ -259,7 +259,7 @@ void main() {
         FixtureGitCall(
           arguments: const [
             'ls-remote',
-            'https://github.com/arxdeus/xcross.git',
+            'https://github.com/Abdelrahman1atef/xcross-studio.git',
             'refs/tags/$shortHex',
             'refs/tags/$shortHex^{}',
           ],
@@ -268,7 +268,7 @@ void main() {
         FixtureGitCall(
           arguments: const [
             'ls-remote',
-            'https://github.com/arxdeus/xcross.git',
+            'https://github.com/Abdelrahman1atef/xcross-studio.git',
             'refs/heads/$shortHex',
           ],
           result: _result(
@@ -295,7 +295,7 @@ void main() {
         FixtureGitCall(
           arguments: const [
             'ls-remote',
-            'https://github.com/arxdeus/xcross.git',
+            'https://github.com/Abdelrahman1atef/xcross-studio.git',
             'refs/tags/$shortSha',
             'refs/tags/$shortSha^{}',
           ],
@@ -304,7 +304,7 @@ void main() {
         FixtureGitCall(
           arguments: const [
             'ls-remote',
-            'https://github.com/arxdeus/xcross.git',
+            'https://github.com/Abdelrahman1atef/xcross-studio.git',
             'refs/heads/$shortSha',
           ],
           result: _result(exitCode: 2),
@@ -343,7 +343,7 @@ void main() {
           FixtureGitCall(
             arguments: const [
               'ls-remote',
-              'https://github.com/arxdeus/xcross.git',
+              'https://github.com/Abdelrahman1atef/xcross-studio.git',
               'refs/tags/$sha',
               'refs/tags/$sha^{}',
             ],
@@ -352,7 +352,7 @@ void main() {
           FixtureGitCall(
             arguments: const [
               'ls-remote',
-              'https://github.com/arxdeus/xcross.git',
+              'https://github.com/Abdelrahman1atef/xcross-studio.git',
               'refs/heads/$sha',
             ],
             result: _result(exitCode: 2),
@@ -366,7 +366,7 @@ void main() {
             arguments: const [
               'fetch',
               '--depth=1',
-              'https://github.com/arxdeus/xcross.git',
+              'https://github.com/Abdelrahman1atef/xcross-studio.git',
               sha,
             ],
             workingDirectory: '/tmp/fake-xcross-update-1',
@@ -406,7 +406,7 @@ void main() {
         FixtureGitCall(
           arguments: const [
             'ls-remote',
-            'https://github.com/arxdeus/xcross.git',
+            'https://github.com/Abdelrahman1atef/xcross-studio.git',
             'refs/tags/$sha',
             'refs/tags/$sha^{}',
           ],
@@ -415,7 +415,7 @@ void main() {
         FixtureGitCall(
           arguments: const [
             'ls-remote',
-            'https://github.com/arxdeus/xcross.git',
+            'https://github.com/Abdelrahman1atef/xcross-studio.git',
             'refs/heads/$sha',
           ],
           result: _result(exitCode: 2),
@@ -429,7 +429,7 @@ void main() {
           arguments: const [
             'fetch',
             '--depth=1',
-            'https://github.com/arxdeus/xcross.git',
+            'https://github.com/Abdelrahman1atef/xcross-studio.git',
             sha,
           ],
           workingDirectory: '/tmp/fake-xcross-update-invalid-sha',
@@ -467,7 +467,7 @@ void main() {
         FixtureGitCall(
           arguments: const [
             'ls-remote',
-            'https://github.com/arxdeus/xcross.git',
+            'https://github.com/Abdelrahman1atef/xcross-studio.git',
             'refs/tags/$sha',
             'refs/tags/$sha^{}',
           ],
@@ -476,7 +476,7 @@ void main() {
         FixtureGitCall(
           arguments: const [
             'ls-remote',
-            'https://github.com/arxdeus/xcross.git',
+            'https://github.com/Abdelrahman1atef/xcross-studio.git',
             'refs/heads/$sha',
           ],
           result: _result(exitCode: 2),
@@ -490,7 +490,7 @@ void main() {
           arguments: const [
             'fetch',
             '--depth=1',
-            'https://github.com/arxdeus/xcross.git',
+            'https://github.com/Abdelrahman1atef/xcross-studio.git',
             sha,
           ],
           workingDirectory: '/tmp/fake-xcross-update-cleanup-success',
@@ -520,7 +520,7 @@ void main() {
         FixtureGitCall(
           arguments: const [
             'ls-remote',
-            'https://github.com/arxdeus/xcross.git',
+            'https://github.com/Abdelrahman1atef/xcross-studio.git',
             'refs/tags/pull/12/head',
             'refs/tags/pull/12/head^{}',
           ],
@@ -529,7 +529,7 @@ void main() {
         FixtureGitCall(
           arguments: const [
             'ls-remote',
-            'https://github.com/arxdeus/xcross.git',
+            'https://github.com/Abdelrahman1atef/xcross-studio.git',
             'refs/heads/pull/12/head',
           ],
           result: _result(exitCode: 2),
@@ -543,7 +543,7 @@ void main() {
           arguments: const [
             'fetch',
             '--depth=1',
-            'https://github.com/arxdeus/xcross.git',
+            'https://github.com/Abdelrahman1atef/xcross-studio.git',
             'pull/12/head',
           ],
           workingDirectory: '/tmp/fake-xcross-update-2',
@@ -580,7 +580,7 @@ void main() {
         FixtureGitCall(
           arguments: const [
             'ls-remote',
-            'https://github.com/arxdeus/xcross.git',
+            'https://github.com/Abdelrahman1atef/xcross-studio.git',
             'refs/tags/missing',
             'refs/tags/missing^{}',
           ],
@@ -589,7 +589,7 @@ void main() {
         FixtureGitCall(
           arguments: const [
             'ls-remote',
-            'https://github.com/arxdeus/xcross.git',
+            'https://github.com/Abdelrahman1atef/xcross-studio.git',
             'refs/heads/missing',
           ],
           result: _result(exitCode: 2),
@@ -603,7 +603,7 @@ void main() {
           arguments: const [
             'fetch',
             '--depth=1',
-            'https://github.com/arxdeus/xcross.git',
+            'https://github.com/Abdelrahman1atef/xcross-studio.git',
             'missing',
           ],
           workingDirectory: '/tmp/fake-xcross-update-3',
@@ -642,7 +642,7 @@ void main() {
         FixtureGitCall(
           arguments: const [
             'ls-remote',
-            'https://github.com/arxdeus/xcross.git',
+            'https://github.com/Abdelrahman1atef/xcross-studio.git',
             'refs/tags/missing',
             'refs/tags/missing^{}',
           ],
@@ -651,7 +651,7 @@ void main() {
         FixtureGitCall(
           arguments: const [
             'ls-remote',
-            'https://github.com/arxdeus/xcross.git',
+            'https://github.com/Abdelrahman1atef/xcross-studio.git',
             'refs/heads/missing',
           ],
           result: _result(exitCode: 2),
@@ -665,7 +665,7 @@ void main() {
           arguments: const [
             'fetch',
             '--depth=1',
-            'https://github.com/arxdeus/xcross.git',
+            'https://github.com/Abdelrahman1atef/xcross-studio.git',
             'missing',
           ],
           workingDirectory: '/tmp/fake-xcross-update-cleanup-error',

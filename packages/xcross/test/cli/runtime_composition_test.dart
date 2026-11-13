@@ -59,8 +59,10 @@ void main() {
         final legacy = Directory('${home.path}/.pymobiledevice3')
           ..createSync(recursive: true);
         expect(
-          pymdWithEnvironment({'HOME': home.path, 'PATH': '/usr/bin:/bin'})
-              .pairingHome,
+          pymdWithEnvironment({
+            'HOME': home.path,
+            'PATH': '/usr/bin:/bin',
+          }).pairingHome,
           equals(legacy.path),
         );
       },
@@ -91,7 +93,9 @@ void main() {
       () {
         final home = Directory.systemTemp.createTempSync('xcross_choice_home');
         addTearDown(() => home.deleteSync(recursive: true));
-        final xdgData = Directory.systemTemp.createTempSync('xcross_choice_xdg');
+        final xdgData = Directory.systemTemp.createTempSync(
+          'xcross_choice_xdg',
+        );
         addTearDown(() => xdgData.deleteSync(recursive: true));
         Directory('${home.path}/.pymobiledevice3').createSync(recursive: true);
         expect(
@@ -116,7 +120,7 @@ void main() {
         }).pairingHome,
         equals(
           '${r'C:\Users\someone\AppData\Local\Temp\home'}'
-              '/.local/share/pymobiledevice3',
+          '/.local/share/pymobiledevice3',
         ),
       );
     });
@@ -325,6 +329,12 @@ void main() {
         XcrossCli.ownsMachineStdout(['--verbose', 'flutter', 'doctor'], runner),
         isFalse,
       );
+      // studio: XCross Studio parses this line; no banner may precede it.
+      expect(
+        XcrossCli.ownsMachineStdout(['engine', 'info', '--json'], runner),
+        isTrue,
+      );
+      expect(XcrossCli.ownsMachineStdout(['engine', 'info'], runner), isFalse);
     },
   );
 

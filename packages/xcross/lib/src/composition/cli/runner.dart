@@ -16,6 +16,7 @@ import 'package:dart_mobile_device/target/iphone/diagnostics/pymd_device_diagnos
 import 'package:darwin_sdk_kit/shared/errors/errors.dart';
 import 'package:meta/meta.dart';
 import 'package:studio_ext/shared/appstore/command_exit.dart'; // studio: 019
+import 'package:studio_ext/shared/engine/engine_info_command.dart'; // studio: engine identity
 import 'package:studio_ext/shared/icons/icons_command.dart'; // studio: 023
 import 'package:studio_ext/shared/inspect/inspect_command.dart'; // studio:
 import 'package:studio_ext/shared/ios/ios_prepare.dart'; // studio: 032
@@ -58,6 +59,7 @@ import 'package:xcross/src/shared/flutter/build/ios_bundle_id.dart'; // studio: 
 import 'package:xcross/src/shared/flutter/errors.dart';
 import 'package:xcross/src/shared/flutter/project/pbx_project_reader.dart'; // studio: 016
 import 'package:xcross/src/shared/models/pack_result.dart'; // studio: 005
+import 'package:xcross/src/shared/runtime/version.dart'; // studio: engine identity
 import 'package:xcross/src/shared/runtime/xcross_runtime.dart'; // studio: 016
 import 'package:xcross/src/shared/update/install_layout.dart';
 import 'package:xcross/src/shared/update/self_update.dart';
@@ -168,6 +170,12 @@ abstract final class XcrossCli {
       IdeCommand(ideLauncher),
       UpdateCommand(runtime),
       CompletionCommand(write: runtime.log.output.write),
+      // studio: `xcross engine info`, which XCross Studio checks before it
+      // trusts this engine.
+      EngineCommand(
+        version: XcrossVersion.current,
+        write: runtime.log.output.write,
+      ),
       // studio: XCross Studio feature 001 (specs/001-inspect).
       InspectCommand(
         fileSystem: runtime.host.fileSystem,
@@ -533,6 +541,11 @@ abstract final class XcrossCli {
           // studio: 018 — `release check --json` prints one object.
           command?.name == 'release' &&
               command?.command?.name == 'check' &&
+              command?.command?.flag('json') == true ||
+          // studio: `engine info --json` prints the one line XCross Studio
+          // reads to trust this engine.
+          command?.name == 'engine' &&
+              command?.command?.name == 'info' &&
               command?.command?.flag('json') == true;
     } on FormatException {
       return false;
