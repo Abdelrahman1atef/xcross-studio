@@ -48,6 +48,8 @@ bool isWithinOrEqual(
   required AppleHostServices hostServices,
 }) {
   final services = hostServices;
-  return samePath(parent, child, hostServices: services) ||
-      services.host.paths.context.isWithin(parent, child);
+  // studio: a local, because Dart 3.14's unused_result misreads a @useResult
+  // call on the left of `||` as unused.
+  final same = samePath(parent, child, hostServices: services);
+  return same || services.host.paths.context.isWithin(parent, child);
 }
