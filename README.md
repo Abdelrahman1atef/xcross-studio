@@ -467,31 +467,15 @@ UDIDs, certificate data, API keys or Info.plist values outside a short allow-lis
 </details>
 
 <!-- studio: 008 -->
-## XCross Studio desktop app (Windows and Linux)
+## Using xcross from a GUI
 
-`apps/studio` is a Flutter desktop GUI over this CLI, built on the XCross Studio design system ([docs/XCross_Studio_Design_System.md](docs/XCross_Studio_Design_System.md)). The sidebar has **Overview** (readiness from `xcross flutter doctor`, next step, recent builds), **Build & Run** (mode, iPhone, command preview, reported steps, artifact and install), **Devices** (iPhone readiness, sign & install or sign only, installed apps, iOS 17+ tunnel), **Signing** (Apple ID or API key with risk notes, sign out), **Logs & Debug** (live iPhone log with presets and filters, app info, push checklist, crashes, every tool command), **Plugins** (SwiftPM / podspec-only / override badges, draft overrides), **App icon** (every icon size checked and previewed as iOS masks it, a set made from one image), **Release**, **Archives** and **Settings** (which `xcross` to use, toolchain readout, IDE setup, theme, shortcuts). A first-run wizard walks through `xcross setup`, `xcross sdk install <Xcode.xip>`, sign-in, the device and the first build. It runs `xcross` as a subprocess and holds no build logic.
-
-```sh
-cd apps/studio
-flutter run -d windows   # or: flutter run -d linux
-```
-
-In Settings choose **Run from source** and pick this repository to use the XCross Studio CLI (`dart run
-packages/xcross/bin/xcross.dart`), or point it at a compiled `xcross` executable. See
-[specs/008-json-events-gui](specs/008-json-events-gui/spec.md).
-
-New here? Read **[docs/studio-getting-started.md](docs/studio-getting-started.md)**.
-
-**Packages** (built by `apps/studio/tool/package.dart` and by the *Studio GUI* CI workflow, which uploads them as
-artifacts): Windows `xcross-studio-windows-x64-setup.exe` (per-user, no admin) or the portable `.zip`; Linux
-`xcross-studio_<version>_amd64.deb` (depends on `usbmuxd`; launcher `xcross-studio`, CLI at
-`/opt/xcross-studio/xcross/bin/xcross`), `xcross-studio-x86_64.AppImage`, or the portable `.tar.gz`. Every package
-bundles the `xcross` CLI next to the app. Install `pymobiledevice3` separately (`pipx install pymobiledevice3`).
+This repository holds only the `xcross` engine (CLI). Desktop apps drive it as a subprocess and keep no build logic
+of their own. `xcross engine info --json` tells a GUI which engine and protocol version it is talking to.
 
 <!-- studio: 012 -->
 **Machine-readable output:** with `XCROSS_EVENTS=ndjson` set, `xcross flutter build`, `flutter run`, `install` and
 `flutter doctor` print one JSON event per line on stdout: `step`, `progress`, `log`, `warning`/`error` (with `code` and
-`hint`), `artifact` (the `.app`/`.ipa` path), `device`, `check` and `done` (exit code). The desktop app uses it for its
+`hint`), `artifact` (the `.app`/`.ipa` path), `device`, `check` and `done` (exit code). A GUI can use it for a
 step list, progress bar, issue list and Install button. Schema:
 [specs/012-build-events/contracts/events.schema.json](specs/012-build-events/contracts/events.schema.json).
 
@@ -503,7 +487,6 @@ release or two.
 - `xcross flutter sdk auto` installs that version once (into `<config>/xcross/flutter-sdks/`) and uses it for iOS
   builds only. Your own Flutter is not changed.
 - `xcross flutter sdk list` shows what is used; `xcross flutter sdk reset` switches back.
-- In the desktop app this is one button: **Set up Flutter X for iPhone builds**.
 
 ## Compose Multiplatform
 

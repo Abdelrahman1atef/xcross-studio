@@ -1,0 +1,101 @@
+# studio: every push to main that changes the engine makes the next fork
+# release, so the latest GitHub release always matches main.
+#
+# Tag: v<packages/xcross version>-xs.<N+1>, N = the highest xs number of any
+# tag so far (2.0.9-xs.3 -> 2.0.9-xs.4). It then starts release.yml on that
+# tag, which tests, builds the four archives and publishes the release.
+#
+# Docs, specs, README or workflow-only pushes make no release: the desktop
+# app asks users to update on every new release, so a release must carry an
+# engine change. Run this workflow by hand (Actions -> Auto release -> Run)
+# to release anyway. Put "[skip release]" in the commit message to skip one.
+name: Auto release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/**"
+      - "third_party/**"
+      - "pubspec.yaml"
+      - "pubspec.lock"
+  workflow_dispatch:
+
+# One release at a time, never cancelled half-way: the next run sees this
+# run's tag and takes the next number.
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  tag:
+    name: Tag the next release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # push the tag
+      actions: write # start release.yml on the tag
+    env:
+      GH_TOKEN: ${{ github.token }}
+      COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Pick the next tag
+        id: next
+        run: |
+          set -euo pipefail
+          if [[ "${COMMIT_MESSAGE:-}" == *"[skip release]"* ]]; then
+            echo "Commit asks to skip the release."
+            echo "skip=true" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          existing=$(git tag --points-at "$GITHUB_SHA" --list 'v*-xs.*' | head -n1)
+          if [[ -n "$existing" ]]; then
+            echo "This commit is already tagged $existing."
+            echo "skip=true" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          version=$(sed -n 's/^version:[[:space:]]*\([^[:space:]]*\).*/\1/p' packages/xcross/pubspec.yaml | head -n1)
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::packages/xcross/pubspec.yaml version '$version' is not x.y.z"
+            exit 1
+          fi
+          last=$(git tag --list 'v*-xs.*' | sed -n 's/.*-xs\.\([0-9][0-9]*\)$/\1/p' | sort -n | tail -n1)
+          tag="v${version}-xs.$(( ${last:-0} + 1 ))"
+          echo "Next release: $tag"
+          echo "skip=false" >>"$GITHUB_OUTPUT"
+          echo "tag=$tag" >>"$GITHUB_OUTPUT"
+
+      - name: Push the tag
+        if: steps.next.outputs.skip == 'false'
+        env:
+          TAG: ${{ steps.next.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "xcross $TAG" "$GITHUB_SHA"
+          git push origin "refs/tags/$TAG"
+
+      # A tag pushed with the workflow token does not start other workflows,
+      # so start the release by hand; a dispatch on a tag ref runs release.yml
+      # exactly as a tag push would (github.ref = refs/tags/<tag>).
+      - name: Start the release build
+        if: steps.next.outputs.skip == 'false'
+        env:
+          TAG: ${{ steps.next.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref "$TAG"
+          {
+            echo "### Release $TAG started"
+            echo
+            echo "Build and publish: [release.yml runs]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/workflows/release.yml)"
+          } >>"$GITHUB_STEP_SUMMARY"

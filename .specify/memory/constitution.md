@@ -16,7 +16,7 @@ iPhone without a Mac.
 ## Core Principles
 
 ### I. Minimal Diff From Upstream
-Fork features live in new files (package `packages/studio_ext`, app `apps/studio`). Upstream files are changed only
+Fork features live in new files (package `packages/studio_ext`). Upstream files are changed only
 at small, documented seams marked with a `// studio:` comment (composition root, `FlutterPacker` step injection,
 one-to-five-line hooks). Generally useful fixes are proposed upstream first and cherry-picked; the fork copy is
 removed once upstream merges it. Every upstream release tag is merged into `main` (no rebasing public history).
