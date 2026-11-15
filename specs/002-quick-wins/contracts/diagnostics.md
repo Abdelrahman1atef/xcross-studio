@@ -31,6 +31,7 @@ Each distinct warning (same code and same subject) is printed once per build.
 | `device.not_found` | no device found / no device matches `--device-id`/`--udid` | the selector, if given | `Connect the iPhone with a cable, unlock it and tap Trust, then retry (or pass --wifi for a paired wireless device).` |
 | `device.host_service_unavailable` | host device service not reachable (USB search, or nothing found) | the address that was tried | Windows: `Install Apple Devices (Microsoft Store) or iTunes and make sure "Apple Mobile Device Service" is running (Administrator PowerShell: Start-Service "Apple Mobile Device Service").` Linux: `Install usbmuxd and start it: sudo systemctl start usbmuxd (and add the udev rules shipped with usbmuxd if the device is not detected).` |
 | `device.query_timeout` | device listing did not answer in time | the timed-out command | `Unplug and reconnect the iPhone, unlock it, and retry. If it keeps happening, restart the device service.` |
+| `build.plugin_pin_conflict` (045) | build: SwiftPM staging, before `swift package resolve` | which plugins (with versions) pin which versions of the Swift package, and `Run "flutter pub upgrade <plugins>" so they agree.` naming the plugin(s) with the lower pin | `Each plugin pins that Swift package in its own Package.swift, so SwiftPM needs them to agree. Upgrade the plugin(s) named in the message, then build again; xcross does not change the pins itself.` |
 
 ## Warnings
 

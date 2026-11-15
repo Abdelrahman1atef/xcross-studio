@@ -146,6 +146,14 @@ abstract final class XcrossCodes {
         'the draft, or use a plugin version that ships Package.swift. See them '
         'all without building: xcross plugin check.',
   );
+  // studio: 045 — plugins' Package.swift pins that SwiftPM cannot resolve
+  // together (firebase_messaging 17.0.0 and firebase_core 5.1.0).
+  static const buildPluginPinConflict = DiagnosticCode(
+    'build.plugin_pin_conflict',
+    'Each plugin pins that Swift package in its own Package.swift, so SwiftPM '
+        'needs them to agree. Upgrade the plugin(s) named in the message, then '
+        'build again; xcross does not change the pins itself.',
+  );
   static const buildPluginOverrideInvalid = DiagnosticCode(
     'build.plugin_override_invalid',
     'An override folder needs a Package.swift; an override.yaml may only set '
@@ -247,6 +255,7 @@ abstract final class XcrossCodes {
     buildPluginOverrideInvalid,
     buildPluginDrafted, // studio: 025
     buildPluginUnknownPods,
+    buildPluginPinConflict, // studio: 045
     buildRunnerProjectFailed, // studio: 007
     buildRunnerSceneDelegateReplaced,
     buildGenSnapshotUnavailable, // studio: 014

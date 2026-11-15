@@ -6,6 +6,7 @@ import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:cli_kit/shared/process/process.dart';
 import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
+import 'package:xcross/src/shared/diagnostics/xcross_diagnostics.dart';
 import 'package:xcross/src/shared/flutter/build/ios_deployment_target.dart';
 import 'package:xcross/src/shared/flutter/build/ios_plugins.dart';
 import 'package:xcross/src/shared/flutter/swiftpm/artifact_filesystem.dart';
@@ -20,6 +21,7 @@ import 'package:xcross/src/shared/flutter/swiftpm/manifest.dart';
 import 'package:xcross/src/shared/flutter/swiftpm/manifest_dependencies.dart';
 import 'package:xcross/src/shared/flutter/swiftpm/manifest_lexer.dart';
 import 'package:xcross/src/shared/flutter/swiftpm/module_warmup.dart';
+import 'package:xcross/src/shared/flutter/swiftpm/pin_conflicts.dart';
 import 'package:xcross/src/shared/flutter/swiftpm/plugin_overlay.dart';
 import 'package:xcross/src/shared/flutter/swiftpm/source_fallback_state.dart';
 
@@ -110,6 +112,7 @@ final class SwiftPmWorkspaceStager<T extends PlatformHostInterface> {
             packageLocalArtifactJunctionCapability,
       );
     }
+    await checkPinConflicts(plugins, pluginPackageDirs);
     final packagesByDirectoryName = {
       for (final package in pluginPackageDirs.values)
         p.basename(package): package,
@@ -157,6 +160,46 @@ final class SwiftPmWorkspaceStager<T extends PlatformHostInterface> {
       verbose: verbose,
     );
   }
+
+  /// Stops before `swift package resolve` when the staged plugin manifests
+  /// pin versions of one Swift package that no version satisfies (the
+  /// firebase_messaging 17.0.0 / firebase_core 5.1.0 case), with a coded
+  /// error naming the plugins to upgrade instead of SwiftPM's resolver
+  /// output. The pins are left as they are.
+  @visibleForTesting
+  Future<void> checkPinConflicts(
+    List<IosPlugin> plugins,
+    Map<String, String> pluginPackageDirs,
+  ) async {
+    final manifests = <SwiftPmPluginManifest>[];
+    for (final plugin in plugins) {
+      final staged = pluginPackageDirs[plugin.name];
+      if (staged == null) continue;
+      final manifest = artifactFileSystem.file(p.join(staged, 'Package.swift'));
+      if (!manifest.existsSync()) continue;
+      manifests.add((
+        plugin: plugin.name,
+        version: await _pubspecVersion(plugin.packageRoot),
+        manifest: await manifest.readAsString(),
+      ));
+    }
+    if (SwiftPmPinConflicts.find(manifests) case final conflict?) {
+      throw codedError(XcrossCodes.buildPluginPinConflict, conflict.message);
+    }
+  }
+
+  Future<String?> _pubspecVersion(String packageRoot) async {
+    final pubspec = artifactFileSystem.file(
+      p.join(packageRoot, 'pubspec.yaml'),
+    );
+    if (!pubspec.existsSync()) return null;
+    return _pubspecVersionLine.firstMatch(await pubspec.readAsString())?[1];
+  }
+
+  static final _pubspecVersionLine = RegExp(
+    r'''^version:\s*['"]?([^\s'"#]+)''',
+    multiLine: true,
+  );
 
   Future<Map<String, Set<String>>> consumedProducts(String outputDir) async {
     final manifests = <String>[];
