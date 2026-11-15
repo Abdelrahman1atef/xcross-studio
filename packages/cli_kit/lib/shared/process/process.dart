@@ -131,6 +131,10 @@ final class ProcessRunner<T extends PlatformHostInterface> {
       ProcessHelpers.pausingBroadcast(source);
   static String commandLine(String executable, List<String> arguments) =>
       ProcessHelpers.commandLine(executable, arguments);
+
+  /// [path] as Windows processes are given it: without the extended-length
+  /// prefix (`\\?\`) unless the path is too long to work without it.
+  static String plainPath(String path) => ProcessHelpers.shortPlainPath(path);
   bool crashed(int code) => host.processes.describeExit(code).crashed;
   String? describeExitCode(int code) =>
       host.processes.describeExit(code).description;

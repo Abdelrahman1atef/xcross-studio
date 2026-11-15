@@ -95,6 +95,32 @@ void main() {
         '"my tool" -la "my file.txt"',
       );
     });
+
+    test('shows Windows long-path prefixes the way processes get them', () {
+      final long = r'\\?\C:\' + List.filled(30, 'directory').join(r'\');
+      expect(
+        ProcessRunner.commandLine(r'\\?\C:\flutter\bin\cache\dart.exe', [
+          r'\\?\C:\app\.dart_tool\app.dill',
+          r'--packages=\\?\C:\app\.dart_tool\package_config.json',
+          r'\\?\UNC\server\share\main.dart',
+          long,
+        ]),
+        r'C:\flutter\bin\cache\dart.exe C:\app\.dart_tool\app.dill '
+        r'--packages=C:\app\.dart_tool\package_config.json '
+        r'\\server\share\main.dart '
+        '"$long"',
+      );
+    });
+  });
+
+  group('plainPath', () {
+    test('drops the prefix only from paths short enough without it', () {
+      expect(ProcessRunner.plainPath(r'\\?\D:\flutter'), r'D:\flutter');
+      expect(ProcessRunner.plainPath(r'\\?\UNC\host\sdk'), r'\\host\sdk');
+      expect(ProcessRunner.plainPath('/opt/flutter'), '/opt/flutter');
+      final long = r'\\?\C:\' + 'x' * 260;
+      expect(ProcessRunner.plainPath(long), long);
+    });
   });
 
   group('bracketHost', () {

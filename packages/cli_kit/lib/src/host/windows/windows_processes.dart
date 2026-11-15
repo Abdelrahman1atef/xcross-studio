@@ -6,6 +6,7 @@ import 'package:cli_kit/shared/process/process_models.dart';
 import 'package:cli_kit/src/host/shared/native_tool_lookup.dart';
 import 'package:cli_kit/src/host/shared/owned_processes.dart';
 import 'package:cli_kit/src/host/windows/windows_batch.dart';
+import 'package:cli_kit/src/shared/process/process_helpers.dart';
 import 'package:meta/meta.dart';
 
 @internal
@@ -116,13 +117,9 @@ final class WindowsProcesses implements HostProcessInterface {
     mode,
   );
 
-  static const _maxPlainDirectory = 248;
+  static const _maxPlainDirectory = ProcessHelpers.maxPlainPathLength;
 
-  static String _plainPath(String path) {
-    if (path.startsWith(r'\\?\UNC\')) return '\\\\${path.substring(8)}';
-    if (path.startsWith(r'\\?\')) return path.substring(4);
-    return path;
-  }
+  static String _plainPath(String path) => ProcessHelpers.plainPath(path);
 
   static Map<String, String> _plainEnvironment(Map<String, String> values) => {
     for (final entry in values.entries)
@@ -131,18 +128,10 @@ final class WindowsProcesses implements HostProcessInterface {
           : _plainPath(entry.value),
   };
 
-  static final _optionValue = RegExp(r'^(--?[^=\s]+=)(.*)$');
-
-  static String _plainArgument(String argument) {
-    final option = _optionValue.firstMatch(argument);
-    if (option != null) return '${option[1]}${_shortPlainPath(option[2]!)}';
-    return _shortPlainPath(argument);
-  }
-
-  static String _shortPlainPath(String path) {
-    final plain = _plainPath(path);
-    return plain.length < _maxPlainDirectory ? plain : path;
-  }
+  // Failure messages show commands through the same rules
+  // (ProcessHelpers.commandLine), so they show what really ran.
+  static String _plainArgument(String argument) =>
+      ProcessHelpers.plainArgument(argument);
 
   @override
   Future<void> killTree(
