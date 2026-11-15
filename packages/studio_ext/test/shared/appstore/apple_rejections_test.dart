@@ -10,7 +10,11 @@ void main() {
     'every known rejection names a rule that exists in the release check',
     () {
       final sources = [
-        for (final name in ['release_checks.dart', 'release_structure.dart'])
+        for (final name in [
+          'release_checks.dart',
+          'release_structure.dart',
+          'release_online.dart', // the --online rules
+        ])
           File('lib/src/shared/release/$name').readAsStringSync(),
       ].join('\n');
       for (final MapEntry(key: code, value: rejection)
@@ -39,5 +43,27 @@ void main() {
     expect(hints.first, contains('release.loose_dylib'));
     expect(hints.last, allOf(contains('90999'), contains('no rule')));
     expect(rejectionHints(const []), isEmpty);
+  });
+
+  // mastkdm 2026-11-15: all three were "no rule yet".
+  test('90208, 90062 and 90186 name their rules', () {
+    const minimum =
+        '90208 Invalid Bundle. The bundle '
+        'mastkdm.app/Frameworks/objective_c.framework does not support the '
+        'minimum OS Version '
+        'specified in the Info.plist.';
+    const version =
+        '90062 This bundle is invalid. The value for key '
+        'CFBundleShortVersionString [1.0.6] …';
+    final hints = rejectionHints([
+      minimum,
+      version,
+      '90186 Invalid Pre-Release Train.',
+    ]);
+    expect(hints, hasLength(3));
+    expect(hints[0], contains('release.framework_minimum_os'));
+    expect(hints[1], contains('release.asc_version_closed'));
+    expect(hints[2], contains('release.asc_version_closed'));
+    expect(hints.join(), isNot(contains('no rule')));
   });
 }

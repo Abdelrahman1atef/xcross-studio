@@ -8,11 +8,23 @@ import 'package:meta/meta.dart';
 import 'package:studio_ext/src/shared/appstore/app_store_versions.dart';
 import 'package:studio_ext/src/shared/release/release_checks.dart';
 
-/// Versions in these states have shipped (or been taken down): App Store
-/// Connect takes no new build for them, nor for a lower version number.
+/// Versions in these states are approved, shipped or taken down: App Store
+/// Connect takes no new build for them, nor for a lower version number
+/// (90062, 90186). `AppStoreVersions.stateOf` reads `appVersionState` first,
+/// whose names differ from the older `appStoreState` (READY_FOR_DISTRIBUTION,
+/// not READY_FOR_SALE), so both sets are here.
 const _closedStates = {
-  'READY_FOR_SALE',
+  // appVersionState
+  'ACCEPTED',
+  'PENDING_APPLE_RELEASE',
+  'PENDING_DEVELOPER_RELEASE',
+  'PROCESSING_FOR_DISTRIBUTION',
+  'READY_FOR_DISTRIBUTION',
   'REPLACED_WITH_NEW_VERSION',
+  // appStoreState
+  'PROCESSING_FOR_APP_STORE',
+  'PREORDER_READY_FOR_SALE',
+  'READY_FOR_SALE',
   'REMOVED_FROM_SALE',
   'DEVELOPER_REMOVED_FROM_SALE',
 };

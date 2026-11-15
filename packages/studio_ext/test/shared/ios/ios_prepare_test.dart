@@ -97,7 +97,7 @@ void main() {
               pubGet: (project) async {
                 pubGets.add(project);
                 if (pubOk) writeMetadata();
-                return pubOk;
+                return PubGetResult(ok: pubOk);
               },
             ),
           ))
@@ -163,7 +163,7 @@ void main() {
       final missing = await prepare(
         pubGet: (_) async {
           ran++;
-          return true; // succeeded but wrote nothing
+          return const PubGetResult(ok: true); // succeeded, wrote nothing
         },
       ).run(temp.path);
       expect(ran, 1);
@@ -175,7 +175,9 @@ void main() {
 
       // A failed pub get with a plugin list from before is a warning only.
       writeMetadata();
-      final stale = await prepare(pubGet: (_) async => false).run(temp.path);
+      final stale = await prepare(
+        pubGet: (_) async => const PubGetResult(ok: false),
+      ).run(temp.path);
       expect(stale.ready, isTrue);
       expect(
         stale.steps.firstWhere((s) => s.id == 'dependencies').state,
@@ -188,6 +190,59 @@ void main() {
       expect(none.ready, isFalse);
     },
   );
+
+  // halaweyat_store 2026-11-15: the project needs Dart 3.14 (dev) and the
+  // Flutter SDK has 3.13; the step said only "did not produce" the list.
+  test('a failed pub get says what pub said, and an SDK mismatch how to '
+      'fix it', () async {
+    freshProject();
+    const output =
+        'Resolving dependencies...\n'
+        'The current Dart SDK version is 3.13.0.\n'
+        '\n'
+        'Because halawyat_store requires SDK version ^3.14.0-134.0.dev, '
+        'version solving failed.\n'
+        '\n'
+        '\n'
+        'You can try the following suggestion to make the pubspec resolve:\n'
+        '* Try using the Flutter SDK version: 3.50.0. \n'
+        'Failed to update packages.\n';
+    final report = await prepare(
+      pubGet: (_) async => const PubGetResult(ok: false, output: output),
+    ).run(temp.path);
+    final step = report.steps.firstWhere((s) => s.id == 'dependencies');
+    expect(step.state, PrepareState.failed);
+    expect(step.detail, startsWith('flutter pub get failed'));
+    expect(
+      step.detail,
+      allOf(
+        contains('The current Dart SDK version is 3.13.0.'),
+        contains('requires SDK version ^3.14.0-134.0.dev'),
+        contains('Try using the Flutter SDK version: 3.50.0.'),
+        isNot(contains('Resolving dependencies')),
+      ),
+    );
+    expect(
+      step.hint,
+      allOf(
+        contains('needs Dart ^3.14.0-134.0.dev'),
+        contains('has Dart 3.13.0'),
+      ),
+    );
+
+    // Another failure keeps the general hint, with pub's last lines.
+    final other = await prepare(
+      pubGet: (_) async => const PubGetResult(
+        ok: false,
+        output:
+            'Resolving dependencies...\nCould not find a file named '
+            '"pubspec.yaml" in "x".\n',
+      ),
+    ).run(temp.path);
+    final otherStep = other.steps.firstWhere((s) => s.id == 'dependencies');
+    expect(otherStep.detail, contains('Could not find a file named'));
+    expect(otherStep.hint, 'Run: flutter pub get, and fix what it reports.');
+  });
 
   test(
     'AC-032-4 a podspec-only plugin is drafted before the long build',

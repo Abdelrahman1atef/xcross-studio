@@ -702,6 +702,31 @@ void main() {
       );
     });
 
+    // mastkdm 2026-11-15: objective_c.framework said 13.0, its code 15.0.
+    test('90208 a framework whose code needs a newer iOS than its plist', () {
+      Map<String, Uint8List> app(String declared) => _appStoreApp()
+        ..['Frameworks/objective_c.framework/objective_c'] = _executable(
+          minos: '15.0',
+        )
+        ..['Frameworks/objective_c.framework/Info.plist'] = xmlPlist({
+          'CFBundleExecutable': 'objective_c',
+          'CFBundleIdentifier': 'io.flutter.flutter.native_assets.objective_c',
+          'MinimumOSVersion': declared,
+        });
+      final issue = check(
+        writeApp(app('13.0')),
+      ).issues.firstWhere((i) => i.code == 'release.framework_minimum_os');
+      expect(issue.severity, ReleaseSeverity.error);
+      expect(issue.message, allOf(contains('15.0'), contains('13.0')));
+      expect(issue.path, 'Frameworks/objective_c.framework/Info.plist');
+      for (final declared in ['15.0', '16.0']) {
+        expect(
+          check(writeApp(app(declared))).issues.map((i) => i.code),
+          isNot(contains('release.framework_minimum_os')),
+        );
+      }
+    });
+
     test('missing DT keys, an old deployment target, a bad version', () {
       final info = _infoPlist({
         'MinimumOSVersion': '12.0',

@@ -2,3 +2,5 @@
 *.sh text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
+# Test fixtures compared byte for byte.
+*.pbxproj text eol=lf

@@ -6,6 +6,7 @@ import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:cli_kit/shared/process/process.dart';
 import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
+import 'package:studio_ext/shared/release/macho_minimum_os.dart'; // studio: 018
 import 'package:xcross/src/shared/flutter/build/internal/native_asset_linkage.dart';
 import 'package:xcross/src/shared/flutter/build/internal/recursive_directory_copy.dart';
 import 'package:xcross/src/shared/flutter/build/macho_dylib_rewriter.dart';
@@ -236,6 +237,56 @@ final class NativeAssetFrameworks<T extends PlatformHostInterface> {
       );
       if (changed) await file.writeAsBytes(bytes, flush: true);
     }
+  }
+
+  // studio: 018 — Flutter tells build hooks to target iOS 13 and writes
+  // `MinimumOSVersion` 13.0 into each code asset framework, but the clang
+  // shim links for the app's deployment target, so the code needs a newer
+  // iOS than the Info.plist says. App Store Connect refuses that (90208:
+  // "does not support the minimum OS Version specified in the Info.plist").
+  /// Raises each framework's `MinimumOSVersion` to what its binary was linked
+  /// for, when lower or missing. Returns `name: old → new` for each change.
+  Future<List<String>> matchMinimumOs(Iterable<String> frameworks) async {
+    final changed = <String>[];
+    for (final framework in frameworks) {
+      final name = paths.basenameWithoutExtension(framework);
+      final binary = fileSystem.file(paths.join(framework, name));
+      final plist = fileSystem.file(paths.join(framework, 'Info.plist'));
+      if (!binary.existsSync() || !plist.existsSync()) continue;
+      final needed = machOMinimumOS(await binary.readAsBytes());
+      if (needed == null) continue;
+      final text = await plist.readAsString();
+      final current = _minimumOsPattern.firstMatch(text)?.group(1)?.trim();
+      if (current != null && compareOsVersions(current, needed) >= 0) {
+        continue;
+      }
+      final updated = _withMinimumOs(text, needed);
+      // A binary property list is not edited here; the release check
+      // still reports the mismatch.
+      if (updated == null) continue;
+      await plist.writeAsString(updated, flush: true);
+      changed.add(
+        '${paths.basename(framework)}: ${current ?? 'none'} → $needed',
+      );
+    }
+    return changed;
+  }
+
+  static final _minimumOsPattern = RegExp(
+    r'<key>MinimumOSVersion</key>\s*<string>([^<]*)</string>',
+  );
+
+  /// [plist] with `MinimumOSVersion` set to [version] (added when missing),
+  /// or null when it is not an XML property list.
+  static String? _withMinimumOs(String plist, String version) {
+    final entry = '<key>MinimumOSVersion</key>\n\t<string>$version</string>';
+    if (_minimumOsPattern.hasMatch(plist)) {
+      return plist.replaceFirst(_minimumOsPattern, entry);
+    }
+    final end = RegExp(r'</dict>\s*</plist>\s*$').firstMatch(plist);
+    if (end == null) return null;
+    return '${plist.substring(0, end.start)}\t$entry\n'
+        '${plist.substring(end.start)}';
   }
 
   Future<void> thinEmbedded(

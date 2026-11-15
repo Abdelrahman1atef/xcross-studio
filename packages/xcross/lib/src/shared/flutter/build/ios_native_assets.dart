@@ -156,6 +156,16 @@ final class IosNativeAssetsBuilder<T extends PlatformHostInterface> {
     await stripFrameworks(frameworks);
     await nativeAssetFrameworks.align(frameworks);
     await nativeAssetFrameworks.normalize(frameworks);
+    // studio: 018 — App Store Connect 90208.
+    for (final change in await nativeAssetFrameworks.matchMinimumOs(
+      frameworks,
+    )) {
+      runner.log.logInfo(
+        'Frameworks',
+        'MinimumOSVersion $change, to match the iOS its code was built for '
+            '(App Store Connect 90208).',
+      );
+    }
 
     return IosNativeAssetsBuildResult(
       manifestPath: manifest,

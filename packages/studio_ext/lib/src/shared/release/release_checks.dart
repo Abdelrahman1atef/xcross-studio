@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
+import 'package:studio_ext/shared/release/macho_minimum_os.dart'; // studio: 018
 import 'package:studio_ext/shared/release/swift_runtime.dart'; // studio: 018
 import 'package:studio_ext/src/shared/inspect/inspect_report.dart';
 import 'package:studio_ext/src/shared/inspect/inspect_source.dart';
@@ -312,6 +313,7 @@ final class ReleaseChecker {
   ReleaseReport run() {
     _signing();
     _toolchain();
+    _frameworkMinimumOS();
     _swiftSupport();
     _issues.addAll(
       structureIssues(source: source, report: _report, binaries: _binaries),
@@ -430,6 +432,42 @@ final class ReleaseChecker {
   }
 
   // --- Toolchain and identity (AC-018-10) ---------------------------------
+
+  /// A framework whose code needs a newer iOS than its Info.plist says: App
+  /// Store Connect refuses the upload (90208). Native-asset frameworks such
+  /// as objective_c.framework said 13.0 while built for the app's target.
+  void _frameworkMinimumOS() {
+    for (final framework in _report.frameworks) {
+      if (framework.kind != FrameworkKind.framework) continue;
+      final Map<String, Object?> info;
+      final Uint8List? binary;
+      try {
+        final plist = source.read('${framework.path}/Info.plist');
+        info = (plist == null ? null : readPlist(plist)?.dictionary) ?? {};
+        final executable =
+            info['CFBundleExecutable'] as String? ??
+            framework.name.replaceAll(RegExp(r'\.framework$'), '');
+        binary = source.read('${framework.path}/$executable');
+      } on FormatException {
+        continue;
+      }
+      final declared = info['MinimumOSVersion'];
+      final needed = binary == null ? null : machOMinimumOS(binary);
+      if (declared is! String || needed == null) continue;
+      if (compareOsVersions(needed, declared) <= 0) continue;
+      _add(
+        'release.framework_minimum_os',
+        ReleaseSeverity.error,
+        "${framework.name}'s code needs iOS $needed, but its Info.plist says "
+            'MinimumOSVersion $declared; App Store Connect refuses the upload '
+            '(90208).',
+        path: '${framework.path}/Info.plist',
+        hint:
+            'Build again with xcross 2.0.9-xs.6 or later, which sets the '
+            "framework's MinimumOSVersion from its code.",
+      );
+    }
+  }
 
   void _toolchain() {
     final build = _buildVersion;

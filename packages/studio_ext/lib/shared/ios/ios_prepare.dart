@@ -155,8 +155,50 @@ final class PrepareReport {
   }
 }
 
-/// Runs `flutter pub get` in a project; true when it succeeded.
-typedef PubGet = Future<bool> Function(String project);
+/// What `flutter pub get` did.
+final class PubGetResult {
+  const PubGetResult({required this.ok, this.output = ''});
+
+  final bool ok;
+
+  /// What it printed (stdout and stderr), to say why it failed.
+  final String output;
+
+  /// The lines of [output] that say what went wrong: pub's progress lines
+  /// and blank lines left out, at most the last [max].
+  List<String> reason({int max = 6}) {
+    final lines = [
+      for (final line in const LineSplitter().convert(output))
+        if (line.trim().isNotEmpty && !_progress.hasMatch(line.trim()))
+          line.trim(),
+    ];
+    return lines.length <= max ? lines : lines.sublist(lines.length - max);
+  }
+
+  /// `The current Dart SDK version is 3.13.0.` and `… requires SDK version
+  /// ^3.14.0 …`: the project needs another Dart (and so Flutter) than the one
+  /// xcross runs. Null when pub said something else.
+  ({String current, String required})? get sdkMismatch {
+    final current = RegExp(
+      r'current Dart SDK version is (\S+?)\.?\s*$',
+      multiLine: true,
+    ).firstMatch(output)?.group(1);
+    final required = RegExp(
+      r'requires SDK version (\S+?),? version solving failed',
+    ).firstMatch(output)?.group(1);
+    if (current == null || required == null) return null;
+    return (current: current, required: required);
+  }
+
+  static final _progress = RegExp(
+    '^(Resolving dependencies|Downloading packages|Got dependencies|'
+    r'Changed \d+ dependenc|No dependencies changed|\d+ packages? ha(s|ve) '
+    'newer versions|Try `flutter pub outdated`)',
+  );
+}
+
+/// Runs `flutter pub get` in a project.
+typedef PubGet = Future<PubGetResult> Function(String project);
 
 /// Prepares a project. Only reads, except for `flutter pub get` and the
 /// plugin drafts a build would write anyway (`xcross_overrides/`).
@@ -268,8 +310,26 @@ final class IosPrepare {
 
   Future<PrepareStep> _dependencies(String project) async {
     final metadata = fileSystem.file(paths.join(project, metadataFile));
-    var pubOk = true;
-    if (pubGet != null) pubOk = await pubGet!(project);
+    final pub = pubGet == null ? null : await pubGet!(project);
+    final pubOk = pub?.ok ?? true;
+    // What pub said, so a failure names its cause (2026-11-15: a project
+    // that needs Dart 3.14 said only "did not produce" the plugin list).
+    final why = pub == null || pub.ok
+        ? ''
+        : switch (pub.reason()) {
+            [] => '',
+            final lines => ' It said:\n${lines.join('\n')}',
+          };
+    final hint = switch (pub?.sdkMismatch) {
+      (:final current, :final required) =>
+        'This project needs Dart $required, and the Flutter SDK xcross uses '
+            'has Dart $current. Use a Flutter with that Dart for iOS builds '
+            '(Studio: "Flutter for iOS builds" on Build & Run; or `xcross '
+            'flutter sdk install <version>`, then `xcross flutter sdk use '
+            '<version>`), or lower `environment: sdk:` in pubspec.yaml if the '
+            'project does not need it.',
+      _ => 'Run: flutter pub get, and fix what it reports.',
+    };
     if (metadata.existsSync()) {
       return PrepareStep(
         'dependencies',
@@ -280,7 +340,8 @@ final class IosPrepare {
                   ? 'Plugin list found ($metadataFile); flutter pub get skipped.'
                   : 'flutter pub get done.'
             : 'flutter pub get failed; the plugin list from the last run is '
-                  'used.',
+                  'used.$why',
+        hint: pubOk ? null : hint,
       );
     }
     return PrepareStep(
@@ -289,8 +350,11 @@ final class IosPrepare {
       PrepareState.failed,
       pubGet == null
           ? '$metadataFile is missing, so no plugin would be built.'
-          : 'flutter pub get did not produce $metadataFile.',
-      hint: 'Run: flutter pub get, and fix what it reports.',
+          : pubOk
+          ? 'flutter pub get did not produce $metadataFile.'
+          : 'flutter pub get failed, so there is no plugin list '
+                '($metadataFile).$why',
+      hint: hint,
     );
   }
 

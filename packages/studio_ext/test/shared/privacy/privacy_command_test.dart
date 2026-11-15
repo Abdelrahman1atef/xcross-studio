@@ -13,10 +13,12 @@ import 'package:studio_ext/src/shared/privacy/pbxproj_resources.dart';
 import 'package:test/test.dart';
 
 /// Flutter's own iOS app template (3.47), rendered without Swift Package
-/// Manager and team.
+/// Manager and team. Always with `\n`: a Windows checkout may turn the
+/// fixture into `\r\n` (the release build of xs.5 failed on it), and the
+/// Windows-line-endings test makes that case on purpose.
 final _template = File(
   p.join('test', 'shared', 'privacy', 'fixtures', 'flutter_template.pbxproj'),
-).readAsStringSync();
+).readAsStringSync().replaceAll('\r\n', '\n');
 
 void main() {
   group('addRunnerResource', () {

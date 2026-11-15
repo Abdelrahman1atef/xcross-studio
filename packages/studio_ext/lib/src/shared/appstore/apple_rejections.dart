@@ -20,6 +20,23 @@ final class KnownRejection {
 /// The rejections xcross has met, by Apple's code.
 @internal
 const knownRejections = <String, KnownRejection>{
+  '90062': KnownRejection(
+    'release.asc_version_closed',
+    'This version is already approved on the App Store. Raise the version in '
+        'pubspec.yaml (for example 1.0.6 to 1.0.7) and build again; '
+        '`xcross release check --online` finds it before an upload.',
+  ),
+  '90186': KnownRejection(
+    'release.asc_version_closed',
+    'App Store Connect takes no more builds for this version (it is '
+        'approved). Raise the version in pubspec.yaml and build again; '
+        '`xcross release check --online` finds it before an upload.',
+  ),
+  '90208': KnownRejection(
+    'release.framework_minimum_os',
+    "A framework's Info.plist names an older iOS than its code was built "
+        'for. Build again with a current xcross, which sets it from the code.',
+  ),
   '90426': KnownRejection(
     'release.swift_support_missing',
     'The IPA lacks SwiftSupport. Install the SDK again (`xcross sdk install '

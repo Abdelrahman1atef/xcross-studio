@@ -258,7 +258,10 @@ abstract final class XcrossCli {
             'pub',
             'get',
           ], workingDirectory: projectRoot);
-          return result.exitCode == 0;
+          return PubGetResult(
+            ok: result.exitCode == 0,
+            output: '${result.stdout}\n${result.stderr}',
+          );
         },
       ),
       // studio: 006 — `xcross plugin list|shim`.

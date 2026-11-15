@@ -132,6 +132,32 @@ void main() {
     },
   );
 
+  // mastkdm 2026-11-15: 1.0.6 was approved and the check said nothing, then
+  // the upload got 90062 and 90186. appVersionState names an approved
+  // version READY_FOR_DISTRIBUTION or PENDING_DEVELOPER_RELEASE, not
+  // READY_FOR_SALE (the older appStoreState name).
+  test(
+    'an approved version takes no build, by appVersionState names',
+    () async {
+      for (final state in [
+        'READY_FOR_DISTRIBUTION',
+        'PENDING_DEVELOPER_RELEASE',
+        'PENDING_APPLE_RELEASE',
+        'PROCESSING_FOR_DISTRIBUTION',
+        'ACCEPTED',
+      ]) {
+        final fake = _asc(versions: [_version('1.0.11', state)]);
+        expect(await codes(fake, _offline()), [
+          'release.asc_version_closed',
+        ], reason: state);
+      }
+      for (final state in ['WAITING_FOR_REVIEW', 'IN_REVIEW', 'REJECTED']) {
+        final fake = _asc(versions: [_version('1.0.11', state)]);
+        expect(await codes(fake, _offline()), isEmpty, reason: state);
+      }
+    },
+  );
+
   test('a version that has shipped takes no build', () async {
     final fake = _asc(versions: [_version('1.0.11', 'READY_FOR_SALE')]);
     expect(await codes(fake, _offline()), ['release.asc_version_closed']);
