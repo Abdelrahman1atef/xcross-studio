@@ -49,7 +49,7 @@ This is how the `xcross` CLI reports machine-readable results to programs that r
 | `icons_generate` | yes | IconsGenerateResult | background, backup, check, issues, notes, padding, path, source, targets, upscaled, written | packages/studio_ext/lib/shared/icons/icons_generate_command.dart |
 | `icons_preview` | yes | IconsPreview | error, paths, seq | packages/studio_ext/lib/shared/icons/icons_generate_command.dart |
 | `ios_prepare` | yes | IosPrepareReport | bundleId, deploymentTarget, leftOut, permissionMacros, plugins, ready, steps | packages/studio_ext/lib/shared/ios/ios_prepare.dart |
-| `log` | yes | BuildLog | level, message, step, stream | packages/studio_ext/lib/shared/events/ndjson_events.dart |
+| `log` | yes | BuildLog | level, message, step, stream | packages/studio_ext/lib/shared/events/ndjson_events.dart, packages/xcross/lib/src/shared/setup/setup_script_events.dart |
 | `notice` | yes | Notice | message | packages/studio_ext/lib/target/iphone/device/devices_command.dart, packages/studio_ext/lib/target/iphone/device/logs_command.dart |
 | `permissions` | yes | PermissionsReport | catalog, infoPlist, missing, permissions, project | packages/studio_ext/lib/shared/permissions/permissions_command.dart |
 | `permissions_change` | yes | ProjectChange | action, backup, changed, id, key, notes | packages/studio_ext/lib/shared/permissions/permissions_command.dart |
@@ -63,13 +63,15 @@ This is how the `xcross` CLI reports machine-readable results to programs that r
 | `release_gate` | yes | ReleaseGateResult | steps | packages/studio_ext/lib/shared/release/release_gate_command.dart |
 | `splash_check` | yes | SplashCheckReport | android, errors, ios, issues, warnings | packages/studio_ext/lib/src/shared/splash/splash_check.dart |
 | `splash_generate` | yes | SplashGenerateResult | backup, check, issues, path, platforms, removed, written | packages/studio_ext/lib/shared/splash/splash_command.dart |
-| `step` | yes | BuildStep | done, elapsedMs, message, name, status | packages/studio_ext/lib/shared/events/ndjson_events.dart |
+| `step` | yes | BuildStep | done, elapsedMs, message, name, status | packages/studio_ext/lib/shared/events/ndjson_events.dart, packages/xcross/lib/src/shared/setup/setup_script_events.dart |
 | `testflight_groups` | no (ignored) | - | groups | packages/studio_ext/lib/shared/appstore/testflight_command.dart |
 | `testflight_status` | yes | TestFlightStatus | appId, builds, bundleId | packages/studio_ext/lib/shared/appstore/testflight_command.dart |
 | `testflight_testers` | no (ignored) | - | group, testers | packages/studio_ext/lib/shared/appstore/testflight_command.dart |
 | `warning` | yes | BuildIssue | code, hint, message | packages/studio_ext/lib/shared/events/ndjson_events.dart |
 
 `publish` events also carry fields that depend on the publish step (`event` = start, progress, uploaded, state, issue, published, note).
+
+`xcross setup` in NDJSON mode reports each installer of the built-in Windows scripts as `step` events: `name` is the component id (`vs`, `swift`, `llvm`, `python`, `pymobiledevice3`), `message` its label, `status` is `start`, `done`, `failed` or `skipped` (already installed, or declined), and `elapsedMs` comes with the end. The script's other output arrives as `log` events with `stream` and, while a step runs, `step` set to its id.
 
 ## Keeping this in sync
 Contract tests fail when the protocol drifts:

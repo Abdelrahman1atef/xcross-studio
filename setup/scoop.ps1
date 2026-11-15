@@ -58,6 +58,28 @@ function Write-Warn([string]$Message) { Write-Warning $Message }
 
 $CanPrompt = [Environment]::UserInteractive -and -not [Console]::IsInputRedirected
 
+# Machine-readable progress for xcross. With XCROSS_SETUP_EVENTS=1 (set by
+# `xcross setup` when it reports NDJSON events) each install step prints a
+# `##xcross {"step":...,"status":...,"label":...}` line, which xcross turns
+# into a step event; terminal users never see them.
+$EmitSteps = $env:XCROSS_SETUP_EVENTS -eq '1'
+$script:Declined = $false
+$script:FailedSteps = @()
+function Write-Step([string]$Step, [string]$Status, [string]$Label) {
+  if ($Status -eq 'start') { $script:Declined = $false }
+  if ($Status -eq 'failed') { $script:FailedSteps += $Step }
+  if (-not $EmitSteps) { return }
+  $marker = [ordered]@{ step = $Step; status = $Status; label = $Label }
+  Write-Host "##xcross $($marker | ConvertTo-Json -Compress)"
+}
+
+# Ends a step begun with Write-Step: done when $Ok, skipped when the user
+# declined its prompt, failed otherwise.
+function Complete-Step([string]$Step, $Ok, [string]$Label) {
+  $status = if ($Ok) { 'done' } elseif ($script:Declined) { 'skipped' } else { 'failed' }
+  Write-Step $Step $status $Label
+}
+
 # Ask before installing third-party software. Returns $true to proceed.
 function Confirm-Install([string]$Name, [string]$Url, [string]$What) {
   Write-Host ''
@@ -70,11 +92,13 @@ function Confirm-Install([string]$Name, [string]$Url, [string]$What) {
   }
   if (-not $CanPrompt) {
     Write-Warn "No terminal to confirm $Name; skipping it (re-run with -Yes to accept)."
+    $script:Declined = $true
     return $false
   }
   $answer = Read-Host "Install $Name? [y/N]"
   if ($answer -match '^(y|yes)$') { return $true }
   Write-Host "Skipped $Name."
+  $script:Declined = $true
   return $false
 }
 
@@ -316,32 +340,55 @@ function Install-Scoop {
 # Scoop's official buckets have no Visual Studio Build Tools (community
 # buckets only wrap this same Microsoft bootstrapper), so download it from
 # Microsoft and run it only with a valid Microsoft Authenticode signature.
-if ((Test-Wanted 'vs') -and -not (Test-Msvc)) {
-  [void](Install-SignedInstaller -Name 'Visual Studio 2022 Build Tools' `
-      -Url 'https://aka.ms/vs/17/release/vs_BuildTools.exe' `
-      -What 'the MSVC compiler and Windows SDK that Swift for Windows links against (several GB)' `
-      -Arguments (@('--passive', '--wait', '--norestart') + $vsAdd) `
-      -Signer 'O=Microsoft Corporation')
+if (Test-Wanted 'vs') {
+  if (Test-Msvc) {
+    Write-Step 'vs' 'skipped' 'Visual Studio 2022 Build Tools (already installed)'
+  } else {
+    Write-Step 'vs' 'start' 'Visual Studio 2022 Build Tools'
+    $ok = Install-SignedInstaller -Name 'Visual Studio 2022 Build Tools' `
+        -Url 'https://aka.ms/vs/17/release/vs_BuildTools.exe' `
+        -What 'the MSVC compiler and Windows SDK that Swift for Windows links against (several GB)' `
+        -Arguments (@('--passive', '--wait', '--norestart') + $vsAdd) `
+        -Signer 'O=Microsoft Corporation'
+    Complete-Step 'vs' $ok 'Visual Studio 2022 Build Tools'
+  }
 }
 
 $swiftVersion = Get-SwiftVersion
-if ((Test-Wanted 'swift') -and (-not $swiftVersion -or $swiftVersion -lt $MinSwift)) {
-  # The manifest also sets SDKROOT, picked up by Update-SessionEnvironment.
-  [void](Install-Scoop -App 'swift' -Name 'Swift toolchain' `
-      -What "the Swift $MinSwift+ compiler, runtime and SwiftPM")
+if (Test-Wanted 'swift') {
+  if ($swiftVersion -and $swiftVersion -ge $MinSwift) {
+    Write-Step 'swift' 'skipped' "Swift $swiftVersion (already installed)"
+  } else {
+    Write-Step 'swift' 'start' 'Swift toolchain'
+    # The manifest also sets SDKROOT, picked up by Update-SessionEnvironment.
+    $ok = Install-Scoop -App 'swift' -Name 'Swift toolchain' `
+        -What "the Swift $MinSwift+ compiler, runtime and SwiftPM"
+    Complete-Step 'swift' $ok 'Swift toolchain'
+  }
 }
 
 $clangMajor = Get-ToolMajor 'clang' 'clang version (\d+)'
-if ((Test-Wanted 'llvm') -and (-not $clangMajor -or $clangMajor -lt $MinClang -or -not (Test-IosLinker))) {
-  # Scoop's llvm manifest puts its bin on PATH itself.
-  [void](Install-Scoop -App 'llvm' -Name 'LLVM' `
-      -What "clang/clang++ $MinClang+, llvm-ar and ld64.lld for compiling and linking iOS binaries")
+if (Test-Wanted 'llvm') {
+  if ($clangMajor -and $clangMajor -ge $MinClang -and (Test-IosLinker)) {
+    Write-Step 'llvm' 'skipped' "LLVM $clangMajor (already installed)"
+  } else {
+    Write-Step 'llvm' 'start' 'LLVM'
+    # Scoop's llvm manifest puts its bin on PATH itself.
+    $ok = Install-Scoop -App 'llvm' -Name 'LLVM' `
+        -What "clang/clang++ $MinClang+, llvm-ar and ld64.lld for compiling and linking iOS binaries"
+    Complete-Step 'llvm' $ok 'LLVM'
+  }
 }
 
 $python = Find-Python
-if ((Test-Wanted 'python') -and -not $python) {
-  if (Install-Scoop -App 'python' -Name 'Python 3' -What 'the Python runtime that hosts pymobiledevice3') {
-    $python = Find-Python
+if (Test-Wanted 'python') {
+  if ($python) {
+    Write-Step 'python' 'skipped' 'Python 3 (already installed)'
+  } else {
+    Write-Step 'python' 'start' 'Python 3'
+    $ok = Install-Scoop -App 'python' -Name 'Python 3' -What 'the Python runtime that hosts pymobiledevice3'
+    if ($ok) { $python = Find-Python }
+    Complete-Step 'python' $ok 'Python 3'
   }
 }
 
@@ -355,7 +402,10 @@ $Hint = @{
 # pymobiledevice3 and summary
 # ---------------------------------------------------------------------------
 
-if ($python -and (Test-Wanted 'pymobiledevice3')) {
+if ((Test-Wanted 'pymobiledevice3') -and -not $python) {
+  Write-Step 'pymobiledevice3' 'failed' 'pymobiledevice3 (needs Python 3)'
+} elseif (Test-Wanted 'pymobiledevice3') {
+  Write-Step 'pymobiledevice3' 'start' 'pymobiledevice3'
   Write-Info 'Installing pymobiledevice3 with pip (user site-packages)'
   $pipCode = Invoke-Native $python.Path ($python.Args + @('-m', 'pip', 'install', '--user', '--upgrade', '--prefer-binary', 'pymobiledevice3'))
   $ErrorActionPreference = 'Stop'
@@ -364,11 +414,17 @@ if ($python -and (Test-Wanted 'pymobiledevice3')) {
   $scripts = Invoke-Probe $python.Path ($python.Args + @('-c', "import sysconfig; print(sysconfig.get_path('scripts', 'nt_user'))"))
   $scriptsDir = ($scripts.Output -split "`r?`n" | Where-Object { $_.Trim() } | Select-Object -Last 1)
   if ($scripts.Code -eq 0 -and $scriptsDir) { Add-UserPath $scriptsDir.Trim() }
+  Complete-Step 'pymobiledevice3' ($pipCode -eq 0) 'pymobiledevice3'
 }
 
 # Partial runs (XCROSS_SETUP_ONLY) stop here: the summary below checks the
 # whole host, including parts this run was told to skip.
 if ($Only.Count -gt 0) {
+  if ($script:FailedSteps.Count -gt 0) {
+    Write-Host ''
+    Write-Host "Setup could not install: $($script:FailedSteps -join ', ')" -ForegroundColor Yellow
+    exit 1
+  }
   Write-Info "Installed requested components: $($Only -join ', ')"
   exit 0
 }

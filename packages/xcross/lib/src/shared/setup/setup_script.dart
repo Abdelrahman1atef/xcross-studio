@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:cli_kit/shared/logging/logging.dart';
 import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:cli_kit/shared/process/process.dart';
 import 'package:crypto/crypto.dart';
@@ -9,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'package:meta/meta.dart';
 import 'package:xcross/src/shared/config/config.dart';
 import 'package:xcross/src/shared/errors/errors.dart';
+import 'package:xcross/src/shared/setup/setup_script_events.dart';
 import 'package:xcross/src/shared/setup/setup_script_policy.dart';
 
 @internal
@@ -41,18 +43,32 @@ final class SetupScriptManager {
     SetupScriptDownload? download,
     SetupScriptExecute? execute,
   }) : _policy = policy,
+       _events = runner.log.events,
        _download = download ?? ((uri) => _downloadBytes(uri, createHttpClient)),
        _execute =
            execute ??
-           ((executable, arguments, environment) => runner.runChecked(
-             executable,
-             arguments,
-             environment: environment,
-             // The script talks to the user (progress, sudo, UAC, its own
-             // confirmation prompts), so it gets the terminal directly.
-             inheritStdio: true,
-             label: 'setup script',
-           ));
+           ((executable, arguments, environment) {
+             // NDJSON mode: the script's own output would corrupt the event
+             // stream, so it becomes `log` and `step` events instead.
+             if (runner.log.events case final events?) {
+               return SetupScriptEvents.run(
+                 runner,
+                 events,
+                 executable,
+                 arguments,
+                 environment,
+               );
+             }
+             return runner.runChecked(
+               executable,
+               arguments,
+               environment: environment,
+               // The script talks to the user (progress, sudo, UAC, its own
+               // confirmation prompts), so it gets the terminal directly.
+               inheritStdio: true,
+               label: 'setup script',
+             );
+           });
   static const _downloadTimeout = Duration(seconds: 30);
   static final _contentHashPattern = RegExp(r'^[0-9a-f]{64}$');
 
@@ -60,6 +76,9 @@ final class SetupScriptManager {
   final http.Client Function() createHttpClient;
   final String? source;
   final SetupScriptPolicy _policy;
+
+  /// Set when xcross reports NDJSON events.
+  final LogEvents? _events;
   final SetupScriptDownload _download;
   final SetupScriptExecute _execute;
 
@@ -107,6 +126,9 @@ final class SetupScriptManager {
   /// [assumeYes] is forwarded as `XCROSS_SETUP_ASSUME_YES=1` so the script
   /// can skip its own per-installer prompts too, and a non-empty [only] as
   /// `XCROSS_SETUP_ONLY=<comma list>` so it installs just those components.
+  /// In NDJSON event mode the script also gets `XCROSS_SETUP_EVENTS=1`, which
+  /// makes the built-in ones print the step markers [SetupScriptEvents]
+  /// reads.
   Future<bool> run({
     required bool Function(SetupScriptApproval script) approve,
     bool assumeYes = false,
@@ -135,6 +157,7 @@ final class SetupScriptManager {
     await _execute(invocation.executable, invocation.arguments, {
       if (assumeYes) 'XCROSS_SETUP_ASSUME_YES': '1',
       if (only.isNotEmpty) 'XCROSS_SETUP_ONLY': only.join(','),
+      if (_events != null) 'XCROSS_SETUP_EVENTS': '1',
     });
     return true;
   }

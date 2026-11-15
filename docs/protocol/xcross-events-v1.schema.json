@@ -1327,7 +1327,8 @@
         "stream"
       ],
       "x-cli-emitters": [
-        "packages/studio_ext/lib/shared/events/ndjson_events.dart"
+        "packages/studio_ext/lib/shared/events/ndjson_events.dart",
+        "packages/xcross/lib/src/shared/setup/setup_script_events.dart"
       ],
       "examples": [
         {
@@ -1939,7 +1940,8 @@
         "status"
       ],
       "x-cli-emitters": [
-        "packages/studio_ext/lib/shared/events/ndjson_events.dart"
+        "packages/studio_ext/lib/shared/events/ndjson_events.dart",
+        "packages/xcross/lib/src/shared/setup/setup_script_events.dart"
       ],
       "examples": [
         {
