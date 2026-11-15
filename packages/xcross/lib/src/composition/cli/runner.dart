@@ -22,6 +22,7 @@ import 'package:studio_ext/shared/inspect/inspect_command.dart'; // studio:
 import 'package:studio_ext/shared/ios/ios_prepare.dart'; // studio: 032
 import 'package:studio_ext/shared/permissions/permissions_command.dart'; // studio: 027
 import 'package:studio_ext/shared/plugins/plugin_command.dart'; // studio: 006
+import 'package:studio_ext/shared/privacy/privacy_command.dart'; // studio: privacy
 import 'package:studio_ext/shared/release/release_check_command.dart'; // studio: 018
 import 'package:studio_ext/shared/splash/splash_command.dart'; // studio: 024
 import 'package:studio_ext/target/iphone/device/app_command.dart'; // studio: 010
@@ -218,6 +219,8 @@ abstract final class XcrossCli {
       // studio: 027 — `xcross permissions` and `xcross capabilities`.
       PermissionsCommand(_permissionsContext(runtime)),
       CapabilitiesCommand(_permissionsContext(runtime)),
+      // studio: privacy — `xcross privacy init`.
+      PrivacyCommand(_permissionsContext(runtime)),
       // studio: 024 — `xcross splash check|generate`.
       SplashCommand(
         fileSystem: runtime.host.fileSystem,

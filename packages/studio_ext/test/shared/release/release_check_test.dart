@@ -852,6 +852,56 @@ void main() {
       );
     });
 
+    test('the fixes xcross can make carry their command', () {
+      List<String>? fix(String? project, bool Function(ReleaseIssue) which) =>
+          check(
+            writeApp(_appStoreApp()..remove('PrivacyInfo.xcprivacy')),
+            project: project,
+          ).issues.firstWhere(which).fix;
+      bool app(ReleaseIssue i) =>
+          i.code == 'release.privacy_manifest_missing' &&
+          i.path == 'PrivacyInfo.xcprivacy';
+      bool toast(ReleaseIssue i) =>
+          i.code == 'release.privacy_manifest_missing' &&
+          i.message.contains('fluttertoast');
+
+      final project = writeProject(plugins: ['fluttertoast']);
+      expect(fix(project, app), ['privacy', 'init']);
+      expect(fix(null, app), isNull);
+      expect(fix(project, toast), isNull);
+      Directory(
+        p.join(project, 'xcross_overrides', 'fluttertoast', '8.2.14'),
+      ).createSync(recursive: true);
+      expect(fix(project, toast), [
+        'plugin',
+        'shim',
+        'fluttertoast',
+        '--force',
+      ]);
+    });
+
+    // path_provider_foundation 2.6 moved to FFI and has no iOS code of its
+    // own, so there is no bundle to carry a manifest (mastkdm, 2026-11-15).
+    test('a plugin with no native iOS code is not asked for a manifest', () {
+      final project = writeProject();
+      File(p.join(project, '.flutter-plugins-dependencies')).writeAsStringSync(
+        jsonEncode({
+          'plugins': {
+            'ios': [
+              {'name': 'path_provider_foundation', 'native_build': false},
+              {'name': 'shared_preferences_foundation', 'native_build': true},
+            ],
+          },
+        }),
+      );
+      final plugins = check(writeApp(_appStoreApp()), project: project).issues
+          .where((i) => i.code == 'release.privacy_manifest_missing')
+          .map((i) => i.message)
+          .join('\n');
+      expect(plugins, isNot(contains('path_provider_foundation')));
+      expect(plugins, contains('shared_preferences_foundation'));
+    });
+
     test('a declared category is not reported', () {
       final files = _appStoreApp(runnerBody: 'NSFileCreationDate')
         ..['PrivacyInfo.xcprivacy'] = _manifest([

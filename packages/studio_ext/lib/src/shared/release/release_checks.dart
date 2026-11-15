@@ -31,6 +31,7 @@ final class ReleaseIssue {
     this.message, {
     this.path,
     this.hint,
+    this.fix,
   });
 
   /// `release.*`, never renamed once released.
@@ -40,12 +41,18 @@ final class ReleaseIssue {
   final String? path;
   final String? hint;
 
+  /// The xcross arguments that fix the issue in the project (run in the
+  /// project folder, then build again), when xcross can do it: a GUI shows
+  /// them as a Fix button. Null when the developer has to do it.
+  final List<String>? fix;
+
   Map<String, Object?> toJson() => {
     'code': code,
     'severity': severity.name,
     'message': message,
     'path': path,
     'hint': hint,
+    if (fix != null) 'fix': fix,
   };
 }
 
@@ -116,24 +123,41 @@ final class ReleaseProject {
   }
 
   /// iOS plugins `flutter pub get` resolved, plus direct dependencies.
-  late final Set<String> plugins = () {
-    final names = <String>{};
+  late final Set<String> plugins = {
+    ..._resolvedIos.keys,
+    if (_read(['pubspec.yaml']) case final pubspec?)
+      ...directDependencies(pubspec),
+  };
+
+  /// iOS plugins `flutter pub get` marked `native_build: false`: Dart or FFI
+  /// only, with no iOS code of their own in the app (path_provider_foundation
+  /// 2.6 and later), so there is no plugin bundle for a manifest to be in.
+  late final Set<String> pluginsWithoutNativeCode = {
+    for (final MapEntry(key: name, value: native) in _resolvedIos.entries)
+      if (!native) name,
+  };
+
+  /// `.flutter-plugins-dependencies` iOS entries: name → has native code.
+  late final Map<String, bool> _resolvedIos = () {
+    final entries = <String, bool>{};
     final resolved = _read(['.flutter-plugins-dependencies']);
-    if (resolved != null) {
-      try {
-        final Object? decoded = jsonDecode(resolved);
-        if (decoded case {'plugins': {'ios': final List<Object?> entries}}) {
-          for (final entry in entries) {
-            if (entry case {'name': final String name}) names.add(name);
+    if (resolved == null) return entries;
+    try {
+      final Object? decoded = jsonDecode(resolved);
+      if (decoded case {'plugins': {'ios': final List<Object?> list}}) {
+        for (final entry in list) {
+          if (entry case {'name': final String name}) {
+            entries[name] = switch (entry) {
+              {'native_build': false} => false,
+              _ => true,
+            };
           }
         }
-      } on FormatException {
-        // A broken list is pub's to report.
       }
+    } on FormatException {
+      // A broken list is pub's to report.
     }
-    final pubspec = _read(['pubspec.yaml']);
-    if (pubspec != null) names.addAll(directDependencies(pubspec));
-    return names;
+    return entries;
   }();
 
   /// Whether the project has its own `xcross_overrides/<plugin>` folder.
@@ -280,8 +304,9 @@ final class ReleaseChecker {
     String message, {
     String? path,
     String? hint,
+    List<String>? fix,
   }) => _issues.add(
-    ReleaseIssue(code, severity, message, path: path, hint: hint),
+    ReleaseIssue(code, severity, message, path: path, hint: hint, fix: fix),
   );
 
   ReleaseReport run() {
@@ -681,7 +706,9 @@ final class ReleaseChecker {
         path: 'PrivacyInfo.xcprivacy',
         hint:
             'Add ios/Runner/PrivacyInfo.xcprivacy (data collected, '
-            'required-reason APIs) to the Runner target.',
+            'required-reason APIs) to the Runner target: '
+            '`xcross privacy init` does both, then build again.',
+        fix: project == null ? null : const ['privacy', 'init'],
       );
     }
     for (final framework in _report.frameworks) {
@@ -706,23 +733,27 @@ final class ReleaseChecker {
     for (final plugin
         in (project?.plugins ?? const <String>{}).toList()..sort()) {
       if (!ReleaseTables.sdksNeedingManifest.contains(plugin)) continue;
+      // No iOS code of its own: nothing of it in the app for Apple to check.
+      if (project!.pluginsWithoutNativeCode.contains(plugin)) continue;
       final bundled = manifests.any(
         (m) =>
             m.split('/').any((segment) => segment.startsWith(plugin)) &&
             m != 'PrivacyInfo.xcprivacy',
       );
       if (!bundled) {
+        final override = project!.hasOverride(plugin);
         _add(
           'release.privacy_manifest_missing',
           ReleaseSeverity.warning,
           "Plugin $plugin is on Apple's list of SDKs that must ship a "
               'privacy manifest, and no bundle of it carries one.',
-          hint: (project?.hasOverride(plugin) ?? false)
+          hint: override
               ? 'Drafts from older xcross versions left the manifest out: run '
                     '`xcross plugin shim $plugin --force` (this replaces the '
                     'draft), then build again. If it is still missing, update '
                     '$plugin to a release that includes its privacy bundle.'
               : 'Update $plugin to a release that includes its privacy bundle.',
+          fix: override ? ['plugin', 'shim', plugin, '--force'] : null,
         );
       }
     }

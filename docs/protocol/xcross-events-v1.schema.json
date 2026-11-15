@@ -98,6 +98,9 @@
       "$ref": "#/$defs/event_plugin_status"
     },
     {
+      "$ref": "#/$defs/event_privacy_init"
+    },
+    {
       "$ref": "#/$defs/event_progress"
     },
     {
@@ -1580,6 +1583,50 @@
         }
       ],
       "x-example-source": "apps/studio/test/cli/cli_test.dart"
+    },
+    "event_privacy_init": {
+      "title": "privacy_init",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "privacy_init"
+        },
+        "backup": {},
+        "created": {},
+        "manifest": {},
+        "project": {},
+        "xcode": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": false,
+      "x-cli-writes": [
+        "backup",
+        "created",
+        "manifest",
+        "project",
+        "xcode"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/shared/privacy/privacy_command.dart"
+      ],
+      "examples": [
+        {
+          "v": 1,
+          "type": "privacy_init",
+          "project": "/work/app",
+          "manifest": "ios/Runner/PrivacyInfo.xcprivacy",
+          "created": true,
+          "xcode": "added",
+          "backup": ".xcross/privacy-backups/20261115-120000/ios/Runner.xcodeproj/project.pbxproj"
+        }
+      ]
     },
     "event_progress": {
       "title": "progress",

@@ -19,9 +19,9 @@ This is how the `xcross` CLI reports machine-readable results to programs that r
 - Each event type is a `$defs/event_<type>` entry, selected by `type`. Field names come from the code on both sides.
 - Fields are listed by name, and their value shapes are left open on purpose: rule 1 lets them grow. Field-level schemas from earlier contracts are in `specs/012-build-events/contracts/events.schema.json` and `specs/010-device-logs/contracts/devicelog.schema.json`.
 - `examples` are taken from real test data where they exist (`x-example-source`).
-- `x-cli-emitters` lists the source files that emit the type. `x-consumed-by-studio` and `x-studio-class` record which types the desktop app currently reads. The other 5 types are emitted for scripts and are ignored by the app.
+- `x-cli-emitters` lists the source files that emit the type. `x-consumed-by-studio` and `x-studio-class` record which types the desktop app currently reads. The other 6 types are emitted for scripts and are ignored by the app.
 
-## Event types (43)
+## Event types (44)
 | Type | Studio reads it | Studio class | Fields | Emitted in |
 |---|---|---|---|---|
 | `app` | yes | InstalledApp | build, bundleId, executable, name, version | packages/studio_ext/lib/target/iphone/device/app_command.dart |
@@ -55,6 +55,7 @@ This is how the `xcross` CLI reports machine-readable results to programs that r
 | `permissions_change` | yes | ProjectChange | action, backup, changed, id, key, notes | packages/studio_ext/lib/shared/permissions/permissions_command.dart |
 | `plugin_ack` | no (ignored) | - | plugin | packages/studio_ext/lib/shared/plugins/plugin_status.dart |
 | `plugin_status` | yes | PluginStatusReport | plugins, project | packages/studio_ext/lib/shared/plugins/plugin_status.dart |
+| `privacy_init` | no (ignored) | - | backup, created, manifest, project, xcode | packages/studio_ext/lib/shared/privacy/privacy_command.dart |
 | `progress` | yes | BuildProgress | current, fraction, label, total, unit | packages/cli_kit/lib/shared/progress/progress.dart |
 | `project_version` | yes | ProjectVersion | build, changed, previous, pubspec, version | packages/xcross/lib/src/target/iphone/cli/basic/project_command.dart |
 | `publish` | yes | PublishEvent | event | packages/studio_ext/lib/shared/appstore/publish_command.dart |

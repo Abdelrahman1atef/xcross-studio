@@ -112,9 +112,13 @@ final class ProjectPlists {
   }
 
   /// Writes [text] as [target], after copying what is there to
-  /// `.xcross/permission-backups/<stamp>/<relative path>`. Returns the backup
-  /// path, or null when nothing was there to keep or nothing changed.
-  String? write(ProjectPlist target, String text) {
+  /// `.xcross/<backups>/<stamp>/<relative path>`. Returns the backup path, or
+  /// null when nothing was there to keep or nothing changed.
+  String? write(
+    ProjectPlist target,
+    String text, {
+    String backups = 'permission-backups',
+  }) {
     if (target.text == text) return null;
     String? backup;
     if (target.exists) {
@@ -122,7 +126,7 @@ final class ProjectPlists {
       backup = paths.joinAll([
         root,
         '.xcross',
-        'permission-backups',
+        backups,
         stamp,
         ...target.relativePath.split('/'),
       ]);
