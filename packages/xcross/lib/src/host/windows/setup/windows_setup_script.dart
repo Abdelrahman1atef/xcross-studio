@@ -52,7 +52,7 @@ final class WindowsSetupScript implements SetupScriptPolicy {
       : 'main';
 
   static String scriptUrl(String ref, String manager) =>
-      'https://raw.githubusercontent.com/arxdeus/xcross/$ref/setup/$manager.ps1';
+      'https://raw.githubusercontent.com/Abdelrahman1atef/xcross-studio/$ref/setup/$manager.ps1';
 
   String get _directory =>
       host.paths.context.join(host.paths.cacheRoot, 'setup-scripts');

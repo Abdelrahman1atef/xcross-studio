@@ -30,6 +30,13 @@ void main() {
     runner = fixtureRunner(host, log: fixtureLog());
   });
   tearDown(() => temporary.deleteSync(recursive: true));
+  test('released fork downloads its own Windows setup script', () {
+    expect(
+      WindowsSetupScript.scriptUrl('v2.0.9-xs.3', 'direct'),
+      'https://raw.githubusercontent.com/Abdelrahman1atef/xcross-studio/'
+      'v2.0.9-xs.3/setup/direct.ps1',
+    );
+  });
 
   test(
     testOn: '!windows',
@@ -267,7 +274,7 @@ void main() {
       ]);
       expect(
         WindowsSetupScript.scriptUrl('v1.2.3', 'winget'),
-        'https://raw.githubusercontent.com/arxdeus/xcross/v1.2.3/setup/winget.ps1',
+        'https://raw.githubusercontent.com/Abdelrahman1atef/xcross-studio/v1.2.3/setup/winget.ps1',
       );
       expect(await PosixSetupScript(host).defaultSources(), isEmpty);
     },
