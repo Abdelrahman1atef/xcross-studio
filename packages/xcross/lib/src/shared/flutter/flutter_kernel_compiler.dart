@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:cli_kit/shared/errors/errors.dart';
 import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:frontend_server_kit/shared/compiler/package_uris.dart';
 import 'package:meta/meta.dart';
@@ -80,18 +83,25 @@ final class FlutterKernelCompiler<T extends PlatformHostInterface> {
       dartPluginRegistrantUri: registrantUri,
     );
 
-    await runtime.runner.log.logStep(
-      'Compiling Dart kernel',
-      () => runtime.runner.runChecked(
-        compiler.runtime,
-        args,
-        workingDirectory: projectRoot,
-        // Inheriting fd1 while a spinner animates shreds the line; capture
-        // instead (the stderr is folded into the thrown error either way).
-        inheritStdio: runtime.runner.log.isVerbose,
-        label: 'frontend_server',
-      ),
-    );
+    await runtime.runner.log.logStep('Compiling Dart kernel', () async {
+      try {
+        await runtime.runner.runChecked(
+          compiler.runtime,
+          args,
+          workingDirectory: projectRoot,
+          // Inheriting fd1 while a spinner animates shreds the line; capture
+          // instead (the stderr is folded into the thrown error either way).
+          inheritStdio: runtime.runner.log.isVerbose,
+          label: 'frontend_server',
+        );
+      } on CliError catch (error) {
+        // Exit 254 means the compiler ran and found errors in the app's Dart
+        // code; put those first, ahead of the long command line.
+        final failure = compileFailure(error.message);
+        if (failure == null) rethrow;
+        throw FlutterBuildError(failure);
+      }
+    });
 
     if (!runtime.host.fileSystem.file(outputDill).existsSync()) {
       throw FlutterBuildError(
@@ -154,19 +164,49 @@ final class FlutterKernelCompiler<T extends PlatformHostInterface> {
   }
 
   /// Recreate the kernel scratch directory and return its `app.dill` path.
+  ///
+  /// The path is built from the plain directory path, not the host
+  /// directory's `path` (`\\?\…` on Windows), since it becomes a compiler
+  /// argument.
   Future<String> _prepareKernelScratch() async {
-    final scratch = runtime.host.fileSystem.directory(
-      p.join(
-        runtime.policy.buildDirectory(
-          projectRoot,
-          buildMode.intermediatesDirectory,
-        ),
-        '.kernel',
-      ),
+    final scratchPath = p.join(
+      runtime.policy.buildDirectory(projectRoot, buildMode.intermediatesDirectory),
+      '.kernel',
     );
+    final scratch = runtime.host.fileSystem.directory(scratchPath);
     if (scratch.existsSync()) await scratch.delete(recursive: true);
     await scratch.create(recursive: true);
-    return p.join(scratch.path, 'app.dill');
+    return p.join(scratchPath, 'app.dill');
+  }
+
+  /// How many of frontend_server's error lines lead a compile failure.
+  static const shownCompileErrors = 5;
+
+  static final _compileError = RegExp(r'^\S.*?:\d+:\d+: Error: .+$');
+
+  /// The `<file>:<line>:<col>: Error: <message>` lines frontend_server
+  /// printed in [output], in order, without repeats.
+  @visibleForTesting
+  static List<String> compileErrors(String output) => {
+    for (final line in const LineSplitter().convert(output))
+      if (_compileError.hasMatch(line.trim())) line.trim(),
+  }.toList();
+
+  /// A failed frontend_server run as the user should read it: the first
+  /// Dart compile errors in [failure] (the "command failed …" message with
+  /// the compiler's output), then the full message. Null when the output has
+  /// no compile errors, as when the compiler crashed.
+  @visibleForTesting
+  static String? compileFailure(String failure) {
+    final errors = compileErrors(failure);
+    if (errors.isEmpty) return null;
+    final more = errors.length - shownCompileErrors;
+    return [
+      ...errors.take(shownCompileErrors),
+      if (more > 0) '… and $more more Dart compile error${more == 1 ? '' : 's'}.',
+      '',
+      failure,
+    ].join('\n');
   }
 
   /// The entrypoint as frontend_server should see it.

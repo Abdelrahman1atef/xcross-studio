@@ -1,4 +1,5 @@
 import 'package:cli_kit/shared/platform/platform_host.dart';
+import 'package:cli_kit/shared/process/process.dart';
 import 'package:meta/meta.dart';
 import 'package:xcross/src/shared/flutter/errors.dart';
 import 'package:xcross/src/shared/flutter/flutter_build_runtime.dart';
@@ -33,8 +34,14 @@ final class FlutterProjectResolver<T extends PlatformHostInterface>
     final hasFvmSdk =
         fileSystem.directory(fvm).existsSync() ||
         fileSystem.link(fvm).existsSync();
+    // Links resolve through the host file system, which works on `\\?\`
+    // paths on Windows, and so does what they resolve to. Every SDK tool path
+    // and compiler argument is built on this root, so it is handed on plain
+    // unless it is too long for that.
     if (hasFvmSdk) {
-      return fileSystem.link(fvm).resolveSymbolicLinksSync();
+      return ProcessRunner.plainPath(
+        fileSystem.link(fvm).resolveSymbolicLinksSync(),
+      );
     }
     final flutter = configuration.tool;
     if (configuration.declarative && (flutter == null || flutter.isEmpty)) {
@@ -45,10 +52,12 @@ final class FlutterProjectResolver<T extends PlatformHostInterface>
     final located = flutter ?? await runtime.runner.locateTool('flutter');
     final executable = fileSystem.file(located);
     final sdkRoot = await runtime.sdkHostPolicy.rootFromExecutable(
-      executable.existsSync() ? executable.resolveSymbolicLinksSync() : located,
+      executable.existsSync()
+          ? ProcessRunner.plainPath(executable.resolveSymbolicLinksSync())
+          : located,
       runtime.runner,
     );
-    return sdkRoot;
+    return ProcessRunner.plainPath(sdkRoot);
   }
 
   @override
