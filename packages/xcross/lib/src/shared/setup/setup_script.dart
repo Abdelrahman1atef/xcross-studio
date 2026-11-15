@@ -40,6 +40,7 @@ final class SetupScriptManager {
     required ProcessRunner runner,
     required SetupScriptPolicy policy,
     this.source,
+    this.embedded,
     SetupScriptDownload? download,
     SetupScriptExecute? execute,
   }) : _policy = policy,
@@ -75,6 +76,11 @@ final class SetupScriptManager {
   final PlatformHostInterface host;
   final http.Client Function() createHttpClient;
   final String? source;
+
+  /// The script's text when it is compiled into xcross
+  /// ([DefaultSetupScript.embedded]): it is written to the cache and run from
+  /// there, and [source] is never fetched.
+  final String? embedded;
   final SetupScriptPolicy _policy;
 
   /// Set when xcross reports NDJSON events.
@@ -83,11 +89,13 @@ final class SetupScriptManager {
   final SetupScriptExecute _execute;
 
   bool get isConfigured => source != null;
-  bool get isRemote => source != null && _remoteUri(source!) != null;
+  bool get isRemote =>
+      embedded == null && source != null && _remoteUri(source!) != null;
 
   Future<File?> resolve() async {
     final configuredSource = source;
     if (configuredSource == null) return null;
+    if (embedded case final text?) return _cachedEmbedded(text);
 
     final uri = _remoteUri(configuredSource);
     if (uri == null) return host.fileSystem.file(configuredSource);
@@ -101,6 +109,7 @@ final class SetupScriptManager {
   Future<File?> refresh() async {
     final configuredSource = source;
     if (configuredSource == null) return null;
+    if (embedded case final text?) return _cachedEmbedded(text);
 
     final uri = _remoteUri(configuredSource);
     if (uri == null) return host.fileSystem.file(configuredSource);
@@ -147,7 +156,11 @@ final class SetupScriptManager {
     final uri = _remoteUri(source);
     final approved = approve((
       name: host.paths.context.basename(uri?.path ?? source),
-      source: uri == null ? source : _displayUri(uri),
+      source: embedded != null
+          ? builtInSource
+          : uri == null
+          ? source
+          : _displayUri(uri),
       path: script.path,
       sha256: sha256.convert(script.readAsBytesSync()).toString(),
     ));
@@ -160,6 +173,21 @@ final class SetupScriptManager {
       if (_events != null) 'XCROSS_SETUP_EVENTS': '1',
     });
     return true;
+  }
+
+  /// What an embedded script's approval shows as its source.
+  static const builtInSource = 'xcross (built in)';
+
+  /// [text] in the content-addressed cache, written there when missing.
+  File _cachedEmbedded(String text) {
+    final contents = utf8.encode(text);
+    final contentHash = sha256.convert(contents).toString();
+    final cachedScript = _cachedFile(contentHash);
+    cachedScript.parent.createSync(recursive: true);
+    if (!_hasDigest(cachedScript, contentHash)) {
+      _writeBytesAtomically(cachedScript, contents);
+    }
+    return cachedScript;
   }
 
   /// Fresh content when the network allows, else the last cached copy.

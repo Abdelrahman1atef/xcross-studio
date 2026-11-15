@@ -1,9 +1,6 @@
 import 'dart:io';
 
-import 'package:cli_kit/host/linux/linux_host.dart';
-import 'package:cli_kit/host/windows/windows_host.dart';
 import 'package:cli_kit/shared/logging/logging.dart';
-import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
@@ -133,7 +130,7 @@ void main() {
   exitCode = 3;
 }
 ''');
-      final runner = fixtureRunner(nativeHost(), log: fixtureLog());
+      final runner = fixtureRunner(nativeFixtureHost(), log: fixtureLog());
 
       await expectLater(
         SetupScriptEvents.run(
@@ -176,7 +173,7 @@ void main() {
     tearDown(() => temporary.deleteSync(recursive: true));
 
     Future<Map<String, String>> environmentFor(Log log) async {
-      final host = nativeHost();
+      final host = nativeFixtureHost();
       Map<String, String>? environment;
       await SetupScriptManager(
         createHttpClient: () => throw StateError('unexpected HTTP'),
@@ -203,18 +200,6 @@ void main() {
     });
   });
 }
-
-/// A host of the platform the tests run on, with the real environment.
-@internal
-PlatformHostInterface nativeHost() => Platform.isWindows
-    ? WindowsHost(
-        environment: Platform.environment,
-        currentDirectory: Directory.current.path,
-      )
-    : LinuxHost(
-        environment: Platform.environment,
-        currentDirectory: Directory.current.path,
-      );
 
 @internal
 final class RecordingEvents implements LogEvents {

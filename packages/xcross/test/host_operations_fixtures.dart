@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:cli_kit/host/linux/linux_host.dart';
+import 'package:cli_kit/host/windows/windows_host.dart';
 import 'package:cli_kit/shared/logging/logging.dart';
 import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:cli_kit/shared/process/process.dart';
@@ -9,6 +11,17 @@ import 'package:meta/meta.dart';
 
 @internal
 Log fixtureLog() => Log(output: FixtureLogOutput());
+
+/// A host of the platform the tests run on, so real temporary paths resolve;
+/// [environment] defaults to the real one.
+@internal
+PlatformHostInterface nativeFixtureHost({Map<String, String>? environment}) {
+  final values = environment ?? Platform.environment;
+  final current = Directory.current.path;
+  return Platform.isWindows
+      ? WindowsHost(environment: values, currentDirectory: current)
+      : LinuxHost(environment: values, currentDirectory: current);
+}
 
 @internal
 final class FixtureLogOutput implements LogOutput {

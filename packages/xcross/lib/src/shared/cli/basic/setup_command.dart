@@ -14,8 +14,9 @@ import 'package:xcross/src/shared/setup/setup_script_policy.dart';
 ///
 /// A setup script runs when the config names one (`setup:`), or by default
 /// on Windows (`setup/<manager>.ps1` for the installed winget, Scoop or
-/// Chocolatey, else `setup/direct.ps1`). Every script is shown by name, source and
-/// SHA-256 and needs confirmation before it runs. `--only` (hosts with
+/// Chocolatey, else `setup/direct.ps1`, compiled into xcross so they need no
+/// download). Every script is shown by name, source and SHA-256 and needs
+/// confirmation before it runs. `--only` (hosts with
 /// built-in scripts) limits the script to some components through
 /// `XCROSS_SETUP_ONLY`. Without a script, Linux drives apt/dnf/pacman and
 /// macOS drives Homebrew in-process; both need Swift on PATH first.
@@ -96,12 +97,15 @@ final class SetupCommand extends Command<void> {
   @override
   Future<void> run() async {
     final configured = setupSource;
-    final source = configured ?? await _defaultSource();
+    // A configured `setup:` URL or path is used as given; the built-in
+    // scripts are compiled in and need no download.
+    final builtIn = configured == null ? await _defaultScript() : null;
     final script = SetupScriptManager(
       host: host,
       createHttpClient: createHttpClient,
       runner: processRunner,
-      source: source,
+      source: configured ?? builtIn?.source,
+      embedded: builtIn?.embedded,
       policy: scriptPolicy,
       execute: _executeScript,
     );
@@ -150,7 +154,7 @@ final class SetupCommand extends Command<void> {
 
   /// The built-in script for the requested or detected package manager, or
   /// null when this host has none.
-  Future<String?> _defaultSource() async {
+  Future<DefaultSetupScript?> _defaultScript() async {
     final requested = argResults?.options.contains(_managerOption) ?? false
         ? argResults![_managerOption] as String?
         : null;
@@ -163,12 +167,12 @@ final class SetupCommand extends Command<void> {
           '(${scriptPolicy.supportedManagers.join(', ')}).',
         );
       }
-      return script.source;
+      return script;
     }
     final available = await scriptPolicy.defaultSources();
     if (available.isEmpty) return null;
     if (available.length == 1 || !commandPrompt.isInteractive) {
-      return available.first.source;
+      return available.first;
     }
     commandPrompt.write('Several package managers can set up this host:\n');
     for (var i = 0; i < available.length; i++) {
@@ -183,7 +187,7 @@ final class SetupCommand extends Command<void> {
       }
       final choice = int.tryParse(raw.trim());
       if (choice != null && choice >= 1 && choice <= available.length) {
-        return available[choice - 1].source;
+        return available[choice - 1];
       }
       commandPrompt.write('Invalid choice "${raw.trim()}".\n');
     }

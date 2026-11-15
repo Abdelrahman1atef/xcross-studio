@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:cli_kit/shared/process/process.dart';
 import 'package:meta/meta.dart';
+import 'package:xcross/src/host/windows/setup/windows_setup_scripts.g.dart';
 import 'package:xcross/src/shared/runtime/version.dart';
 import 'package:xcross/src/shared/setup/setup_script_policy.dart';
 
@@ -15,26 +16,32 @@ final class WindowsSetupScript implements SetupScriptPolicy {
 
   /// Windows has no package manager xcross drives in-process, so setup runs
   /// the repository's script for whichever of winget, Scoop or Chocolatey is
-  /// installed, pinned to the release this binary was built from
-  /// (development builds follow `main`).
+  /// installed. The scripts are compiled in ([windowsSetupScripts]), so
+  /// nothing is downloaded; the URL, pinned to the release this binary was
+  /// built from (development builds follow `main`), is only a fallback for
+  /// a script that is not embedded.
   @override
   Future<List<DefaultSetupScript>> defaultSources() async {
     final installed = [
       for (final manager in managers)
-        if (await runner.which(manager) != null)
-          (manager: manager, source: scriptUrl(_ref, manager)),
+        if (await runner.which(manager) != null) script(manager),
     ];
     // Without any package manager, download the vendor installers directly.
-    return installed.isEmpty
-        ? [(manager: direct, source: scriptUrl(_ref, direct))]
-        : installed;
+    return installed.isEmpty ? [script(direct)] : installed;
   }
 
   @override
   Future<DefaultSetupScript?> sourceFor(String manager) async {
     if (manager != direct && await runner.which(manager) == null) return null;
-    return (manager: manager, source: scriptUrl(_ref, manager));
+    return script(manager);
   }
+
+  /// The built-in script for [manager].
+  static DefaultSetupScript script(String manager) => (
+    manager: manager,
+    source: scriptUrl(_ref, manager),
+    embedded: windowsSetupScripts[manager],
+  );
 
   @override
   List<String> get supportedManagers => [...managers, direct];

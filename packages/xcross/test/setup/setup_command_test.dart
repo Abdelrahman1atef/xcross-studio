@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:args/command_runner.dart';
 import 'package:cli_kit/host/linux/linux_host.dart';
-import 'package:cli_kit/host/windows/windows_host.dart';
 import 'package:cli_kit/shared/logging/logging.dart';
 import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:cli_kit/shared/process/process.dart';
@@ -13,6 +12,7 @@ import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 import 'package:xcross/src/host/shared/setup/posix_setup_script.dart';
 import 'package:xcross/src/host/windows/setup/windows_setup_requirements.dart';
+import 'package:xcross/src/host/windows/setup/windows_setup_script.dart';
 import 'package:xcross/src/shared/cli/basic/setup_command.dart';
 import 'package:xcross/src/shared/cli/command_prompt.dart';
 import 'package:xcross/src/shared/errors/errors.dart';
@@ -226,14 +226,13 @@ void main() {
     group('--only', () {
       // A host of this platform, so the fixture scripts' paths resolve.
       setUp(() {
-        host = Platform.isWindows
-            ? WindowsHost(environment: {'LOCALAPPDATA': temporary.path})
-            : LinuxHost(
-                environment: {
-                  'XDG_CACHE_HOME': temporary.path,
-                  'HOME': temporary.path,
-                },
-              );
+        host = nativeFixtureHost(
+          environment: {
+            'LOCALAPPDATA': temporary.path,
+            'XDG_CACHE_HOME': temporary.path,
+            'HOME': temporary.path,
+          },
+        );
         runner = fixtureRunner(host, log: fixtureLog());
         policy = FixtureManagerPolicy(PosixSetupScript(host), scripts);
       });
@@ -280,6 +279,37 @@ void main() {
         );
         expect(executions, isEmpty);
       });
+
+      test(
+        '--manager direct runs the compiled-in script without the network',
+        () async {
+          final ran = <String>[];
+          final command = SetupCommand(
+            host: host,
+            createHttpClient: () => throw StateError('unexpected HTTP'),
+            runner: runner,
+            requirements: const WindowsSetupRequirements(),
+            scriptPolicy: BuiltInScriptsPolicy(
+              WindowsSetupScript(host, runner),
+            ),
+            swiftInstallGuidance: 'fixture',
+            commandPrompt: FixturePrompt(interactive: false),
+            executeScript: (_, arguments, environment) async {
+              ran.add(File(arguments.single).readAsStringSync());
+              executions.add(environment);
+            },
+          );
+          await (CommandRunner<void>('xcross', 'test')..addCommand(command))
+              .run(['setup', '--manager', 'direct', '--yes', '--only', 'llvm']);
+          final direct = File(
+            p.join('..', '..', 'setup', 'direct.ps1'),
+          ).readAsStringSync().replaceAll('\r\n', '\n');
+          expect(ran, [direct]);
+          expect(executions, [
+            {'XCROSS_SETUP_ASSUME_YES': '1', 'XCROSS_SETUP_ONLY': 'llvm'},
+          ]);
+        },
+      );
 
       test('hosts without built-in scripts have no --only', () async {
         await expectLater(
@@ -357,7 +387,7 @@ final class FixtureManagerPolicy implements SetupScriptPolicy {
   List<String> installed = const [];
 
   DefaultSetupScript _script(String manager) =>
-      (manager: manager, source: scripts[manager]!.path);
+      (manager: manager, source: scripts[manager]!.path, embedded: null);
 
   @override
   Future<List<DefaultSetupScript>> defaultSources() async => installed.isEmpty
@@ -389,4 +419,32 @@ final class FixtureManagerPolicy implements SetupScriptPolicy {
   @override
   void replace(File temporary, File destination) =>
       base.replace(temporary, destination);
+}
+
+/// The Windows built-in scripts, run through a fixture invocation so the test
+/// needs no PowerShell.
+@internal
+final class BuiltInScriptsPolicy implements SetupScriptPolicy {
+  BuiltInScriptsPolicy(this.windows);
+  final WindowsSetupScript windows;
+  @override
+  Future<List<DefaultSetupScript>> defaultSources() => windows.defaultSources();
+  @override
+  Future<DefaultSetupScript?> sourceFor(String manager) =>
+      windows.sourceFor(manager);
+  @override
+  List<String> get supportedManagers => windows.supportedManagers;
+  @override
+  List<String> get components => windows.components;
+  @override
+  File cachedFile(String digest) => windows.cachedFile(digest);
+  @override
+  File cachePointer(String digest) => windows.cachePointer(digest);
+  @override
+  Future<({String executable, List<String> arguments})> invocation(
+    String path,
+  ) async => (executable: 'powershell', arguments: [path]);
+  @override
+  void replace(File temporary, File destination) =>
+      windows.replace(temporary, destination);
 }

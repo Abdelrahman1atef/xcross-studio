@@ -9,6 +9,10 @@ typedef DefaultSetupScript = ({
 
   /// HTTP(S) URL or absolute path of the script.
   String source,
+
+  /// The script's text when it is compiled into xcross; then [source] is
+  /// only where the same script is published, and nothing is downloaded.
+  String? embedded,
 });
 
 @internal
