@@ -214,7 +214,11 @@ void main() {
       const WindowsSetupRequirements().run(),
       throwsA(
         predicate(
-          (Object error) => error.toString().contains('--manager winget'),
+          (Object error) =>
+              error.toString().contains('--manager winget') &&
+              error.toString().contains(
+                'github.com/Abdelrahman1atef/xcross-studio/tree/main/setup',
+              ),
         ),
       ),
     );

@@ -10,7 +10,8 @@ import 'package:xcross/src/shared/setup/setup_requirements.dart';
 final class WindowsSetupRequirements implements SetupRequirements {
   const WindowsSetupRequirements();
 
-  static const scriptsUrl = 'https://github.com/arxdeus/xcross/tree/main/setup';
+  static const scriptsUrl =
+      'https://github.com/Abdelrahman1atef/xcross-studio/tree/main/setup';
 
   @override
   Future<void> run() async => throw XcrossError(
