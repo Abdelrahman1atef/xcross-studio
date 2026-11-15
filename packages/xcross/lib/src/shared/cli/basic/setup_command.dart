@@ -197,7 +197,8 @@ final class SetupCommand extends Command<void> {
     final log = processRunner.log;
     log.logInfo('Setup script', script.name);
     log.logInfo('Source', script.source);
-    if (script.path != script.source) log.logInfo('Cached at', script.path);
+    final cachedAt = ProcessRunner.plainPath(script.path);
+    if (cachedAt != script.source) log.logInfo('Cached at', cachedAt);
     log.logInfo('SHA-256', script.sha256);
     if (assumeYes) return true;
     if (!commandPrompt.isInteractive) {
