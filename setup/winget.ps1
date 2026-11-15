@@ -141,7 +141,7 @@ function Find-LlvmBin {
   return $null
 }
 
-# studio: 009 — the Swift toolchain ships an ld64.lld without Mach-O iOS
+# studio: 009 - the Swift toolchain ships an ld64.lld without Mach-O iOS
 # support, so finding *an* ld64.lld is not enough. Like xcross's own probe
 # (darwin_toolchain_resolver.dart), link a 56-byte empty arm64 iOS object
 # into a dylib: an unsupported linker rejects the platform once it reads it.
