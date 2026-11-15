@@ -287,9 +287,13 @@ class WorkflowSecurityTests(unittest.TestCase):
         self.assertIsNotNone(missing)
         self.assertIn("$LlvmDir -and", missing.group(1))
         self.assertIn("ld64.lld.exe", missing.group(1))
-        gate = re.search(r"(?m)^if \(\(Test-Wanted 'llvm'\) -and \((.+)\)\) \{$", source)
+        # The step is skipped only when the pinned directory has ld64.lld (and
+        # the installed LLVM is new enough and links for iOS); otherwise it
+        # installs.
+        gate = re.search(r"(?m)^if \(Test-Wanted 'llvm'\) \{\n  if \((.+)\) \{$", source)
         self.assertIsNotNone(gate)
-        self.assertTrue(gate.group(1).startswith("$llvmDirMissing -or "))
+        self.assertTrue(gate.group(1).startswith("-not $llvmDirMissing -and "))
+        self.assertIn("(Test-IosLinker)", gate.group(1))
         self.assertLess(missing.start(), gate.start())
 
     def test_architecture_runs_on_every_push(self):
