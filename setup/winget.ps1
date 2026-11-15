@@ -14,6 +14,10 @@
     4. Python 3.13 (Python.Python.3.13), unless a Python 3 already exists.
     5. pymobiledevice3 into the user site-packages.
 
+  XCROSS_SETUP_ONLY=vs,swift,llvm,python,pymobiledevice3 (set by
+  `xcross setup --only`) installs just that subset and skips the final
+  check.
+
   Every package is announced with its id and source URL and needs a "y"
   before it is installed. -Yes (or XCROSS_SETUP_ASSUME_YES=1, which
   `xcross setup --yes` sets) accepts those prompts up front. Installers that
@@ -39,6 +43,10 @@ $ErrorActionPreference = 'Stop'
 # Windows PowerShell 5.1 may still default to TLS 1.0.
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $AssumeYes = $Yes.IsPresent -or ($env:XCROSS_SETUP_ASSUME_YES -eq '1')
+# Comma-separated subset of vs,swift,llvm,python,pymobiledevice3 to install
+# (default: all).
+$Only = @(($env:XCROSS_SETUP_ONLY -split ',') | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ })
+function Test-Wanted([string]$Component) { $Only.Count -eq 0 -or $Only -contains $Component }
 
 $MinClang = 20
 $MinLld = 19
@@ -241,7 +249,7 @@ function Install-Winget {
   return $false
 }
 
-if (-not (Test-Msvc)) {
+if ((Test-Wanted 'vs') -and -not (Test-Msvc)) {
   [void](Install-Winget -Id 'Microsoft.VisualStudio.2022.BuildTools' `
       -Name 'Visual Studio 2022 Build Tools' `
       -What 'the MSVC compiler and Windows SDK that Swift for Windows links against (several GB)' `
@@ -249,7 +257,7 @@ if (-not (Test-Msvc)) {
 }
 
 $swiftVersion = Get-SwiftVersion
-if (-not $swiftVersion -or $swiftVersion -lt $MinSwift) {
+if ((Test-Wanted 'swift') -and (-not $swiftVersion -or $swiftVersion -lt $MinSwift)) {
   [void](Install-Winget -Id 'Swift.Toolchain' -Name 'Swift toolchain' `
       -What "the Swift $MinSwift+ compiler, runtime and SwiftPM" -Upgrade:([bool]$swiftVersion))
 }
@@ -257,7 +265,7 @@ if (-not $swiftVersion -or $swiftVersion -lt $MinSwift) {
 $llvmBin = Find-LlvmBin
 if ($llvmBin) { Add-UserPath $llvmBin }
 $clangMajor = Get-ToolMajor 'clang' 'clang version (\d+)'
-if (-not $clangMajor -or $clangMajor -lt $MinClang -or -not (Test-IosLinker)) {
+if ((Test-Wanted 'llvm') -and (-not $clangMajor -or $clangMajor -lt $MinClang -or -not (Test-IosLinker))) {
   if (Install-Winget -Id 'LLVM.LLVM' -Name 'LLVM' `
       -What "clang/clang++ $MinClang+, llvm-ar and ld64.lld for compiling and linking iOS binaries" `
       -Upgrade:([bool]$clangMajor)) {
@@ -267,7 +275,7 @@ if (-not $clangMajor -or $clangMajor -lt $MinClang -or -not (Test-IosLinker)) {
 }
 
 $python = Find-Python
-if (-not $python) {
+if ((Test-Wanted 'python') -and -not $python) {
   if (Install-Winget -Id 'Python.Python.3.13' -Name 'Python 3.13' `
       -What 'the Python runtime that hosts pymobiledevice3') {
     $python = Find-Python
@@ -284,7 +292,7 @@ $Hint = @{
 # pymobiledevice3 and summary
 # ---------------------------------------------------------------------------
 
-if ($python) {
+if ($python -and (Test-Wanted 'pymobiledevice3')) {
   Write-Info 'Installing pymobiledevice3 with pip (user site-packages)'
   $pipCode = Invoke-Native $python.Path ($python.Args + @('-m', 'pip', 'install', '--user', '--upgrade', '--prefer-binary', 'pymobiledevice3'))
   $ErrorActionPreference = 'Stop'
@@ -293,6 +301,13 @@ if ($python) {
   $scripts = Invoke-Probe $python.Path ($python.Args + @('-c', "import sysconfig; print(sysconfig.get_path('scripts', 'nt_user'))"))
   $scriptsDir = ($scripts.Output -split "`r?`n" | Where-Object { $_.Trim() } | Select-Object -Last 1)
   if ($scripts.Code -eq 0 -and $scriptsDir) { Add-UserPath $scriptsDir.Trim() }
+}
+
+# Partial runs (XCROSS_SETUP_ONLY) stop here: the summary below checks the
+# whole host, including parts this run was told to skip.
+if ($Only.Count -gt 0) {
+  Write-Info "Installed requested components: $($Only -join ', ')"
+  exit 0
 }
 
 $problems = @()

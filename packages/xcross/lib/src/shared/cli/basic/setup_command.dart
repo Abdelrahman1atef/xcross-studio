@@ -15,9 +15,10 @@ import 'package:xcross/src/shared/setup/setup_script_policy.dart';
 /// A setup script runs when the config names one (`setup:`), or by default
 /// on Windows (`setup/<manager>.ps1` for the installed winget, Scoop or
 /// Chocolatey, else `setup/direct.ps1`). Every script is shown by name, source and
-/// SHA-256 and needs confirmation before it runs. Without a script, Linux
-/// drives apt/dnf/pacman and macOS drives Homebrew in-process; both need
-/// Swift on PATH first.
+/// SHA-256 and needs confirmation before it runs. `--only` (hosts with
+/// built-in scripts) limits the script to some components through
+/// `XCROSS_SETUP_ONLY`. Without a script, Linux drives apt/dnf/pacman and
+/// macOS drives Homebrew in-process; both need Swift on PATH first.
 @internal
 final class SetupCommand extends Command<void> {
   SetupCommand({
@@ -57,6 +58,17 @@ final class SetupCommand extends Command<void> {
             'one installed, asking when there are several.',
       );
     }
+    final components = scriptPolicy.components;
+    if (components.isNotEmpty) {
+      argParser.addMultiOption(
+        _onlyOption,
+        allowed: components,
+        valueHelp: 'component,...',
+        help:
+            'Install only these components (comma-separated), and skip the '
+            'final check. Default: all.',
+      );
+    }
   }
 
   final PlatformHostInterface host;
@@ -73,6 +85,7 @@ final class SetupCommand extends Command<void> {
   static const _refreshScriptFlag = 'refresh-script';
   static const _yesFlag = 'yes';
   static const _managerOption = 'manager';
+  static const _onlyOption = 'only';
 
   @override
   String get name => 'setup';
@@ -104,6 +117,7 @@ final class SetupCommand extends Command<void> {
         // The built-in default follows the release it is pinned to; only a
         // user-configured script keeps the cache `xcross update` refreshes.
         refreshFirst: configured == null,
+        only: _only(),
       );
       if (ran) {
         processRunner.log.logDone('Setup script completed');
@@ -123,6 +137,15 @@ final class SetupCommand extends Command<void> {
       installGuidance: swiftInstallGuidance,
     );
     await requirements.run();
+  }
+
+  /// `--only` components, deduplicated in the order given; empty means all.
+  List<String> _only() {
+    final results = argResults;
+    if (results == null || !results.options.contains(_onlyOption)) {
+      return const [];
+    }
+    return {...results.multiOption(_onlyOption)}.toList();
   }
 
   /// The built-in script for the requested or detected package manager, or

@@ -792,6 +792,8 @@ final class ResidualFailingSetupPolicy implements SetupScriptPolicy {
   @override
   List<String> get supportedManagers => base.supportedManagers;
   @override
+  List<String> get components => base.components;
+  @override
   File cachedFile(String digest) => base.cachedFile(digest);
   @override
   File cachePointer(String digest) => base.cachePointer(digest);

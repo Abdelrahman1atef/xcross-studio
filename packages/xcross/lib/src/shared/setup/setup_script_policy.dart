@@ -25,6 +25,11 @@ abstract interface class SetupScriptPolicy {
   /// Every package manager this host has a built-in script for.
   List<String> get supportedManagers;
 
+  /// What the built-in scripts can install one at a time, as accepted by
+  /// `xcross setup --only` (forwarded as `XCROSS_SETUP_ONLY`). Empty when
+  /// the host has no built-in scripts.
+  List<String> get components;
+
   File cachedFile(String digest);
   File cachePointer(String digest);
   Future<({String executable, List<String> arguments})> invocation(String path);

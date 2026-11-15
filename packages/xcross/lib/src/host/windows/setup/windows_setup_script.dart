@@ -39,6 +39,16 @@ final class WindowsSetupScript implements SetupScriptPolicy {
   @override
   List<String> get supportedManagers => [...managers, direct];
 
+  /// Every `setup/*.ps1` reads these from `XCROSS_SETUP_ONLY`.
+  @override
+  List<String> get components => const [
+    'vs',
+    'swift',
+    'llvm',
+    'python',
+    'pymobiledevice3',
+  ];
+
   /// Package managers with a script named after their executable, in
   /// preference order.
   static const managers = {'winget', 'scoop', 'choco'};

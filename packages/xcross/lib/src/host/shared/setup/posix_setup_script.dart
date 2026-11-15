@@ -19,6 +19,9 @@ final class PosixSetupScript implements SetupScriptPolicy {
   @override
   List<String> get supportedManagers => const [];
 
+  @override
+  List<String> get components => const [];
+
   String get _directory =>
       host.paths.context.join(host.paths.cacheRoot, 'setup-scripts');
 

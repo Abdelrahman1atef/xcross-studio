@@ -105,11 +105,13 @@ final class SetupScriptManager {
   /// running anything, when no script is configured or [approve] declines.
   ///
   /// [assumeYes] is forwarded as `XCROSS_SETUP_ASSUME_YES=1` so the script
-  /// can skip its own per-installer prompts too.
+  /// can skip its own per-installer prompts too, and a non-empty [only] as
+  /// `XCROSS_SETUP_ONLY=<comma list>` so it installs just those components.
   Future<bool> run({
     required bool Function(SetupScriptApproval script) approve,
     bool assumeYes = false,
     bool refreshFirst = false,
+    List<String> only = const [],
   }) async {
     final script = refreshFirst ? await _refreshOrCached() : await resolve();
     if (script == null) return false;
@@ -132,6 +134,7 @@ final class SetupScriptManager {
     final invocation = await _policy.invocation(script.path);
     await _execute(invocation.executable, invocation.arguments, {
       if (assumeYes) 'XCROSS_SETUP_ASSUME_YES': '1',
+      if (only.isNotEmpty) 'XCROSS_SETUP_ONLY': only.join(','),
     });
     return true;
   }

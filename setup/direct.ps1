@@ -22,9 +22,9 @@
        Foundation signature.
     5. pymobiledevice3 into the user site-packages.
 
-  XCROSS_SETUP_ONLY=vs,swift,llvm,python installs just that subset and
-  skips pymobiledevice3 and the final check (CI uses it for pinned
-  toolchains).
+  XCROSS_SETUP_ONLY=vs,swift,llvm,python,pymobiledevice3 (set by
+  `xcross setup --only`) installs just that subset and skips the final
+  check (CI uses it for pinned toolchains).
 
   Every installer is announced with its URL and needs a "y" before it runs.
   -Yes (or XCROSS_SETUP_ASSUME_YES=1, which `xcross setup --yes` sets)
@@ -301,7 +301,8 @@ $LlvmPin = $env:XCROSS_LLVM_VERSION           # e.g. 22.1.8
 $LlvmPinSha = $env:XCROSS_LLVM_SHA256
 $LlvmDir = $env:XCROSS_LLVM_DIR               # install root, default Program Files\LLVM
 $PythonPin = $env:XCROSS_PYTHON_VERSION       # e.g. 3.13.16
-# Comma-separated subset of vs,swift,llvm,python to install (default: all).
+# Comma-separated subset of vs,swift,llvm,python,pymobiledevice3 to install
+# (default: all).
 $Only = @(($env:XCROSS_SETUP_ONLY -split ',') | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ })
 function Test-Wanted([string]$Component) { $Only.Count -eq 0 -or $Only -contains $Component }
 
@@ -421,18 +422,11 @@ $Hint = @{
   Python = 'https://www.python.org/downloads/windows/'
 }
 
-# Partial runs (XCROSS_SETUP_ONLY) stop here: the summary below checks the
-# whole host, including parts this run was told to skip.
-if ($Only.Count -gt 0) {
-  Write-Info "Installed requested components: $($Only -join ', ')"
-  exit 0
-}
-
 # ---------------------------------------------------------------------------
 # pymobiledevice3 and summary
 # ---------------------------------------------------------------------------
 
-if ($python) {
+if ($python -and (Test-Wanted 'pymobiledevice3')) {
   Write-Info 'Installing pymobiledevice3 with pip (user site-packages)'
   $pipCode = Invoke-Native $python.Path ($python.Args + @('-m', 'pip', 'install', '--user', '--upgrade', '--prefer-binary', 'pymobiledevice3'))
   $ErrorActionPreference = 'Stop'
@@ -441,6 +435,13 @@ if ($python) {
   $scripts = Invoke-Probe $python.Path ($python.Args + @('-c', "import sysconfig; print(sysconfig.get_path('scripts', 'nt_user'))"))
   $scriptsDir = ($scripts.Output -split "`r?`n" | Where-Object { $_.Trim() } | Select-Object -Last 1)
   if ($scripts.Code -eq 0 -and $scriptsDir) { Add-UserPath $scriptsDir.Trim() }
+}
+
+# Partial runs (XCROSS_SETUP_ONLY) stop here: the summary below checks the
+# whole host, including parts this run was told to skip.
+if ($Only.Count -gt 0) {
+  Write-Info "Installed requested components: $($Only -join ', ')"
+  exit 0
 }
 
 $problems = @()

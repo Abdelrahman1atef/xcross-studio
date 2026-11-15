@@ -3,7 +3,9 @@ import 'dart:io';
 
 import 'package:args/command_runner.dart';
 import 'package:cli_kit/host/linux/linux_host.dart';
+import 'package:cli_kit/host/windows/windows_host.dart';
 import 'package:cli_kit/shared/logging/logging.dart';
+import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:cli_kit/shared/process/process.dart';
 import 'package:crypto/crypto.dart';
 import 'package:meta/meta.dart';
@@ -20,7 +22,7 @@ import '../host_operations_fixtures.dart';
 
 void main() {
   late Directory temporary;
-  late LinuxHost host;
+  late PlatformHostInterface host;
   late ProcessRunner runner;
   late File script;
   late List<Map<String, String>> executions;
@@ -221,6 +223,77 @@ void main() {
       expect(executions, isEmpty);
     });
 
+    group('--only', () {
+      // A host of this platform, so the fixture scripts' paths resolve.
+      setUp(() {
+        host = Platform.isWindows
+            ? WindowsHost(environment: {'LOCALAPPDATA': temporary.path})
+            : LinuxHost(
+                environment: {
+                  'XDG_CACHE_HOME': temporary.path,
+                  'HOME': temporary.path,
+                },
+              );
+        runner = fixtureRunner(host, log: fixtureLog());
+        policy = FixtureManagerPolicy(PosixSetupScript(host), scripts);
+      });
+
+      test('tells the script which components to install', () async {
+        await runSetup(
+          FixturePrompt(interactive: false),
+          policy: policy,
+          configured: false,
+          arguments: ['--yes', '--only', 'llvm,python', '--only', 'llvm'],
+        );
+        expect(executions, [
+          {'XCROSS_SETUP_ASSUME_YES': '1', 'XCROSS_SETUP_ONLY': 'llvm,python'},
+        ]);
+      });
+
+      test('without it the script installs everything', () async {
+        await runSetup(
+          FixturePrompt(interactive: false),
+          policy: policy,
+          configured: false,
+          arguments: ['--yes'],
+        );
+        expect(executions, [
+          {'XCROSS_SETUP_ASSUME_YES': '1'},
+        ]);
+      });
+
+      test('an unknown component is a usage error', () async {
+        await expectLater(
+          runSetup(
+            FixturePrompt(interactive: false),
+            policy: policy,
+            configured: false,
+            arguments: ['--yes', '--only', 'llvm,xcode'],
+          ),
+          throwsA(
+            isA<UsageException>().having(
+              (error) => error.message,
+              'message',
+              contains('"xcode" is not an allowed value'),
+            ),
+          ),
+        );
+        expect(executions, isEmpty);
+      });
+
+      test('hosts without built-in scripts have no --only', () async {
+        await expectLater(
+          runSetup(
+            FixturePrompt(interactive: false),
+            policy: PosixSetupScript(host),
+            arguments: ['--yes', '--only', 'llvm'],
+          ),
+          throwsA(isA<UsageException>()),
+        );
+        expect(executions, isEmpty);
+      });
+    });
+
     test(
       testOn: '!windows',
       'a configured setup: script wins over the built-in ones',
@@ -297,6 +370,14 @@ final class FixtureManagerPolicy implements SetupScriptPolicy {
       : null;
   @override
   List<String> get supportedManagers => ['winget', 'scoop', 'choco', 'direct'];
+  @override
+  List<String> get components => [
+    'vs',
+    'swift',
+    'llvm',
+    'python',
+    'pymobiledevice3',
+  ];
   @override
   File cachedFile(String digest) => base.cachedFile(digest);
   @override
