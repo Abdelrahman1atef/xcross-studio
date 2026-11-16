@@ -172,7 +172,7 @@ clang: error: linker command failed with exit code 1
   );
 
   test(
-    'AC-046-24 handleFallback records report and returns pod to exclude',
+    'AC-046-24 AC-046-32 handleFallback records report and returns pod to exclude',
     () {
       const failure = PodCompileFailure(
         pod: 'WebRTC-SDK',

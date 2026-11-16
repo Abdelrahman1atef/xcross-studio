@@ -75,7 +75,7 @@ end
     await root.delete(recursive: true);
   });
 
-  test('AC-046-8 classifies from cache without network', () async {
+  test('AC-046-8 AC-046-31 classifies from cache without network', () async {
     final planner = PodGraphPlanner(
       plugins: plugins,
       cdn: cdn,

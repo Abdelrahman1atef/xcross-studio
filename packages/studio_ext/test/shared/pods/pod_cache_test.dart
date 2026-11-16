@@ -19,7 +19,7 @@ void main() {
   });
   tearDown(() => root.delete(recursive: true));
 
-  test('AC-046-28 makes stable short keys and safe paths', () {
+  test('AC-046-26 AC-046-28 makes stable short keys and safe paths', () {
     final key = cache.key12('pod@1.0');
     expect(key, hasLength(12));
     expect(cache.key12('pod@1.0'), key);

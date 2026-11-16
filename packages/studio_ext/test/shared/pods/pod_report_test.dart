@@ -10,7 +10,7 @@ import 'package:studio_ext/shared/pods/pods_command.dart';
 import 'package:test/test.dart';
 
 void main() {
-  group('AC-046-24 PodReport warning text', () {
+  group('AC-046-24 AC-046-33 PodReport warning text', () {
     test('formats four-part warning for no_slice', () {
       const report = PodReport(
         code: 'pod.no_slice',
@@ -158,7 +158,7 @@ void main() {
     });
   });
 
-  group('AC-046-24 PodsCommand CLI', () {
+  group('AC-046-24 AC-046-34 PodsCommand CLI', () {
     late Directory tempDir;
 
     setUp(() async {

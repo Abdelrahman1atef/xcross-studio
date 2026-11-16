@@ -111,21 +111,24 @@ void main() {
     expect(records.last['status'], 'done');
   });
 
-  test('AC-046-6 refuses a checksum mismatch without publishing', () async {
-    final destination = Directory('${root.path}/source');
-    await expectLater(
-      downloader.fetchHttp(
-        PodHttpSource(
-          url: Uri.parse('http://127.0.0.1:${server.port}/archive.zip'),
-          sha1Value: 'bad',
+  test(
+    'AC-046-6 AC-046-7 refuses a checksum mismatch without publishing',
+    () async {
+      final destination = Directory('${root.path}/source');
+      await expectLater(
+        downloader.fetchHttp(
+          PodHttpSource(
+            url: Uri.parse('http://127.0.0.1:${server.port}/archive.zip'),
+            sha1Value: 'bad',
+          ),
+          destination,
         ),
-        destination,
-      ),
-      throwsA(isA<PodDownloadFailed>()),
-    );
-    expect(destination.existsSync(), isFalse);
-    expect(requests, 1);
-  });
+        throwsA(isA<PodDownloadFailed>()),
+      );
+      expect(destination.existsSync(), isFalse);
+      expect(requests, 1);
+    },
+  );
 
   test('AC-046-6 retries a transient HTTP error', () async {
     failFirst = true;

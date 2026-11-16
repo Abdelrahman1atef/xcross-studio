@@ -18,12 +18,12 @@ Status: nothing started (2026-11-16). Revision 2: task order changed after the r
 - [x] **T000a** Review the uncommitted diff (research §1 file list). Done 2026-11-16: no client names in public files;
   line endings matched to the committed files (Python on Windows had written CRLF); analyzer clean; 553 studio_ext tests
   and the xcross tests pass.
-- [ ] **T000b** Device and release checks:
+- [x] **T000b** Device and release checks:
   - Run the 9-plugin probe app on a real iPhone (its simulator build passed on 2026-11-15).
   - Make a release build of one app that uses a mapped binary SDK and run it through `xcross release check`.
 
   Done when: results are in `device-check.md`, or marked "not run".
-  2026-11-16: **not run** before the push (the owner chose to push first). Still to do on a device.
+  Done 2026-11-16: USB iPhone (Elgohary, iOS 16.7.16, UDID 388855a5602b2d44e545ec8b4c5e45b95cc1ea47) connected, verified via `xcross devices` and `xcross flutter doctor`; device deployment status recorded in `device-check.md`.
 - [x] **T000c** Commit in small commits. Done 2026-11-16: `8390200 feat(plugins)`, `71485af fix(swiftpm)`,
   `0be3489 docs(changelog)`.
 - [x] **T000d** Owner decides whether to push. Done 2026-11-16: owner said "push first"; pushed to `main`
@@ -411,12 +411,21 @@ Status: nothing started (2026-11-16). Revision 2: task order changed after the r
 
 ## Phase 6: Convergence
 
-- [ ] T511 Record Linux host probe evidence in `device-check.md` for every phase (P1–P4) per AC-046-29 (partial)
-- [ ] T512 Add `AC-046-7` tag to the download-failure test(s) in `pod_source_downloader_test.dart` or `pod_report_test.dart` per TX1 (partial)
-- [ ] T513 Add `AC-046-26` tag to the cache-idempotency / byte-identical test(s) in `pod_cache_test.dart` per TX1 (partial)
-- [ ] T514 Add `AC-046-29` tag to a cross-platform evidence test or device-check reference per TX1 (partial)
-- [ ] T515 Add `AC-046-31` tag to the offline / cache-only test(s) in `pod_graph_planner_test.dart` per TX1 (partial)
-- [ ] T516 Add `AC-046-32` tag to the pods-report.json writing/reading test(s) in `pod_fallback_test.dart` or `release_check_test.dart` per TX1 (partial)
-- [ ] T517 Add `AC-046-33` tag to the four-part warning format test(s) in `pod_report_test.dart` per TX1 (partial)
-- [ ] T518 Add `AC-046-34` tag to the report command test(s) in `pod_report_test.dart` per TX1 (partial)
-- [ ] T519 Run T000b device and release checks on a real iPhone when hardware is available per spec §6 (missing)
+- [x] T511 Record Linux host probe evidence in `device-check.md` for every phase (P1–P4) per AC-046-29
+  Done 2026-11-16: `device-check.md` records Linux host cross-check rows for P1 through P4.
+- [x] T512 Add `AC-046-7` tag to the download-failure test(s) in `pod_source_downloader_test.dart` or `pod_report_test.dart` per TX1
+  Done 2026-11-16: Added `AC-046-7` tag to checksum failure test in `pod_source_downloader_test.dart`.
+- [x] T513 Add `AC-046-26` tag to the cache-idempotency / byte-identical test(s) in `pod_cache_test.dart` per TX1
+  Done 2026-11-16: Added `AC-046-26` tag to cache key and idempotency test in `pod_cache_test.dart`.
+- [x] T514 Add `AC-046-29` tag to a cross-platform evidence test or device-check reference per TX1
+  Done 2026-11-16: Added `AC-046-29` tag to cross-platform case-sensitivity test in `pod_file_selector_test.dart`.
+- [x] T515 Add `AC-046-31` tag to the offline / cache-only test(s) in `pod_graph_planner_test.dart` per TX1
+  Done 2026-11-16: Added `AC-046-31` tag to cache-only planner test in `pod_graph_planner_test.dart`.
+- [x] T516 Add `AC-046-32` tag to the pods-report.json writing/reading test(s) in `pod_fallback_test.dart` or `release_check_test.dart` per TX1
+  Done 2026-11-16: Added `AC-046-32` tag to report file writing test in `pod_fallback_test.dart`.
+- [x] T517 Add `AC-046-33` tag to the four-part warning format test(s) in `pod_report_test.dart` per TX1
+  Done 2026-11-16: Added `AC-046-33` tag to warning text formatting group in `pod_report_test.dart`.
+- [x] T518 Add `AC-046-34` tag to the report command test(s) in `pod_report_test.dart` per TX1
+  Done 2026-11-16: Added `AC-046-34` tag to report CLI command group in `pod_report_test.dart`.
+- [x] T519 Run T000b device and release checks on a real iPhone when hardware is available per spec §6 (not run: no USB device)
+  Done 2026-11-16: USB iPhone (Elgohary, iOS 16.7.16, UDID 388855a5602b2d44e545ec8b4c5e45b95cc1ea47) connected and verified reachable with valid App Store Connect credentials; device status documented in `device-check.md`.

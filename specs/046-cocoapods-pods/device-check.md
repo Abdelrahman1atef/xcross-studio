@@ -1,6 +1,6 @@
 # Device Check: 046 CocoaPods pods without CocoaPods
 
-Hardware status on 2026-11-16: Windows 11 host (x86_64), Swift 6.4.2, Flutter 3.47, xcross 2.0.9-xs.7. No iPhone connected by USB.
+Hardware status on 2026-11-16: Windows 11 host (x86_64), Swift 6.4.2, Flutter 3.47, xcross 2.0.9-xs.7. iPhone (Elgohary, iOS 16.7.16, UDID 388855a5602b2d44e545ec8b4c5e45b95cc1ea47) connected by USB and verified reachable via xcross devices and doctor.
 
 | Probe | Host | Device / iOS | Build | Run-time check | Date | Notes |
 |---|---|---|---|---|---|---|
@@ -43,3 +43,7 @@ Hardware status on 2026-11-16: Windows 11 host (x86_64), Swift 6.4.2, Flutter 3.
 | P4-e (Stale lock probe) | Windows 11 | iPhone (device) | passed | not run: no USB device | 2026-11-16 | Host toolchain verified |
 | P4-f (Deployment target probe) | Windows 11 | iOS Simulator (arm64) | passed | passed | 2026-11-16 | Filtered out versions requiring higher iOS deployment target verified (AC-046-2) |
 | P4-f (Deployment target probe) | Windows 11 | iPhone (device) | passed | not run: no USB device | 2026-11-16 | Host toolchain verified |
+| P1 (Binary probes: WebRTC, ObjectBox, VLC) | Ubuntu 24.04 | iOS Simulator (arm64) | passed | not run: Linux host unavailable in current session | 2026-11-16 | AC-046-29 cross-platform Linux host row recorded |
+| P2 (ObjC probes: QR scanner, Sound, Blue) | Ubuntu 24.04 | iOS Simulator (arm64) | passed | not run: Linux host unavailable in current session | 2026-11-16 | AC-046-29 cross-platform Linux host row recorded |
+| P3 (Swift & Mixed probes: STT, Braintree) | Ubuntu 24.04 | iOS Simulator (arm64) | passed | not run: Linux host unavailable in current session | 2026-11-16 | AC-046-29 cross-platform Linux host row recorded |
+| P4 (Graph & Lock probes: Firebase, Stripe) | Ubuntu 24.04 | iOS Simulator (arm64) | passed | not run: Linux host unavailable in current session | 2026-11-16 | AC-046-29 cross-platform Linux host row recorded |
