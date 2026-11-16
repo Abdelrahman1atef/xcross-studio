@@ -44,6 +44,7 @@ final class SwiftPmDiscovery<T extends PlatformHostInterface> {
     String? flutterEngineRevision,
     bool distribution = false,
     Map<String, String> projectEnvironment = const {},
+    String? podGraphFingerprint, // studio: 046
   }) async {
     Digest? result;
     final input = sha256.startChunkedConversion(
@@ -77,6 +78,10 @@ final class SwiftPmDiscovery<T extends PlatformHostInterface> {
       ].join(''),
     );
     final sdk = sdkRepository.current();
+    // studio: 046 — a changed pod graph or converter switch must rebuild plugins
+    if (podGraphFingerprint != null) {
+      add('pod-graph:$podGraphFingerprint');
+    }
     if (toolchainIdentity == null && sdk == null) {
       throw FlutterBuildError(
         'Darwin Swift SDK not found. Run '

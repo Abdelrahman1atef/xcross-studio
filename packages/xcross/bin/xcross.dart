@@ -32,8 +32,10 @@ Future<void> main(List<String> args) async {
 /// hanging forever. Flush first so the final lines are not lost.
 Future<Never> _exit(int code) async {
   try {
-    await Future.wait([stdout.flush(), stderr.flush()])
-        .timeout(const Duration(seconds: 2));
+    await Future.wait([
+      stdout.flush(),
+      stderr.flush(),
+    ]).timeout(const Duration(seconds: 2));
   } on Object {
     // Best effort; a wedged stdout must not block termination.
   }

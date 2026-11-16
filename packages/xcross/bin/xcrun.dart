@@ -12,8 +12,10 @@ Future<void> main(List<String> arguments) async {
     code = 1;
   }
   try {
-    await Future.wait([stdout.flush(), stderr.flush()])
-        .timeout(const Duration(seconds: 2));
+    await Future.wait([
+      stdout.flush(),
+      stderr.flush(),
+    ]).timeout(const Duration(seconds: 2));
   } on Object {
     // Best effort; never block termination on a wedged stream.
   }

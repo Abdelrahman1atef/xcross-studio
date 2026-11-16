@@ -170,6 +170,10 @@ abstract final class ReleaseTables {
     'NSPrivacyAccessedAPICategoryUserDefaults': ['NSUserDefaults'],
   };
 
+  /// The date of Apple's list of commonly used third-party SDKs that must
+  /// ship a privacy manifest (developer.apple.com/support/third-party-SDK-requirements).
+  static const appleSdkPrivacyListDate = '2024-05-01';
+
   /// SDKs on Apple's list of commonly used SDKs that must ship a privacy
   /// manifest, as frameworks or Flutter plugins name them.
   static const sdksNeedingManifest = <String>{

@@ -133,13 +133,9 @@ void main() {
       final runner = fixtureRunner(nativeFixtureHost(), log: fixtureLog());
 
       await expectLater(
-        SetupScriptEvents.run(
-          runner,
-          events,
-          Platform.resolvedExecutable,
-          [script.path],
-          const {},
-        ),
+        SetupScriptEvents.run(runner, events, Platform.resolvedExecutable, [
+          script.path,
+        ], const {}),
         throwsA(
           isA<XcrossError>().having(
             (error) => error.message,

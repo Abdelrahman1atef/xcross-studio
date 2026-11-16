@@ -48,6 +48,59 @@ end
 ''';
 
 void main() {
+  test('AC-046-23 converted pod draft carries marker and local package', () {
+    final draft = draftPackageSwift(
+      plugin: 'example',
+      spec: Podspec.parse('''
+Pod::Spec.new do |s|
+  s.name = 'example'
+  s.source_files = 'Classes/**/*'
+  s.dependency 'Flutter'
+  s.dependency 'ObjectBox', '= 5.3.0'
+end
+'''),
+      files: const ['Classes/Example.m'],
+      convertedPods: const {'ObjectBox': 'ObjectBox'},
+    );
+    expect(draft.text, contains('// xcross: pod-converter v1'));
+    expect(
+      draft.text,
+      contains('.package(name: "pod-ObjectBox", path: "../pod-ObjectBox")'),
+    );
+    expect(
+      draft.text,
+      contains('.product(name: "ObjectBox", package: "pod-ObjectBox")'),
+    );
+    expect(draft.text, isNot(contains("TODO: pod 'ObjectBox")));
+  });
+  test('AC-046-27 sibling plugin dependency links by relative path', () {
+    final draft = draftPackageSwift(
+      plugin: 'google_mlkit_text_recognition',
+      spec: Podspec.parse('''
+Pod::Spec.new do |s|
+  s.name = 'google_mlkit_text_recognition'
+  s.source_files = 'Classes/**/*'
+  s.dependency 'Flutter'
+  s.dependency 'google_mlkit_commons'
+end
+'''),
+      files: const ['Classes/TextRecognizer.m'],
+      siblingPlugins: const {'google_mlkit_commons'},
+    );
+    expect(
+      draft.text,
+      contains(
+        '.package(name: "google_mlkit_commons", path: "../google_mlkit_commons")',
+      ),
+    );
+    expect(
+      draft.text,
+      contains(
+        '.product(name: "google-mlkit-commons", package: "google_mlkit_commons")',
+      ),
+    );
+    expect(draft.text, isNot(contains("TODO: pod 'google_mlkit_commons")));
+  });
   group('AC-006-8 podspec parsing', () {
     test('declarative forms are read; macOS lines and comments ignored', () {
       final spec = Podspec.parse(_objcPodspec);
@@ -75,6 +128,36 @@ void main() {
       expect(mixed.deploymentTarget, '11.0');
       expect(mixed.dependencies.last.requirement, '>= 10.1');
     });
+
+    test(
+      'AC-046-18 merges own subspecs into the plugin podspec (stripe_ios)',
+      () {
+        final spec = Podspec.parse('''
+Pod::Spec.new do |s|
+  s.name             = 'stripe_ios'
+  s.version          = '0.0.1'
+  s.summary          = 'Stripe iOS plugin'
+  s.source_files     = 'Classes/**/*'
+  s.dependency 'Flutter'
+  s.dependency 'stripe_ios/stripe_objc'
+
+  s.subspec 'stripe_objc' do |ss|
+    ss.source_files = 'stripe-objc/**/*.{h,m}'
+    ss.dependency 'Stripe', '~> 23.0'
+    ss.frameworks = 'Security'
+  end
+end
+''');
+
+        expect(spec.name, 'stripe_ios');
+        expect(spec.sourceFiles, ['Classes/**/*', 'stripe-objc/**/*.{h,m}']);
+        expect(spec.frameworks, ['Security']);
+        // Internal dependency 'stripe_ios/stripe_objc' is resolved and dropped,
+        // and external 'Stripe' dependency from the subspec is merged.
+        expect(spec.dependencies.map((d) => d.name), ['Flutter', 'Stripe']);
+        expect(spec.dependencies.last.requirement, '~> 23.0');
+      },
+    );
 
     test('CocoaPods requirements map to SwiftPM requirements', () {
       expect(swiftRequirement('~> 8.4'), '.upToNextMajor(from: "8.4.0")');
@@ -109,6 +192,55 @@ void main() {
       expect(knownPackageFor('FirebaseCore')?.package, 'firebase-ios-sdk');
       expect(knownPackageFor('SomeVendorSDK'), isNull);
     });
+
+    test(
+      'AC-046-17 Duplicate rule: infrastructure pods map to their remote Swift packages',
+      () {
+        expect(
+          knownPackageFor('GoogleUtilities/Environment')?.product,
+          'GULEnvironment',
+        );
+        expect(knownPackageFor('GoogleUtilities/Logger')?.product, 'GULLogger');
+        expect(
+          knownPackageFor('GoogleUtilities/UserDefaults')?.product,
+          'GULUserDefaults',
+        );
+        expect(
+          knownPackageFor('GoogleDataTransport')?.product,
+          'GoogleDataTransport',
+        );
+        expect(knownPackageFor('PromisesObjC')?.product, 'FBLPromises');
+        expect(
+          knownPackageFor('GTMSessionFetcher/Core')?.product,
+          'GTMSessionFetcherCore',
+        );
+        expect(knownPackageFor('nanopb')?.package, 'nanopb');
+
+        // Nanopb 3.x -> 2.x version mapping
+        final draft = draftPackageSwift(
+          plugin: 'my_plugin',
+          spec: Podspec.parse('''
+Pod::Spec.new do |s|
+  s.name = 'my_plugin'
+  s.source_files = 'Classes/**/*'
+  s.dependency 'nanopb', '~> 3.30910'
+end
+'''),
+          files: const ['Classes/A.m'],
+        );
+
+        expect(
+          draft.text,
+          contains(
+            '.package(url: "https://github.com/firebase/nanopb", .upToNextMajor(from: "2.30910.0"))',
+          ),
+        );
+        expect(
+          draft.text,
+          contains('.product(name: "nanopb", package: "nanopb")'),
+        );
+      },
+    );
 
     // flutter_facebook_auth (a client app, 2026-11-04): "no such module
     // 'FBSDKLoginKit'". The Swift package's products have other names, and it

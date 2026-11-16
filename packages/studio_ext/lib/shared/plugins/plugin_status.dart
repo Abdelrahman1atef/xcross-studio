@@ -7,6 +7,7 @@ import 'package:args/command_runner.dart';
 import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:studio_ext/shared/plugins/draft_ledger.dart';
 import 'package:studio_ext/shared/plugins/plugin_command.dart';
+import 'package:studio_ext/shared/pods/pod_graph_planner.dart'; // studio: 046
 import 'package:studio_ext/src/shared/plugins/package_swift_draft.dart';
 import 'package:studio_ext/src/shared/plugins/podspec.dart';
 
@@ -52,6 +53,7 @@ final class PluginStatus {
     this.overridePath,
     this.problems = const [],
     this.edited = false,
+    this.pods = const [],
   });
 
   final String name;
@@ -65,6 +67,7 @@ final class PluginStatus {
   /// The draft differs from what xcross would write now: a hand edit, or a
   /// draft from an older xcross.
   final bool edited;
+  final List<PlannedPod> pods;
 
   /// What the developer can do about it: `regenerate` (xcross rewrites the
   /// draft, after a backup), `review` (look at the draft, then `plugin ack`),
@@ -100,6 +103,7 @@ final class PluginStatus {
     'overridePath': overridePath,
     'edited': edited,
     'problems': [for (final p in problems) p.toJson()],
+    'pods': [for (final pod in pods) pod.toJson()],
     'action': action,
     'canRegenerate': canRegenerate,
     'command': command,
@@ -114,6 +118,7 @@ List<PluginStatus> readPluginStatus(
   ProjectPlugins plugins,
   String project, {
   DraftLedger? ledger,
+  PodGraphPlan? podPlan,
 }) {
   final fs = plugins.fileSystem;
   final paths = plugins.paths;
@@ -294,7 +299,19 @@ List<PluginStatus> readPluginStatus(
       );
     }
   }
-  return result;
+  if (podPlan == null) return result;
+  return [
+    for (final status in result)
+      PluginStatus(
+        name: status.name,
+        version: status.version,
+        kind: status.kind,
+        overridePath: status.overridePath,
+        problems: status.problems,
+        edited: status.edited,
+        pods: podPlan.byPlugin[status.name] ?? const [],
+      ),
+  ];
 }
 
 /// Whether the Package.swift at [manifest] is a draft xcross wrote (its header
@@ -311,7 +328,11 @@ bool isDraftManifest(HostFileSystemInterface fs, String manifest) {
 
 /// `xcross plugin status [--project <dir>] [--json]`.
 final class PluginStatusCommand extends Command<void> {
-  PluginStatusCommand({required this.plugins, required this.write}) {
+  PluginStatusCommand({
+    required this.plugins,
+    required this.write,
+    this.planner,
+  }) {
     argParser
       ..addOption('project', defaultsTo: '.', help: 'Flutter project folder.')
       ..addFlag('json', negatable: false, help: 'Print one JSON object.');
@@ -319,6 +340,7 @@ final class PluginStatusCommand extends Command<void> {
 
   final ProjectPlugins plugins;
   final void Function(String) write;
+  final PodGraphPlanner? planner;
 
   @override
   String get name => 'status';
@@ -332,7 +354,8 @@ final class PluginStatusCommand extends Command<void> {
   Future<void> run() async {
     final project = argResults!.option('project')!;
     try {
-      final all = readPluginStatus(plugins, project);
+      final podPlan = await planner?.plan(project, offline: true);
+      final all = readPluginStatus(plugins, project, podPlan: podPlan);
       if (argResults!.flag('json')) {
         write(
           '${jsonEncode({

@@ -159,6 +159,11 @@ abstract final class XcrossCodes {
     'An override folder needs a Package.swift; an override.yaml may only set '
         'versions: to a pub-style constraint such as ">=1.2.0 <2.0.0".',
   );
+  static const podConverterOff = DiagnosticCode(
+    'pod.converter_off',
+    'Set XCROSS_POD_CONVERTER=on to use a Package.swift that depends on '
+        'converted pods.',
+  );
   // studio: 007
   static const buildRunnerProjectFailed = DiagnosticCode(
     'build.runner_project_failed',
@@ -253,6 +258,7 @@ abstract final class XcrossCodes {
     buildEntitlementsUnreadable,
     buildPluginOverrideApplied, // studio: 006
     buildPluginOverrideInvalid,
+    podConverterOff, // studio: 046
     buildPluginDrafted, // studio: 025
     buildPluginUnknownPods,
     buildPluginPinConflict, // studio: 045

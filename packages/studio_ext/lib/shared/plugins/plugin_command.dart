@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 import 'package:studio_ext/shared/plugins/draft_ledger.dart'; // studio: 028
 import 'package:studio_ext/shared/plugins/permission_macros.dart'; // studio: 027
 import 'package:studio_ext/shared/plugins/plugin_status.dart'; // studio: 028
+import 'package:studio_ext/shared/pods/pod_graph_planner.dart'; // studio: 046
 import 'package:studio_ext/src/shared/plugins/package_swift_draft.dart';
 import 'package:studio_ext/src/shared/plugins/podspec.dart';
 
@@ -19,12 +20,15 @@ final class PluginCommand extends Command<void> {
     required p.Context paths,
     required void Function(String) write,
     String? home,
+    PodGraphPlanner? podPlanner,
   }) {
     final plugins = ProjectPlugins(fileSystem, paths);
     addSubcommand(PluginListCommand(plugins: plugins, write: write));
     addSubcommand(PluginCheckCommand(plugins: plugins, write: write));
     // studio: 028
-    addSubcommand(PluginStatusCommand(plugins: plugins, write: write));
+    addSubcommand(
+      PluginStatusCommand(plugins: plugins, write: write, planner: podPlanner),
+    );
     addSubcommand(PluginAckCommand(plugins: plugins, write: write));
     addSubcommand(
       PluginShimCommand(plugins: plugins, write: write, home: home),
@@ -188,9 +192,15 @@ final class PluginDraftWriter {
   /// The pods of [target] with no known Swift package, which a draft cannot
   /// link. A pod whose Swift package starts after the release the plugin asks
   /// for is named with both versions.
-  List<String> unknownPods(ProjectPlugin target) => [
+  List<String> unknownPods(
+    ProjectPlugin target, {
+    Map<String, String> convertedPods = const {},
+    Set<String> siblingPlugins = const {},
+  }) => [
     for (final dependency in _spec(target).dependencies)
       if (dependency.name != 'Flutter' &&
+          !convertedPods.containsKey(dependency.name.split('/').first) &&
+          !siblingPlugins.contains(dependency.name.split('/').first) &&
           swiftPackageFor(dependency.name, dependency.requirement) == null)
         switch (knownPackageFor(dependency.name)?.since) {
           final since? =>
@@ -250,16 +260,36 @@ final class PluginDraftWriter {
   }
 
   /// Writes the draft of [target] under [base], replacing one already there.
-  WrittenDraft write(ProjectPlugin target, {required String base}) {
+  WrittenDraft write(
+    ProjectPlugin target, {
+    required String base,
+    Map<String, String> convertedPods = const {},
+    Set<String> siblingPlugins = const {},
+    Map<String, String> siblingProductNames = const {},
+  }) {
     final fs = plugins.fileSystem;
     final paths = plugins.paths;
     final name = target.name;
+    final project = projectRootOf(base);
+    var siblings = siblingPlugins;
+    if (siblings.isEmpty && project != null) {
+      try {
+        final list = plugins.read(project);
+        siblings = {
+          for (final p in list)
+            if (p.name != name) p.name,
+        };
+      } on Object catch (_) {}
+    }
     final draft = draftPackageSwift(
       plugin: name,
       spec: _spec(target),
       files: plugins.platformFiles(target),
       pluginVersion: target.version,
-      defines: macrosFor(target, projectRootOf(base)),
+      defines: macrosFor(target, project),
+      convertedPods: convertedPods,
+      siblingPlugins: siblings,
+      siblingProductNames: siblingProductNames,
       read: readerFor(target),
     );
     // The logical path, for messages: the host file's path carries the

@@ -321,6 +321,31 @@ flutter:
 
       expect(await engine('debug'), await engine('release'));
     });
+
+    test('AC-046-30 pod graph fingerprint changes trigger rebuild', () async {
+      final plugin = makePlugin('plugin_pod');
+      final framework = Directory(p.join(tmp.path, 'Flutter_pod.xcframework'))
+        ..createSync();
+
+      Future<String> fingerprint([String? podFingerprint]) =>
+          _swiftPmRuntime.discovery.incrementalBuildFingerprint(
+            plugins: [plugin],
+            flutterXcframework: framework.path,
+            deploymentTarget: const IosDeploymentTarget(
+              '15.0',
+              platform: IPhoneBuildPlatform(),
+            ),
+            verbose: false,
+            toolchainIdentity: 'swift',
+            sdkIdentity: 'sdk',
+            podGraphFingerprint: podFingerprint,
+          );
+
+      final base = await fingerprint('pod-WebRTC@1.0.0');
+      expect(await fingerprint('pod-WebRTC@1.0.0'), base);
+      expect(await fingerprint('pod-WebRTC@2.0.0'), isNot(base));
+      expect(await fingerprint(), isNot(base));
+    });
   });
 
   group('flutterFrameworkManifest', () {
@@ -5097,7 +5122,9 @@ module FirebaseFirestore {
             'resolve',
           ],
         );
-        expect(await _windowsRuntime.processPolicy.swiftProcessEnvironment(), {
+        final environment = await _windowsRuntime.processPolicy
+            .swiftProcessEnvironment();
+        final requiredEnvironment = <String, String>{
           ...SwiftPmProcessPolicy.nonInteractiveGitEnvironment,
           'GIT_CONFIG_COUNT': '6',
           'GIT_CONFIG_KEY_0': 'credential.helper',
@@ -5116,7 +5143,10 @@ module FirebaseFirestore {
           'GIT_CONFIG_KEY_5': 'core.longpaths',
           'GIT_CONFIG_VALUE_5': 'true',
           'EXPERIMENTAL_SPM_BUILDS': '1',
-        });
+        };
+        for (final entry in requiredEnvironment.entries) {
+          expect(environment[entry.key], entry.value, reason: entry.key);
+        }
       },
     );
 

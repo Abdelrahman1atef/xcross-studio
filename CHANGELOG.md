@@ -1,5 +1,14 @@
 ## Unreleased (XCross Studio)
 
+- **Build Flutter plugins that rely on CocoaPods without CocoaPods or macOS (feature 046)**:
+  - Plugins depending on pods without official Swift packages (WebRTC, ObjectBox, MobileVLCKit, GoogleMLKit, speech_to_text, go_sell_sdk, flutter_braintree, TensorFlowLite, onnxruntime, etc.) are converted into local Swift packages (`Packages/pod-<Pod>`).
+  - Converts binary pods (`.xcframework`, legacy `.framework`, and vendored `.a` with headers into standard xcframeworks).
+  - Converts Objective-C, C, C++, and Swift source pods with automatic header trees, umbrella headers, modulemaps, `-USWIFT_PACKAGE`, and ARC splitting.
+  - Resolves pod versions and dependencies via CocoaPods CDN specs with backtracking and version constraints matching RubyGems `~>`.
+  - Supports `ios/Podfile.lock` version pinning and writes `ios/xcross-pods.lock` when no `Podfile.lock` exists for reproducible builds across developer machines.
+  - Automatic fallback on build failure: leaves failing pod out and rebuilds once with a clear four-part warning and report (`xcross pods report [<Pod>] [--json]`); strict and distribution modes enforce full integrity.
+  - Controlled by `XCROSS_POD_CONVERTER=on|off` (default off until Phase 1 evidence, with kind gating via `XCROSS_POD_KINDS`).
+
 - **Many more podspec-only plugins keep their native code**: a plugin whose pod had no known Swift package was left out of the build ("A build leaves out the native code of …: no Swift package is known for TikTokBusinessSDK", a client app). Drafts now know the vendors' own Swift packages for 49 more pods. They come from a scan of the most used pub.dev iOS plugins:
   - plugins that still ship only a podspec: flutter_inappwebview_ios (OrderedSet), flutter_libphonenumber_ios and libphonenumber_plugin (PhoneNumberKit), video_thumbnail (libwebp), flutter_jailbreak_detection (IOSSecuritySuite), instabug_flutter, applovin_max, facebook_audience_network (iOS 15), edge_detection (WeScan 3), and TikTokBusinessSDK;
   - older versions of plugins that now ship their own Package.swift, mapped the way those plugins map them: image_cropper (TOCropViewController), OneSignal (all four products), AppsFlyer, RevenueCat, Google Mobile Ads, Google Sign-In, AppAuth, MSAL, Intercom, CleverTap, Braze, Branch, Mixpanel, Amplitude, PostHog, Singular, Unity Ads, LINE, Freshchat, Crisp, Twilio Voice, New Relic, Superwall, Qonversion, Naver Maps, MapLibre, TSBackgroundFetch, awesome_notifications, CryptoSwift, KeychainAccess, ZIPFoundation, SwiftProtobuf, CwlCatchException, CocoaAsyncSocket, ScreenProtectorKit and Auth0.

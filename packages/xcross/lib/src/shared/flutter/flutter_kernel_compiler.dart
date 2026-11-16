@@ -170,7 +170,10 @@ final class FlutterKernelCompiler<T extends PlatformHostInterface> {
   /// argument.
   Future<String> _prepareKernelScratch() async {
     final scratchPath = p.join(
-      runtime.policy.buildDirectory(projectRoot, buildMode.intermediatesDirectory),
+      runtime.policy.buildDirectory(
+        projectRoot,
+        buildMode.intermediatesDirectory,
+      ),
       '.kernel',
     );
     final scratch = runtime.host.fileSystem.directory(scratchPath);
@@ -203,7 +206,8 @@ final class FlutterKernelCompiler<T extends PlatformHostInterface> {
     final more = errors.length - shownCompileErrors;
     return [
       ...errors.take(shownCompileErrors),
-      if (more > 0) '… and $more more Dart compile error${more == 1 ? '' : 's'}.',
+      if (more > 0)
+        '… and $more more Dart compile error${more == 1 ? '' : 's'}.',
       '',
       failure,
     ].join('\n');

@@ -520,7 +520,40 @@ Rebuilds are dominated by the Kotlin/Native compile (~133s of a ~147s cycle on t
 
 Swift Package Manager iOS plugins work on both Windows and Linux. Their native code is compiled against the extracted Darwin SDK into `Frameworks/libFlutterPluginsGenerated.dylib` and registered by the generated runner.
 
-Plugins that only ship a CocoaPods podspec are currently **skipped with a warning** - prefer plugin releases that include `ios/<package_name>/Package.swift`.
+### Plugins that use CocoaPods
+
+With the CocoaPods pod converter (feature 046), xcross compiles plugins that depend on CocoaPods pods on Windows and Linux without running CocoaPods, Ruby, or Xcode.
+
+Each pod is fetched from the CocoaPods CDN, converted into a local Swift package under `.dart_tool/xcross/Packages/pod-<Pod>`, and integrated directly into SwiftPM compilation:
+- **Binary pods** (`binary`): Vendor `.xcframework` archives, legacy `.framework` bundles (converted to xcframeworks), and static `.a` libraries with header trees.
+- **Source pods** (`objc`, `swift`, `mixed`): C, Objective-C, Objective-C++, and Swift sources with automatic header trees, synthetic umbrella headers, module maps, and language standard configuration.
+- **Dependency resolution**: Parses `ios/Podfile.lock` or uses the built-in backtracking resolver against CDN specs, writing `ios/xcross-pods.lock` when no `Podfile.lock` is present.
+- **Gating & switches**: Enable with `XCROSS_POD_CONVERTER=on`. Fine-tune enabled kinds with `XCROSS_POD_KINDS=binary,objc,swift,mixed` or exclude specific pods with `XCROSS_POD_SKIP=pod1,pod2`.
+- **Automatic fallback**: If a converted pod fails compiling or linking during development, xcross logs a 4-part warning and rebuilds once with that pod excluded so the rest of your app continues running. Strict mode (`--strict`) and distribution builds fail immediately to guarantee full integrity.
+
+#### Inspecting and Reporting Pods
+
+```sh
+xcross plugin status --json          # View converted pods and their resolution source
+xcross pods report [<Pod>] [--json]  # View redacted diagnostic reports for left-out pods
+xcross cache clear pods              # Clear cached pod downloads and converted packages
+```
+
+#### Troubleshooting Diagnostic Codes
+
+| Code | Explanation | Recommended Action |
+|---|---|---|
+| `pod.resolve_conflict` | No version satisfies all plugin constraints | Align plugin versions in `pubspec.yaml` or run `pod update` on macOS. |
+| `pod.lock_stale` | `Podfile.lock` pin no longer matches constraints | Refresh lockfile or delete `ios/Podfile.lock` to resolve afresh. |
+| `pod.download_failed` | Failed to download pod source archive or git repo | Check network connection, proxies, or ensure Git is installed. |
+| `pod.no_slice` | Binary framework missing slice for active build target | Build for arm64 iOS device instead of simulator if slice is missing. |
+| `pod.bitcode` | Dynamic framework contains deprecated Bitcode | Update to a modern version of the pod built without Bitcode. |
+| `pod.swift_binary_incompatible` | Swift binary lacks `.swiftinterface` | Request vendor build with `BUILD_LIBRARY_FOR_DISTRIBUTION=YES`. |
+| `pod.duplicate_with_swift_package` | Converted pod collides with a Swift package dependency | Prefer the official Swift package. |
+| `pod.duplicate_symbols` | Duplicate symbols between colliding libraries | Exclude redundant dependencies or report the conflict. |
+| `pod.compile_failed` | SwiftPM failed compiling converted pod sources | Inspect compiler output or submit diagnostic report. |
+| `pod.converter_off` | Pod requires converter but `XCROSS_POD_CONVERTER` is off | Set `XCROSS_POD_CONVERTER=on`. |
+
 
 <!-- studio: 006 -->
 ### Plugin overrides

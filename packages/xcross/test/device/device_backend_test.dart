@@ -64,9 +64,16 @@ void main() {
 
     test('uses the recorded Omnisette URL for remote sessions', () {
       final provider = resolve(
-        _session(null, anisetteProvider: kOmnisetteProviderId, url: 'https://om.example.test'),
+        _session(
+          null,
+          anisetteProvider: kOmnisetteProviderId,
+          url: 'https://om.example.test',
+        ),
       );
-      expect((provider as RecordingAnisetteProvider).argument, 'https://om.example.test');
+      expect(
+        (provider as RecordingAnisetteProvider).argument,
+        'https://om.example.test',
+      );
     });
 
     test('omnisette-only-build sessions without a directory go remote', () {
@@ -79,7 +86,11 @@ void main() {
 
     test('XCROSS_ANISETTE_URL redirects a remote session', () {
       final provider = resolve(
-        _session(null, anisetteProvider: kOmnisetteProviderId, url: 'https://om.example.test'),
+        _session(
+          null,
+          anisetteProvider: kOmnisetteProviderId,
+          url: 'https://om.example.test',
+        ),
         anisetteUrlOverride: 'https://self.example.test',
       );
       expect(

@@ -55,24 +55,30 @@ void main() {
   );
 
   // studio: 005 - minimum is iOS 15 now; iOS 14 stands in for unsupported.
-  test('AC-002-1 unsupported iOS is rejected before the build within 5 s', () async {
-    final stopwatch = Stopwatch()..start();
-    await expectLater(
-      precheck(resolve: iphoneX).run(mode: DeviceSearchMode.all),
-      throwsA(
-        isA<XcrossError>().having(
-          (e) => e.message,
-          'message',
-          allOf(
-            startsWith('[device.ios_unsupported] iPhone X runs iOS 14.8'),
-            contains('hint: '),
+  test(
+    'AC-002-1 unsupported iOS is rejected before the build within 5 s',
+    () async {
+      final stopwatch = Stopwatch()..start();
+      await expectLater(
+        precheck(resolve: iphoneX).run(mode: DeviceSearchMode.all),
+        throwsA(
+          isA<XcrossError>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              startsWith('[device.ios_unsupported] iPhone X runs iOS 14.8'),
+              contains('hint: '),
+            ),
           ),
         ),
-      ),
-    );
-    expect(stopwatch.elapsed, lessThan(const Duration(seconds: 5)));
-    expect(events, ['service', 'resolve:all'], reason: 'listing version used');
-  });
+      );
+      expect(stopwatch.elapsed, lessThan(const Duration(seconds: 5)));
+      expect(events, [
+        'service',
+        'resolve:all',
+      ], reason: 'listing version used');
+    },
+  );
 
   test('AC-002-2 no device is device.not_found', () async {
     await expectLater(

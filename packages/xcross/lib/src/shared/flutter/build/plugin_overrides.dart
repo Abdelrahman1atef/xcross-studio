@@ -39,6 +39,7 @@ final class PluginOverrideProblem {
     this.directory,
     this.reason, {
     required this.versionMismatch,
+    this.converterOff = false,
   });
 
   final String directory;
@@ -46,6 +47,7 @@ final class PluginOverrideProblem {
 
   /// The folder is fine but is meant for other plugin versions.
   final bool versionMismatch;
+  final bool converterOff;
 }
 
 /// The result of looking up a plugin's override.
@@ -74,12 +76,16 @@ final class PluginOverrideLocator {
     required this.paths,
     required this.projectRoot,
     Map<String, String> environment = const {},
-  }) : home = environment['HOME'] ?? environment['USERPROFILE'];
+  }) : home = environment['HOME'] ?? environment['USERPROFILE'],
+       _podConverterEnabled = environment['XCROSS_POD_CONVERTER'] == 'on';
 
   final HostFileSystemInterface fileSystem;
   final p.Context paths;
   final String projectRoot;
   final String? home;
+  final bool _podConverterEnabled;
+
+  static const podConverterMarker = '// xcross: pod-converter v1';
 
   static const projectFolder = 'xcross_overrides';
   static const manifestName = 'Package.swift';
@@ -112,6 +118,15 @@ final class PluginOverrideLocator {
                 versionMismatch: false,
               ),
             );
+          } else if (_converterDraftIsOff(exact)) {
+            problems.add(
+              PluginOverrideProblem(
+                exact,
+                'requires the pod converter while XCROSS_POD_CONVERTER is off',
+                versionMismatch: false,
+                converterOff: true,
+              ),
+            );
           } else {
             return PluginOverrideLookup(
               PluginOverride(
@@ -127,6 +142,17 @@ final class PluginOverrideLocator {
 
       if (_hasManifest(base)) {
         final problem = _constraintProblem(base, version);
+        if (problem == null && _converterDraftIsOff(base)) {
+          problems.add(
+            PluginOverrideProblem(
+              base,
+              'requires the pod converter while XCROSS_POD_CONVERTER is off',
+              versionMismatch: false,
+              converterOff: true,
+            ),
+          );
+          continue;
+        }
         if (problem == null) {
           return PluginOverrideLookup(
             PluginOverride(
@@ -180,6 +206,17 @@ final class PluginOverrideLocator {
 
   bool _hasManifest(String directory) =>
       fileSystem.file(paths.join(directory, manifestName)).existsSync();
+
+  bool _converterDraftIsOff(String directory) {
+    if (_podConverterEnabled) return false;
+    final manifest = fileSystem.file(paths.join(directory, manifestName));
+    if (!manifest.existsSync()) return false;
+    final contents = manifest.readAsStringSync();
+    return contents.contains(podConverterMarker) ||
+        RegExp(
+          r'''\.package\s*\(\s*name:\s*["']pod-[^"']+["']''',
+        ).hasMatch(contents);
+  }
 
   /// Why the any-version folder [base] does not apply, or null when it does.
   PluginOverrideProblem? _constraintProblem(String base, String? version) {
@@ -273,7 +310,9 @@ final class PluginOverrides {
     final lookup = locator.find(plugin.name, versionOf(plugin, _paths));
     for (final problem in lookup.problems) {
       warnings.warn(
-        XcrossCodes.buildPluginOverrideInvalid,
+        problem.converterOff
+            ? XcrossCodes.podConverterOff
+            : XcrossCodes.buildPluginOverrideInvalid,
         subject: problem.directory,
         message:
             'Override folder ${problem.directory} for plugin '

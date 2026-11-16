@@ -106,7 +106,8 @@ abstract final class SwiftPmPinConflicts {
   /// Requirements it cannot read (`branch:`, `revision:`, computed versions)
   /// are left out rather than guessed.
   static SwiftPmPinConflict? find(Iterable<SwiftPmPluginManifest> manifests) {
-    final byPackage = <String, ({String name, List<SwiftPmPinRequirement> all})>{};
+    final byPackage =
+        <String, ({String name, List<SwiftPmPinRequirement> all})>{};
     for (final (:plugin, :version, :manifest) in manifests) {
       final constants = SwiftPmManifestLexer.manifestStringConstants(manifest);
       for (final dependency in SwiftPmManifestDependencies.parseUrlPackageDeps(
@@ -235,8 +236,9 @@ abstract final class SwiftPmPinConflicts {
   /// A SwiftPM version (`13`, `13.1`, `13.1.1`, `13.1.1-beta`), padded to
   /// three numbers.
   static Version? _version(String text) {
-    final match = RegExp(r'^(\d+)(?:\.(\d+))?(?:\.(\d+))?([-+].*)?$')
-        .firstMatch(text.trim());
+    final match = RegExp(
+      r'^(\d+)(?:\.(\d+))?(?:\.(\d+))?([-+].*)?$',
+    ).firstMatch(text.trim());
     if (match == null) return null;
     try {
       return Version.parse(

@@ -142,9 +142,21 @@ void main() {
 
     test('groups plugins with the same pin and works without versions', () {
       final conflict = SwiftPmPinConflicts.find([
-        (plugin: 'a', version: null, manifest: urlManifest('a', 'exact: "1.0.0"')),
-        (plugin: 'b', version: '2.0.0', manifest: urlManifest('b', 'exact: "1.0.0"')),
-        (plugin: 'c', version: '3.0.0', manifest: urlManifest('c', 'exact: "1.2.0"')),
+        (
+          plugin: 'a',
+          version: null,
+          manifest: urlManifest('a', 'exact: "1.0.0"'),
+        ),
+        (
+          plugin: 'b',
+          version: '2.0.0',
+          manifest: urlManifest('b', 'exact: "1.0.0"'),
+        ),
+        (
+          plugin: 'c',
+          version: '3.0.0',
+          manifest: urlManifest('c', 'exact: "1.2.0"'),
+        ),
       ]);
       expect(
         conflict!.message,
@@ -155,8 +167,16 @@ void main() {
 
     test("an exact pin outside another plugin's range conflicts", () {
       final conflict = SwiftPmPinConflicts.find([
-        (plugin: 'old', version: '1.0.0', manifest: urlManifest('old', 'exact: "1.4.0"')),
-        (plugin: 'new', version: '2.0.0', manifest: urlManifest('new', 'from: "2.0.0"')),
+        (
+          plugin: 'old',
+          version: '1.0.0',
+          manifest: urlManifest('old', 'exact: "1.4.0"'),
+        ),
+        (
+          plugin: 'new',
+          version: '2.0.0',
+          manifest: urlManifest('new', 'from: "2.0.0"'),
+        ),
       ]);
       expect(
         conflict!.message,
@@ -168,11 +188,31 @@ void main() {
     test('overlapping ranges and unreadable requirements pass', () {
       expect(
         SwiftPmPinConflicts.find([
-          (plugin: 'a', version: null, manifest: urlManifest('a', 'exact: "1.4.0"')),
-          (plugin: 'b', version: null, manifest: urlManifest('b', 'from: "1.2.0"')),
-          (plugin: 'c', version: null, manifest: urlManifest('c', '"1.0.0"..<"2.0.0"')),
-          (plugin: 'd', version: null, manifest: urlManifest('d', 'branch: "main"')),
-          (plugin: 'e', version: null, manifest: urlManifest('e', 'exact: computed()')),
+          (
+            plugin: 'a',
+            version: null,
+            manifest: urlManifest('a', 'exact: "1.4.0"'),
+          ),
+          (
+            plugin: 'b',
+            version: null,
+            manifest: urlManifest('b', 'from: "1.2.0"'),
+          ),
+          (
+            plugin: 'c',
+            version: null,
+            manifest: urlManifest('c', '"1.0.0"..<"2.0.0"'),
+          ),
+          (
+            plugin: 'd',
+            version: null,
+            manifest: urlManifest('d', 'branch: "main"'),
+          ),
+          (
+            plugin: 'e',
+            version: null,
+            manifest: urlManifest('e', 'exact: computed()'),
+          ),
         ]),
         isNull,
       );
@@ -238,7 +278,9 @@ void main() {
 
   group('workspace staging', () {
     late Directory temporary;
-    setUp(() => temporary = Directory.systemTemp.createTempSync('xcross-pins-'));
+    setUp(
+      () => temporary = Directory.systemTemp.createTempSync('xcross-pins-'),
+    );
     tearDown(() => temporary.deleteSync(recursive: true));
 
     test('fails before resolve with build.plugin_pin_conflict', () async {
@@ -311,5 +353,70 @@ void main() {
         ),
       );
     });
+
+    test(
+      'AC-046-19 sees converted pods remote package dependencies in pin conflict check',
+      () async {
+        final runtime = testSwiftPmRuntime();
+        final coreDir = p.join(temporary.path, 'firebase_core');
+        final podDir = p.join(temporary.path, 'pod-custom_analytics');
+        Directory(coreDir).createSync(recursive: true);
+        Directory(podDir).createSync(recursive: true);
+
+        File(
+          p.join(coreDir, 'pubspec.yaml'),
+        ).writeAsStringSync('version: 5.1.0\n');
+        File(p.join(coreDir, 'Package.swift')).writeAsStringSync('''
+// swift-tools-version: 5.9
+import PackageDescription
+let package = Package(
+  name: "firebase_core",
+  dependencies: [
+    .package(url: "https://github.com/firebase/firebase-ios-sdk", exact: "13.1.1"),
+  ]
+)
+''');
+
+        File(p.join(podDir, 'Package.swift')).writeAsStringSync('''
+// swift-tools-version: 5.9
+// xcross: pod-converter v1
+import PackageDescription
+let package = Package(
+  name: "pod-custom_analytics",
+  dependencies: [
+    .package(url: "https://github.com/firebase/firebase-ios-sdk", exact: "13.0.0"),
+  ]
+)
+''');
+
+        final corePlugin = IosPlugin(
+          name: 'firebase_core',
+          fileSystem: runtime.host.fileSystem,
+          packageRoot: coreDir,
+        );
+
+        final staged = {
+          'firebase_core': coreDir,
+          'pod-custom_analytics': podDir,
+        };
+
+        Object? failure;
+        try {
+          await runtime.workspaceStager.checkPinConflicts([corePlugin], staged);
+        } on Object catch (error) {
+          failure = error;
+        }
+
+        expect(failure, isA<XcrossError>());
+        final issue = NdjsonEvents.parseCoded('error: $failure');
+        expect(issue.code, 'build.plugin_pin_conflict');
+        expect(issue.message, contains('firebase-ios-sdk'));
+        expect(
+          issue.message,
+          contains('pod-custom_analytics pins firebase-ios-sdk 13.0.0'),
+        );
+        expect(issue.message, contains('firebase_core 5.1.0 pins 13.1.1'));
+      },
+    );
   });
 }

@@ -14,6 +14,7 @@ import 'package:dart_mobile_device/target/iphone/device/device_prepare.dart';
 import 'package:dart_mobile_device/target/iphone/device/pymd/pymd_devices.dart'; // studio: 011
 import 'package:dart_mobile_device/target/iphone/diagnostics/pymd_device_diagnostics.dart';
 import 'package:darwin_sdk_kit/shared/errors/errors.dart';
+import 'package:http/io_client.dart'; // studio: 046
 import 'package:meta/meta.dart';
 import 'package:studio_ext/shared/appstore/command_exit.dart'; // studio: 019
 import 'package:studio_ext/shared/engine/engine_info_command.dart'; // studio: engine identity
@@ -22,6 +23,10 @@ import 'package:studio_ext/shared/inspect/inspect_command.dart'; // studio:
 import 'package:studio_ext/shared/ios/ios_prepare.dart'; // studio: 032
 import 'package:studio_ext/shared/permissions/permissions_command.dart'; // studio: 027
 import 'package:studio_ext/shared/plugins/plugin_command.dart'; // studio: 006
+import 'package:studio_ext/shared/pods/pod_converter_config.dart'; // studio: 046
+import 'package:studio_ext/shared/pods/pod_graph_planner.dart'; // studio: 046
+import 'package:studio_ext/shared/pods/pods_cdn.dart'; // studio: 046
+import 'package:studio_ext/shared/pods/pods_command.dart'; // studio: 046
 import 'package:studio_ext/shared/privacy/privacy_command.dart'; // studio: privacy
 import 'package:studio_ext/shared/release/release_check_command.dart'; // studio: 018
 import 'package:studio_ext/shared/splash/splash_command.dart'; // studio: 024
@@ -80,6 +85,9 @@ abstract final class XcrossCli {
     Iterable<String> excludedCommands = const [],
   }) {
     final runtime = application.runtime;
+    final podConfig = PodConverterConfig.fromEnvironment(
+      runtime.runner.effectiveEnvironment,
+    ); // studio: 046
     final pymd = application.pymd;
     final excluded = excludedCommands
         .map((command) => command.trim().toLowerCase())
@@ -266,6 +274,42 @@ abstract final class XcrossCli {
       ),
       // studio: 006 — `xcross plugin list|shim`.
       PluginCommand(
+        fileSystem: runtime.host.fileSystem,
+        paths: runtime.host.paths.context,
+        write: runtime.log.output.write,
+        home:
+            runtime.runner.effectiveEnvironment['HOME'] ??
+            runtime.runner.effectiveEnvironment['USERPROFILE'],
+        podPlanner: PodGraphPlanner(
+          plugins: ProjectPlugins(
+            runtime.host.fileSystem,
+            runtime.host.paths.context,
+          ),
+          cdn: PodsCdn(
+            cacheRoot: Directory(
+              runtime.host.paths.context.join(
+                runtime.host.paths.cacheRoot,
+                'xcross',
+                'pods',
+              ),
+            ),
+            client: IOClient(
+              HttpClient()
+                ..findProxy = (url) => HttpClient.findProxyFromEnvironment(
+                  url,
+                  environment: runtime.runner.effectiveEnvironment,
+                ),
+            ),
+            environment: runtime.runner.effectiveEnvironment,
+            fileFactory: File.new,
+          ),
+          converterEnabled: podConfig.enabled,
+          enabledKinds: podConfig.kinds,
+          skipped: podConfig.skipped,
+        ),
+      ),
+      // studio: 046 — `xcross pods report [<Pod>] [--json]`.
+      PodsCommand(
         fileSystem: runtime.host.fileSystem,
         paths: runtime.host.paths.context,
         write: runtime.log.output.write,

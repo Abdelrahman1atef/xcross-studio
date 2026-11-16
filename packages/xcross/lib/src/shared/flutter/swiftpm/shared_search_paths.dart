@@ -93,7 +93,8 @@ final class SwiftPmSharedSearchPaths<T extends PlatformHostInterface> {
       }
     }
 
-    for (final root in ['checkouts', 'artifacts']) {
+    // studio: 046 — also scan Packages/pod-* for converted pods' xcframeworks
+    for (final root in ['checkouts', 'artifacts', 'Packages']) {
       final directory = fileSystem.directory(p.join(scratchPath, root));
       if (directory.existsSync()) walk(directory, 1);
     }

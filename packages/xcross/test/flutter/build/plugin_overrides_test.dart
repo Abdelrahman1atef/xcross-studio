@@ -83,6 +83,69 @@ flutter:
   String userRoot(String name) => p.join(home, '.xcross', 'overrides', name);
 
   group('AC-006-1 lookup order', () {
+    test('AC-046-9 marked draft applies only with converter enabled', () {
+      final marked = overrideDir([
+        projectRoot('foo'),
+        '1.2.3',
+      ], manifest: '${PluginOverrideLocator.podConverterMarker}\n// draft');
+      final off = locator().find('foo', '1.2.3');
+      expect(off.override, isNull);
+      expect(
+        off.problems.single.reason,
+        contains('requires the pod converter'),
+      );
+      final on = PluginOverrideLocator(
+        fileSystem: fs,
+        paths: p.context,
+        projectRoot: project,
+        environment: {'HOME': home, 'XCROSS_POD_CONVERTER': 'on'},
+      );
+      expect(on.find('foo', '1.2.3').override?.directory, marked);
+    });
+
+    test('AC-046-9 scans hand-written pod dependencies each lookup', () {
+      final directory = overrideDir([
+        projectRoot('foo'),
+      ], manifest: '// swift package');
+      expect(locator().find('foo', '1.2.3').override?.directory, directory);
+      write(
+        p.join(directory, 'Package.swift'),
+        '.package(name: "pod-MLKitVision", path: "../pod-MLKitVision")',
+      );
+      expect(locator().find('foo', '1.2.3').override, isNull);
+      final on = PluginOverrideLocator(
+        fileSystem: fs,
+        paths: p.context,
+        projectRoot: project,
+        environment: {'HOME': home, 'XCROSS_POD_CONVERTER': 'on'},
+      );
+      expect(on.find('foo', '1.2.3').override?.directory, directory);
+    });
+
+    test('AC-046-23 on off on reuses the same marked draft', () {
+      final source = plugin('foo');
+      final directory = overrideDir([
+        projectRoot('foo'),
+        '1.2.3',
+      ], manifest: '${PluginOverrideLocator.podConverterMarker}\n// draft');
+      final on = PluginOverrideLocator(
+        fileSystem: fs,
+        paths: p.context,
+        projectRoot: project,
+        environment: {'HOME': home, 'XCROSS_POD_CONVERTER': 'on'},
+      );
+      final off = locator();
+      List<IosPlugin> apply(PluginOverrideLocator selected) => PluginOverrides(
+        locator: selected,
+        warnings: BuildWarnings(Log(output: log)),
+      ).apply([source], stagingRoot: p.join(tmp.path, 'staged'));
+      expect(apply(on).single.usesSwiftPackageManager, isTrue);
+      expect(apply(off).single.packageRoot, source.packageRoot);
+      expect(log.messages.join('\n'), contains('[pod.converter_off]'));
+      expect(apply(on).single.usesSwiftPackageManager, isTrue);
+      expect(File(p.join(directory, 'Package.swift')).existsSync(), isTrue);
+    });
+
     test('project version folder, project folder, user version, user', () {
       final userAny = overrideDir([userRoot('foo')]);
       expect(locator().find('foo', '1.2.3').override?.directory, userAny);

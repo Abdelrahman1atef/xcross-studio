@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
+import 'package:studio_ext/shared/pods/pod_report.dart';
 import 'package:studio_ext/shared/release/macho_minimum_os.dart'; // studio: 018
 import 'package:studio_ext/shared/release/swift_runtime.dart'; // studio: 018
 import 'package:studio_ext/src/shared/inspect/inspect_report.dart';
@@ -322,6 +323,7 @@ final class ReleaseChecker {
     _permissionsFromCode();
     _privacy();
     _assets();
+    _podsReport();
     if (project == null) {
       _add(
         'release.project_unknown',
@@ -757,12 +759,38 @@ final class ReleaseChecker {
       if (!ReleaseTables.sdksNeedingManifest.contains(name)) continue;
       if (framework.kind != FrameworkKind.framework) continue;
       if (!manifests.any((m) => m.startsWith('${framework.path}/'))) {
+        final isPod = framework.path.contains('pod-');
         _add(
-          'release.privacy_manifest_missing',
+          isPod
+              ? 'pod.sdk_privacy_manifest_missing'
+              : 'release.privacy_manifest_missing',
           ReleaseSeverity.warning,
           "$name is on Apple's list of SDKs that must ship a privacy "
-              'manifest, and ${framework.path} has none.',
+          'manifest, and ${framework.path} has none.',
           path: framework.path,
+          hint:
+              'Update $name to a release that includes PrivacyInfo.xcprivacy.',
+        );
+      }
+    }
+    final checkedBundles = <String>{};
+    for (final file in source.files) {
+      final match = RegExp(r'^([^/]+\.bundle)/').firstMatch(file);
+      if (match == null) continue;
+      final bundle = match.group(1)!;
+      if (!checkedBundles.add(bundle)) continue;
+      final name = bundle.replaceAll(
+        RegExp(r'(\.bundle|Resources\.bundle)$'),
+        '',
+      );
+      if (!ReleaseTables.sdksNeedingManifest.contains(name)) continue;
+      if (!manifests.any((m) => m.startsWith('$bundle/'))) {
+        _add(
+          'pod.sdk_privacy_manifest_missing',
+          ReleaseSeverity.warning,
+          "$name is on Apple's list of SDKs that must ship a privacy "
+              'manifest, and $bundle has none.',
+          path: bundle,
           hint:
               'Update $name to a release that includes PrivacyInfo.xcprivacy.',
         );
@@ -1120,5 +1148,29 @@ final class ReleaseChecker {
   static int? _major(String? version) {
     if (version == null) return null;
     return int.tryParse(version.split('.').first);
+  }
+
+  void _podsReport() {
+    final proj = project;
+    if (proj == null) return;
+    final file = proj.fileSystem.file(
+      proj.paths.join(proj.root, 'build', 'xcross-ios', 'pods-report.json'),
+    );
+    if (!file.existsSync()) return;
+
+    final reports = const PodsReportFile().load(file);
+    for (final report in reports) {
+      if (!report.code.startsWith('pod.')) continue;
+      final isError =
+          report.code == 'pod.compile_failed' ||
+          report.code == 'pod.duplicate_symbols';
+      _add(
+        report.code,
+        isError ? ReleaseSeverity.error : ReleaseSeverity.warning,
+        report.formatWarning(),
+        path: report.pod,
+        hint: 'Run "xcross pods report ${report.pod}" for diagnostic details.',
+      );
+    }
   }
 }

@@ -119,10 +119,18 @@ bool requirementReaches(String? requirement, String since) {
 /// warning.
 @internal
 KnownPackage? swiftPackageFor(String pod, String? requirement) {
+  if (isInfrastructurePod(pod)) return null;
   final known = knownPackageFor(pod);
   final since = known?.since;
   if (since == null || requirementReaches(requirement, since)) return known;
   return null;
+}
+
+/// Pods that are internal infrastructure libraries rather than direct vendor packages.
+@internal
+bool isInfrastructurePod(String pod) {
+  final base = pod.split('/').first;
+  return base == 'GoogleDataTransport';
 }
 
 /// Swift packages for pods that plugins commonly depend on.
@@ -137,6 +145,25 @@ KnownPackage? knownPackageFor(String pod) {
       product == 'FirebaseCore' || product == 'Firebase'
           ? 'FirebaseCore'
           : product,
+    );
+  }
+  if (base == 'GoogleUtilities') {
+    final subspec = pod.contains('/') ? pod.split('/').last : 'Environment';
+    final product = switch (subspec) {
+      'Environment' => 'GULEnvironment',
+      'Logger' => 'GULLogger',
+      'NSData+zlib' => 'GULNSData',
+      'UserDefaults' => 'GULUserDefaults',
+      'MethodSwizzler' => 'GULMethodSwizzler',
+      'Network' => 'GULNetwork',
+      'AppDelegateSwizzler' => 'GULAppDelegateSwizzler',
+      'Reachability' => 'GULReachability',
+      _ => 'GUL$subspec',
+    };
+    return KnownPackage(
+      'https://github.com/google/GoogleUtilities',
+      'GoogleUtilities',
+      product,
     );
   }
   // onesignal_flutter: from 5.0 the modules are OneSignalFramework,
@@ -211,6 +238,26 @@ KnownPackage? knownPackageFor(String pod) {
       'https://github.com/onevcat/Kingfisher',
       'Kingfisher',
       'Kingfisher',
+    ),
+    'GoogleDataTransport' => const KnownPackage(
+      'https://github.com/google/GoogleDataTransport',
+      'GoogleDataTransport',
+      'GoogleDataTransport',
+    ),
+    'nanopb' => const KnownPackage(
+      'https://github.com/firebase/nanopb',
+      'nanopb',
+      'nanopb',
+    ),
+    'PromisesObjC' => const KnownPackage(
+      'https://github.com/google/promises',
+      'promises',
+      'FBLPromises',
+    ),
+    'GTMSessionFetcher' => const KnownPackage(
+      'https://github.com/google/gtm-session-fetcher',
+      'gtm-session-fetcher',
+      'GTMSessionFetcherCore',
     ),
     // A client app's TikTok App Events bridge (2026-11-15): "no Swift package
     // is known for TikTokBusinessSDK", so the build left its native code out.
@@ -631,6 +678,21 @@ String swiftRequirement(String? requirement, {String? defaultVersion}) {
   return 'from: "1.0.0" /* TODO: pick a version */';
 }
 
+/// Maps pod version requirements to SwiftPM package tag requirements for packages
+/// whose versioning scheme differs from the pod (e.g. nanopb 3.x ↔ 2.x, §10.2).
+@internal
+String mapRequirementForPackage(String pod, String? requirement) {
+  final base = pod.split('/').first;
+  if (base == 'nanopb' && requirement != null) {
+    // pod 3.30910.x ↔ SwiftPM tags 2.30910.x (map the major: 3.x → 2.x)
+    return requirement.replaceAllMapped(
+      RegExp(r'\b3\.(\d+)'),
+      (m) => '2.${m.group(1)}',
+    );
+  }
+  return requirement ?? '';
+}
+
 /// A drafted `Package.swift` and what the user must review.
 @internal
 final class PackageSwiftDraft {
@@ -843,10 +905,16 @@ String? patchModuleImports(String source, Map<String, String> renames) {
 /// [source] with its imports of the Swift compatibility header
 /// (`#import "<x>-Swift.h"`, `#import <x/x-Swift.h>`, and Flutter's
 /// `#if __has_include(<…-Swift.h>) … #else … #endif` fallback block)
-/// replaced by `@import <plugin>_swift;`, or null when it has none.
+/// replaced by `@import <plugin>_swift;` (or `@import <targetModuleName>;`),
+/// or null when it has none.
 @internal
-String? patchSwiftHeaderImports(String source, String plugin) {
-  final module = '@import ${plugin}_swift;';
+String? patchSwiftHeaderImports(
+  String source,
+  String plugin, {
+  String? targetModuleName,
+}) {
+  final target = targetModuleName ?? '${plugin}_swift';
+  final module = '@import $target;';
   var patched = source.replaceAllMapped(
     RegExp(
       r'#if\s+__has_include\([<"][^>"]*-Swift\.h[>"]\)[\s\S]*?#endif[^\n]*',
@@ -905,6 +973,9 @@ PackageSwiftDraft draftPackageSwift({
   required List<String> files,
   String? pluginVersion,
   Map<String, String> defines = const {},
+  Map<String, String> convertedPods = const {},
+  Set<String> siblingPlugins = const {},
+  Map<String, String> siblingProductNames = const {},
   String? Function(String path)? read,
 }) {
   final notes = <String>[];
@@ -949,6 +1020,27 @@ PackageSwiftDraft draftPackageSwift({
   final flatHeaderModules = <String>{};
   for (final dependency in spec.dependencies) {
     if (dependency.name == 'Flutter') continue;
+    final pod = dependency.name.split('/').first;
+    if (pod == plugin) continue;
+    if (convertedPods[pod] case final module?) {
+      final package = 'pod-$pod';
+      if (seenPackages.add(package)) {
+        dependencyLines.add('.package(name: "$package", path: "../$package")');
+      }
+      final product = '.product(name: "$module", package: "$package")';
+      if (!productLines.contains(product)) productLines.add(product);
+      continue;
+    }
+    if (siblingPlugins.contains(pod)) {
+      if (seenPackages.add(pod)) {
+        dependencyLines.add('.package(name: "$pod", path: "../$pod")');
+      }
+      final siblingProduct =
+          siblingProductNames[pod] ?? pod.replaceAll('_', '-');
+      final product = '.product(name: "$siblingProduct", package: "$pod")';
+      if (!productLines.contains(product)) productLines.add(product);
+      continue;
+    }
     final known = swiftPackageFor(dependency.name, dependency.requirement);
     if (known == null) {
       todo.add(
@@ -960,9 +1052,13 @@ PackageSwiftDraft draftPackageSwift({
     moduleRenames.addAll(known.objectiveCModules);
     if (known.flatHeaders) flatHeaderModules.add(known.product);
     if (seenPackages.add(known.package)) {
+      final req = mapRequirementForPackage(
+        dependency.name,
+        dependency.requirement,
+      );
       dependencyLines.add(
         '.package(url: "${known.url}", '
-        '${swiftRequirement(dependency.requirement, defaultVersion: known.defaultVersion ?? known.since)})',
+        '${swiftRequirement(req, defaultVersion: known.defaultVersion ?? known.since)})',
       );
     }
     // Two subspecs can be one product (AppsFlyerFramework/Main and /Strict).
@@ -1151,6 +1247,7 @@ PackageSwiftDraft draftPackageSwift({
       '// DRAFT generated by `xcross plugin shim` from $plugin.podspec'
       '${pluginVersion == null ? '' : ' ($plugin $pluginVersion)'}.',
     )
+    ..write(convertedPods.isEmpty ? '' : '// xcross: pod-converter v1\n')
     ..writeln('// Review it before use; see the notes printed by the command.')
     ..writeln('import PackageDescription')
     ..writeln();

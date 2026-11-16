@@ -189,4 +189,35 @@ void main() {
     );
     expect(reader.manifestLinksArchives(scratch, archives), isTrue);
   });
+
+  test('AC-046-8 scans converted pod xcframeworks under Packages/pod-X', () {
+    final scratch = p.join(root.path, 'scratch_pod');
+    final podXcfwk = p.join(
+      scratch,
+      'Packages',
+      'pod-WebRTC-SDK',
+      'Frameworks',
+      'WebRTC.xcframework',
+    );
+    write(
+      p.join(podXcfwk, 'Info.plist'),
+      _plist('ios-arm64', 'WebRTC.framework'),
+    );
+    Directory(
+      p.join(podXcfwk, 'ios-arm64', 'WebRTC.framework'),
+    ).createSync(recursive: true);
+
+    final host = MacOSHost();
+    final paths = SwiftPmSharedSearchPaths(
+      fileSystem: const IoArtifactFileSystem(),
+      targetPolicy: IPhoneFlutterTarget(IPhoneTarget(host)),
+    );
+
+    final xcfwks = paths.xcframeworks(scratch);
+    expect(xcfwks, contains(podXcfwk));
+
+    final args = paths.arguments(scratch);
+    final slice = p.join(podXcfwk, 'ios-arm64');
+    expect(args, contains('-F$slice'));
+  });
 }

@@ -124,8 +124,9 @@ printf 'spirv' > "$spirv"
       flutterRoot = p.join(tmp.path, 'flutter');
       assets = p.join(tmp.path, 'flutter_assets');
       Directory(p.join(tmp.path, '.dart_tool')).createSync();
-      File(p.join(tmp.path, '.dart_tool', 'package_config.json'))
-          .writeAsStringSync('{"configVersion":2,"packages":[]}');
+      File(
+        p.join(tmp.path, '.dart_tool', 'package_config.json'),
+      ).writeAsStringSync('{"configVersion":2,"packages":[]}');
     });
 
     void frameworkShader(String layer, String name) {
@@ -212,24 +213,26 @@ flutter:
   shaders:
     - shaders/blur.frag
 ''');
-        File(p.join(tmp.path, '.dart_tool', 'package_config.json'))
-            .writeAsStringSync(
-              jsonEncode({
-                'configVersion': 2,
-                'packages': [
-                  {
-                    'name': 'effects',
-                    'rootUri': package.uri.toString(),
-                    'packageUri': 'lib/',
-                  },
-                ],
-              }),
-            );
+        File(
+          p.join(tmp.path, '.dart_tool', 'package_config.json'),
+        ).writeAsStringSync(
+          jsonEncode({
+            'configVersion': 2,
+            'packages': [
+              {
+                'name': 'effects',
+                'rootUri': package.uri.toString(),
+                'packageUri': 'lib/',
+              },
+            ],
+          }),
+        );
         File(p.join(tmp.path, 'shaders', 'glow.frag'))
           ..createSync(recursive: true)
           ..writeAsStringSync('glow');
-        File(p.join(tmp.path, 'shaders', 'dark.frag'))
-            .writeAsStringSync('dark');
+        File(
+          p.join(tmp.path, 'shaders', 'dark.frag'),
+        ).writeAsStringSync('dark');
         File(p.join(tmp.path, 'shaders', 'web.frag')).writeAsStringSync('web');
         File(p.join(tmp.path, 'pubspec.yaml')).writeAsStringSync('''
 name: demo
@@ -524,8 +527,9 @@ printf 'subset' > "$1"
 
     test('reports a failing const_finder', () async {
       await expectLater(
-        shaker(dart: script('dart', 'echo boom >&2\nexit 3\n'))
-            .findConstants('/app.dill'),
+        shaker(
+          dart: script('dart', 'echo boom >&2\nexit 3\n'),
+        ).findConstants('/app.dill'),
         throwsA(
           isA<FlutterBuildError>().having(
             (e) => e.toString(),

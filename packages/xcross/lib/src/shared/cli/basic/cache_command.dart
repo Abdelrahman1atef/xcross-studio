@@ -14,15 +14,16 @@ part 'cache_command.g.dart';
 /// `xcross cache`: inspect and trim what xcross downloads.
 @internal
 final class CacheCommand extends Command<void> {
-  CacheCommand(CachePruneCommand prune) {
+  CacheCommand(CachePruneCommand prune, {Command<void>? pods}) {
     addSubcommand(prune);
+    if (pods != null) addSubcommand(pods);
   }
 
   @override
   String get name => 'cache';
 
   @override
-  String get description => 'Manage the Flutter caches xcross downloads.';
+  String get description => 'Manage caches xcross downloads.';
 }
 
 /// Options for `xcross cache prune`.

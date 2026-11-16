@@ -88,22 +88,143 @@ final class Podspec {
       }
     }
 
+    final name = single('name');
+
+    // Parse own subspec blocks (§10.4): s.subspec 'name' do |ss| ... end
+    final subspecSourceFiles = <String>[];
+    final subspecPublicHeaders = <String>[];
+    final subspecExcludeFiles = <String>[];
+    final subspecDependencies = <PodDependency>[];
+    final subspecFrameworks = <String>[];
+    final subspecWeakFrameworks = <String>[];
+    final subspecLibraries = <String>[];
+    final subspecResources = <String>[];
+    final subspecBundles = <String, List<String>>{};
+    final ownSubspecNames = <String>{};
+
+    final subspecHeaderRegex = RegExp(
+      '(?<![\\w.])$v\\.subspec\\s+[\'"]([^\'"]+)[\'"]\\s+do\\s*\\|\\s*(\\w+)\\s*\\|',
+    );
+    for (final match in subspecHeaderRegex.allMatches(text)) {
+      final subspecName = match.group(1)!;
+      final subspecVar = match.group(2)!;
+      ownSubspecNames.add(subspecName);
+
+      final blockStart = match.end;
+      final blockEnd = _findBlockEnd(text, blockStart);
+      final blockText = blockEnd >= 0
+          ? text.substring(blockStart, blockEnd)
+          : text.substring(blockStart);
+
+      final sv = RegExp.escape(subspecVar);
+
+      List<String> subValues(String key) {
+        final out = <String>[];
+        for (final m in RegExp(
+          '(?<![\\w.])$sv\\.(?:ios\\.)?$key\\s*=\\s*',
+        ).allMatches(blockText)) {
+          out.addAll(_strings(_valueAt(blockText, m.end)));
+        }
+        return out;
+      }
+
+      subspecSourceFiles.addAll(subValues('source_files'));
+      subspecPublicHeaders.addAll(subValues('public_header_files'));
+      subspecExcludeFiles.addAll(subValues('exclude_files'));
+      subspecFrameworks.addAll([
+        ...subValues('frameworks'),
+        ...subValues('framework'),
+      ]);
+      subspecWeakFrameworks.addAll([
+        ...subValues('weak_frameworks'),
+        ...subValues('weak_framework'),
+      ]);
+      subspecLibraries.addAll([
+        ...subValues('libraries'),
+        ...subValues('library'),
+      ]);
+      subspecResources.addAll([
+        ...subValues('resources'),
+        ...subValues('resource'),
+      ]);
+
+      for (final m in RegExp(
+        '(?<![\\w.])$sv\\.(?:ios\\.)?dependency\\s*\\(?\\s*'
+        r'''['"]([^'"]+)['"](?:\s*,\s*['"]([^'"]+)['"])?''',
+      ).allMatches(blockText)) {
+        subspecDependencies.add(PodDependency(m.group(1)!, m.group(2)));
+      }
+
+      for (final m in RegExp(
+        '(?<![\\w.])$sv\\.(?:ios\\.)?resource_bundles?\\s*=\\s*',
+      ).allMatches(blockText)) {
+        final val = _valueAt(blockText, m.end);
+        for (final entry in RegExp(
+          r'''['"]([^'"]+)['"]\s*=>\s*(\[[^\]]*\]|['"][^'"]+['"])''',
+        ).allMatches(val)) {
+          subspecBundles[entry.group(1)!] = _strings(entry.group(2)!);
+        }
+      }
+    }
+
+    final finalDependencies = <PodDependency>[];
+    for (final dep in dependencies) {
+      final isDeclaredSubspec =
+          ownSubspecNames.contains(dep.name) ||
+          (name != null &&
+              dep.name.startsWith('$name/') &&
+              ownSubspecNames.contains(dep.name.substring(name.length + 1)));
+      if (!isDeclaredSubspec) {
+        finalDependencies.add(dep);
+      }
+    }
+
+    if (ownSubspecNames.isNotEmpty) {
+      for (final dep in subspecDependencies) {
+        final isDeclaredSubspec =
+            ownSubspecNames.contains(dep.name) ||
+            (name != null &&
+                dep.name.startsWith('$name/') &&
+                ownSubspecNames.contains(dep.name.substring(name.length + 1)));
+        if (!isDeclaredSubspec &&
+            !finalDependencies.any((d) => d.name == dep.name)) {
+          finalDependencies.add(dep);
+        }
+      }
+    }
+
     return Podspec(
-      name: single('name'),
+      name: name,
       version: single('version'),
-      sourceFiles: values('source_files'),
-      publicHeaderFiles: values('public_header_files'),
-      excludeFiles: values('exclude_files'),
-      dependencies: dependencies,
-      frameworks: [...values('frameworks'), ...values('framework')],
+      sourceFiles: [...values('source_files'), ...subspecSourceFiles],
+      publicHeaderFiles: [
+        ...values('public_header_files'),
+        ...subspecPublicHeaders,
+      ],
+      excludeFiles: [...values('exclude_files'), ...subspecExcludeFiles],
+      dependencies: finalDependencies,
+      frameworks: [
+        ...values('frameworks'),
+        ...values('framework'),
+        ...subspecFrameworks,
+      ],
       weakFrameworks: [
         ...values('weak_frameworks'),
         ...values('weak_framework'),
+        ...subspecWeakFrameworks,
       ],
-      libraries: [...values('libraries'), ...values('library')],
+      libraries: [
+        ...values('libraries'),
+        ...values('library'),
+        ...subspecLibraries,
+      ],
       deploymentTarget: deployment,
-      resourceBundles: bundles,
-      resources: [...values('resources'), ...values('resource')],
+      resourceBundles: {...bundles, ...subspecBundles},
+      resources: [
+        ...values('resources'),
+        ...values('resource'),
+        ...subspecResources,
+      ],
     );
   }
 
@@ -180,5 +301,22 @@ final class Podspec {
       for (final match in RegExp('''['"]([^'"]*)['"]''').allMatches(value))
         match.group(1)!,
     ];
+  }
+
+  /// Finds the end of a Ruby `do ... end` block starting after [start].
+  static int _findBlockEnd(String text, int start) {
+    var depth = 1;
+    final tokenRegex = RegExp(r'\b(do|end)\b');
+    for (final match in tokenRegex.allMatches(text, start)) {
+      if (match.group(1) == 'do') {
+        depth++;
+      } else if (match.group(1) == 'end') {
+        depth--;
+        if (depth == 0) {
+          return match.start;
+        }
+      }
+    }
+    return -1;
   }
 }

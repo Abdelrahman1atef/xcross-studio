@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:args/command_runner.dart';
 import 'package:cli_kit/shared/errors/errors.dart';
 import 'package:path/path.dart' as p;
+import 'package:studio_ext/shared/pods/pod_report.dart';
 import 'package:studio_ext/shared/release/release_check_command.dart';
 import 'package:studio_ext/src/shared/assets/car_writer.dart'; // studio: 004
 import 'package:studio_ext/src/shared/assets/rendition.dart'; // studio: 004
@@ -961,6 +962,79 @@ void main() {
       );
       expect(jsonEncode(report.toJson()), isNot(contains('MIIB')));
     });
+
+    test(
+      'AC-046-24 release check reads build/xcross-ios/pods-report.json and reports pod issues',
+      () {
+        final project = writeProject();
+        final reportDir = Directory(p.join(project, 'build', 'xcross-ios'))
+          ..createSync(recursive: true);
+        const PodsReportFile()
+            .save(File(p.join(reportDir.path, 'pods-report.json')), [
+              const PodReport(
+                code: 'pod.compile_failed',
+                reason: 'compile_failed',
+                plugin: 'flutter_webrtc',
+                pod: 'WebRTC-SDK',
+                detail: 'error: compile failed',
+              ),
+              const PodReport(
+                code: 'pod.sdk_privacy_manifest_missing',
+                reason: 'sdk_privacy_manifest_missing',
+                plugin: 'google_utilities',
+                pod: 'GoogleUtilities',
+              ),
+            ]);
+
+        final report = check(writeApp(_appStoreApp()), project: project);
+        final podErrors = report.issues
+            .where((i) => i.code == 'pod.compile_failed')
+            .toList();
+        final podWarnings = report.issues
+            .where((i) => i.code == 'pod.sdk_privacy_manifest_missing')
+            .toList();
+
+        expect(podErrors, hasLength(1));
+        expect(podErrors.first.severity, ReleaseSeverity.error);
+        expect(podErrors.first.message, contains('WebRTC-SDK'));
+
+        expect(podWarnings, hasLength(1));
+        expect(podWarnings.first.severity, ReleaseSeverity.warning);
+        expect(podWarnings.first.message, contains('GoogleUtilities'));
+      },
+    );
+
+    test(
+      'AC-046-24 release check results are unchanged for a project without converted pods',
+      () {
+        final project = writeProject();
+        final cleanReport = check(writeApp(_appStoreApp()), project: project);
+        expect(
+          cleanReport.issues.where((i) => i.code.startsWith('pod.')),
+          isEmpty,
+        );
+      },
+    );
+
+    test(
+      'AC-046-28 release check reports pod.sdk_privacy_manifest_missing for listed SDK pod bundle without privacy manifest',
+      () {
+        final files = _appStoreApp()
+          ..['GoogleUtilitiesResources.bundle/Info.plist'] = utf8.encode(
+            '<plist/>',
+          );
+        final report = check(writeApp(files));
+        final podPrivacy = report.issues
+            .where((i) => i.code == 'pod.sdk_privacy_manifest_missing')
+            .toList();
+        expect(podPrivacy, hasLength(1));
+        expect(podPrivacy.first.path, 'GoogleUtilitiesResources.bundle');
+        expect(
+          podPrivacy.first.message,
+          contains("GoogleUtilities is on Apple's list of SDKs"),
+        );
+      },
+    );
   });
 
   group('AC-018-13 store assets', () {

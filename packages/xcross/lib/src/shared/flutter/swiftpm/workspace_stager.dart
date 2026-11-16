@@ -76,6 +76,7 @@ final class SwiftPmWorkspaceStager<T extends PlatformHostInterface> {
     bool swiftPmArtifactJunctionCapability = false,
     bool packageLocalArtifactJunctionCapability = false,
     bool sourceFallback = false,
+    Map<String, String> podPackages = const {}, // studio: 046
   }) async {
     final packagesDir = p.join(outputDir, 'Packages');
     final frameworkDir = p.join(packagesDir, flutterFrameworkPackageName);
@@ -91,6 +92,16 @@ final class SwiftPmWorkspaceStager<T extends PlatformHostInterface> {
     final pluginTargets = {
       for (final plugin in plugins) plugin.name: plugin.swiftPackageDir,
     };
+    // studio: 046 — stage every converted pod as an alias Packages/pod-<Pod>
+    for (final entry in podPackages.entries) {
+      final podName = entry.key.startsWith('pod-')
+          ? entry.key.substring(4)
+          : entry.key;
+      final podAlias = p.join(packagesDir, 'pod-$podName');
+      await filesystem.createDirectoryAlias(podAlias, entry.value);
+      pluginTargets['pod-$podName'] = podAlias;
+      pluginTargets[podName] = podAlias;
+    }
     final fallbackState = sourceFallback
         ? await SwiftPmSourceFallbackState.read(artifactFileSystem, outputDir)
         : const SwiftPmSourceFallbackState();
@@ -112,10 +123,18 @@ final class SwiftPmWorkspaceStager<T extends PlatformHostInterface> {
             packageLocalArtifactJunctionCapability,
       );
     }
-    await checkPinConflicts(plugins, pluginPackageDirs);
+    await checkPinConflicts(plugins, pluginPackageDirs, outputDir: outputDir);
     final packagesByDirectoryName = {
       for (final package in pluginPackageDirs.values)
         p.basename(package): package,
+      // studio: 046 — include pod aliases for transitive rewrites
+      for (final entry in podPackages.entries)
+        p.basename(
+          entry.key.startsWith('pod-') ? entry.key : 'pod-${entry.key}',
+        ): p.join(
+          packagesDir,
+          entry.key.startsWith('pod-') ? entry.key : 'pod-${entry.key}',
+        ),
     };
     for (final plugin in plugins) {
       if (!copyPluginPackages.contains(plugin.name)) continue;
@@ -169,8 +188,9 @@ final class SwiftPmWorkspaceStager<T extends PlatformHostInterface> {
   @visibleForTesting
   Future<void> checkPinConflicts(
     List<IosPlugin> plugins,
-    Map<String, String> pluginPackageDirs,
-  ) async {
+    Map<String, String> pluginPackageDirs, {
+    String? outputDir,
+  }) async {
     final manifests = <SwiftPmPluginManifest>[];
     for (final plugin in plugins) {
       final staged = pluginPackageDirs[plugin.name];
@@ -182,6 +202,43 @@ final class SwiftPmWorkspaceStager<T extends PlatformHostInterface> {
         version: await _pubspecVersion(plugin.packageRoot),
         manifest: await manifest.readAsString(),
       ));
+    }
+    // Also include converted pods and extra packages in pluginPackageDirs
+    for (final entry in pluginPackageDirs.entries) {
+      if (plugins.any((p) => p.name == entry.key)) continue;
+      final manifest = artifactFileSystem.file(
+        p.join(entry.value, 'Package.swift'),
+      );
+      if (!manifest.existsSync()) continue;
+      manifests.add((
+        plugin: entry.key,
+        version: null,
+        manifest: await manifest.readAsString(),
+      ));
+    }
+    if (outputDir != null) {
+      final packagesDir = artifactFileSystem.directory(
+        p.join(outputDir, 'Packages'),
+      );
+      if (packagesDir.existsSync()) {
+        for (final entity in packagesDir.listSync(followLinks: false)) {
+          if (entity is Directory) {
+            final dirName = p.basename(entity.path);
+            if (!manifests.any((m) => m.plugin == dirName)) {
+              final manifest = artifactFileSystem.file(
+                p.join(entity.path, 'Package.swift'),
+              );
+              if (manifest.existsSync()) {
+                manifests.add((
+                  plugin: dirName,
+                  version: null,
+                  manifest: await manifest.readAsString(),
+                ));
+              }
+            }
+          }
+        }
+      }
     }
     if (SwiftPmPinConflicts.find(manifests) case final conflict?) {
       throw codedError(XcrossCodes.buildPluginPinConflict, conflict.message);

@@ -90,7 +90,11 @@ final class SetupScriptEvents {
       'status': final String status,
     } when step.isNotEmpty && _statuses.contains(status)) {
       final label = decoded['label'];
-      return (step: step, status: status, label: label is String ? label : null);
+      return (
+        step: step,
+        status: status,
+        label: label is String ? label : null,
+      );
     }
     return null;
   }

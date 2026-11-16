@@ -1,5 +1,9 @@
+import 'dart:io';
+
 import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:meta/meta.dart';
+import 'package:studio_ext/shared/pods/cache_pods_command.dart'; // studio: 046
+import 'package:studio_ext/shared/pods/pod_cache.dart'; // studio: 046
 import 'package:xcross/src/composition/flutter/ios_gen_snapshot.dart';
 import 'package:xcross/src/shared/cli/basic/cache_command.dart';
 import 'package:xcross/src/shared/runtime/xcross_runtime.dart';
@@ -21,6 +25,16 @@ CacheCommand composeCacheCommand<T extends PlatformHostInterface>(
         'gen-snapshot',
       ),
       inUseEngines: () => discoverFlutterEngines(runtime),
+    ),
+    pods: CachePodsCommand(
+      cache: PodCache(
+        root: Directory(paths.join(host.paths.cacheRoot, 'xcross', 'pods')),
+        fileFactory: File.new,
+        directoryFactory: Directory.new,
+        processAlive: (_) => true,
+        processId: pid,
+      ),
+      write: runtime.log.logStatus,
     ),
   );
 }
