@@ -39,6 +39,12 @@ final class WindowsSwiftPmBuildExecution<T extends PlatformHostInterface>
   /// output file ... operation not permitted") or sees the module twice under
   /// the same path ("module 'UIKit' is defined in both X and X"). Both were
   /// seen on windows-2022 and windows-11-arm and pass on a re-run.
+  ///
+  /// A frontend can also crash outright while building an SDK module ("compile
+  /// command failed due to exception 5 ... while building module
+  /// 'Foundation'", access violation 0xC0000005 in swift-frontend): a client
+  /// app's App Store build crashed that way in GoogleUtilities, while the same
+  /// file compiled in a simulator build of that app (2026-11-15).
   static bool isModuleCacheRace(Object error) {
     final text = error.toString().toLowerCase();
     // Our own timeout already waited the full budget.
@@ -50,7 +56,12 @@ final class WindowsSwiftPmBuildExecution<T extends PlatformHostInterface>
     final duplicated = RegExp(
       r"is defined in both '[^']*\.pcm' and '[^']*\.pcm'",
     );
-    return lostOutput.hasMatch(text) || duplicated.hasMatch(text);
+    final crashedBuildingModule =
+        RegExp(r'compile command failed due to exception \d+').hasMatch(text) &&
+        text.contains("while building module '");
+    return lostOutput.hasMatch(text) ||
+        duplicated.hasMatch(text) ||
+        crashedBuildingModule;
   }
 
   @override

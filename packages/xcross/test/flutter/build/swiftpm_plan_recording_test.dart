@@ -110,9 +110,18 @@ void _moduleCacheRaceTests() {
       "<unknown>:0: error: module 'UIKit' is defined in both "
       r"'C:\scratch\ModuleCache\34YQOH10T1LVD\UIKit-1D0IXTMURHS36.pcm' and "
       r"'C:\scratch\ModuleCache\34YQOH10T1LVD\UIKit-1D0IXTMURHS36.pcm'";
+  // A client app's App Store build, 2026-11-15 (a simulator build of the same
+  // app compiled that file).
+  const crashedBuildingModule =
+      'error: compile command failed due to exception 5 (use -v to see '
+      'invocation)\n'
+      r'C:\plugins\.xcross\objective-c-compatibility.h:2:9: note: while '
+      "building module 'Foundation' imported from "
+      r'C:\plugins\.xcross\objective-c-compatibility.h:2:'
+      '\nStack dump:\nException Code: 0xC0000005';
 
   test('recognizes the Clang module cache races seen on Windows', () {
-    for (final error in [lostOutput, duplicated]) {
+    for (final error in [lostOutput, duplicated, crashedBuildingModule]) {
       expect(
         WindowsSwiftPmBuildExecution.isModuleCacheRace(error),
         isTrue,
@@ -127,6 +136,8 @@ void _moduleCacheRaceTests() {
       "error: no such module '_SentryPrivate'",
       r"error: unable to open output file 'C:\out\Foo.o': 'operation not permitted'",
       'command timed out after 3600s and was killed\n$lostOutput',
+      // A crash compiling the app's own code, not an SDK module.
+      'error: compile command failed due to exception 5\nStack dump:',
     ];
     for (final error in observed) {
       expect(
