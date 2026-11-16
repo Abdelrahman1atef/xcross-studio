@@ -186,12 +186,18 @@ final class PluginDraftWriter {
   );
 
   /// The pods of [target] with no known Swift package, which a draft cannot
-  /// link.
+  /// link. A pod whose Swift package starts after the release the plugin asks
+  /// for is named with both versions.
   List<String> unknownPods(ProjectPlugin target) => [
     for (final dependency in _spec(target).dependencies)
       if (dependency.name != 'Flutter' &&
-          knownPackageFor(dependency.name) == null)
-        dependency.name,
+          swiftPackageFor(dependency.name, dependency.requirement) == null)
+        switch (knownPackageFor(dependency.name)?.since) {
+          final since? =>
+            '${dependency.name} ${dependency.requirement} (its Swift package '
+                'starts at $since)',
+          null => dependency.name,
+        },
   ];
 
   /// The project folder an override [base] (`<project>/xcross_overrides`)

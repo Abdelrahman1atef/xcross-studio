@@ -133,6 +133,32 @@ void main() {
     },
   );
 
+  test('a known pod pinned before its first Swift package is a problem that '
+      'names both versions', () async {
+    addPlugin(
+      'old_tiktok',
+      podspec:
+          "Pod::Spec.new do |s|\n  s.dependency 'Flutter'\n"
+          "  s.dependency 'TikTokBusinessSDK', '1.2.0'\nend\n",
+    );
+    addPlugin(
+      'new_tiktok',
+      podspec:
+          "Pod::Spec.new do |s|\n  s.dependency 'Flutter'\n"
+          "  s.dependency 'TikTokBusinessSDK', '1.7.2'\nend\n",
+    );
+    final all = await status();
+    final problem =
+        (all['old_tiktok']!['problems']! as List).single
+            as Map<String, Object?>;
+    expect(problem['code'], 'unknown_pods');
+    expect(
+      problem['message'],
+      contains('TikTokBusinessSDK 1.2.0 (its Swift package starts at 1.3.4)'),
+    );
+    expect(all['new_tiktok']!['problems'], isEmpty);
+  });
+
   test(
     'AC-028-2 a draft xcross wrote waits for a review until it is acknowledged',
     () async {

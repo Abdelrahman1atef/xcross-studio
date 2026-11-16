@@ -14,7 +14,18 @@ final class KnownPackage {
     this.defaultVersion,
     this.minimumIos,
     this.flatHeaders = false,
+    this.since,
+    this.extraProducts = const [],
   });
+
+  /// More products of the same package the pod brings (the whole
+  /// OneSignalXCFramework pod is four SwiftPM products).
+  final List<String> extraProducts;
+
+  /// The first release with a Swift package. A plugin that asks only for older
+  /// releases cannot be drafted: SwiftPM would fail to resolve it, where
+  /// leaving the plugin out keeps the build working (see [swiftPackageFor]).
+  final String? since;
 
   final String url;
 
@@ -68,6 +79,52 @@ String _higherVersion(String a, String b) {
   return a;
 }
 
+/// Compares two dotted versions (missing parts are 0).
+int _compareVersions(List<int> a, List<int> b) {
+  for (var i = 0; i < a.length || i < b.length; i++) {
+    final x = i < a.length ? a[i] : 0;
+    final y = i < b.length ? b[i] : 0;
+    if (x != y) return x.compareTo(y);
+  }
+  return 0;
+}
+
+List<int> _versionParts(String v) => [
+  for (final part in v.split('.')) int.tryParse(part) ?? 0,
+];
+
+/// Whether the CocoaPods [requirement] allows [since] or a newer release
+/// (SwiftPM takes the newest allowed): `~> 6.3` allows up to 7.0, `~> 6.0.3`
+/// up to 6.1, `>= 2.0` everything after, `1.2.0` only itself. No requirement
+/// means the package's default version, which is never below [since].
+@internal
+bool requirementReaches(String? requirement, String since) {
+  final raw = requirement?.trim() ?? '';
+  final first = _versionParts(since);
+  final pessimistic = RegExp(r'^~>\s*([\d.]+)$').firstMatch(raw);
+  if (pessimistic != null) {
+    final v = _versionParts(pessimistic.group(1)!);
+    final below = v.length >= 3 ? [v[0], v[1] + 1] : [v[0] + 1];
+    return _compareVersions(first, below) < 0;
+  }
+  final exact = RegExp(r'^=?\s*([\d.]+)$').firstMatch(raw);
+  if (exact != null) {
+    return _compareVersions(_versionParts(exact.group(1)!), first) >= 0;
+  }
+  return true;
+}
+
+/// The Swift package for [pod] when one is known for the release the plugin
+/// asks for ([requirement]); null leaves the plugin out of the build, with a
+/// warning.
+@internal
+KnownPackage? swiftPackageFor(String pod, String? requirement) {
+  final known = knownPackageFor(pod);
+  final since = known?.since;
+  if (since == null || requirementReaches(requirement, since)) return known;
+  return null;
+}
+
 /// Swift packages for pods that plugins commonly depend on.
 @internal
 KnownPackage? knownPackageFor(String pod) {
@@ -80,6 +137,26 @@ KnownPackage? knownPackageFor(String pod) {
       product == 'FirebaseCore' || product == 'Firebase'
           ? 'FirebaseCore'
           : product,
+    );
+  }
+  // onesignal_flutter: from 5.0 the modules are OneSignalFramework,
+  // OneSignalInAppMessages, OneSignalLocation and OneSignalExtension (3.x had
+  // one `OneSignal` module), and the whole pod is all four.
+  if (base == 'OneSignalXCFramework') {
+    const products = [
+      'OneSignalFramework',
+      'OneSignalInAppMessages',
+      'OneSignalLocation',
+      'OneSignalExtension',
+    ];
+    final subspec = pod.contains('/') ? pod.split('/').last : null;
+    final product = products.contains(subspec) ? subspec! : products.first;
+    return KnownPackage(
+      'https://github.com/OneSignal/OneSignal-XCFramework',
+      'OneSignal-XCFramework',
+      product,
+      since: '5.0.0',
+      extraProducts: subspec == null ? products.skip(1).toList() : const [],
     );
   }
   return switch (base) {
@@ -135,9 +212,393 @@ KnownPackage? knownPackageFor(String pod) {
       'Kingfisher',
       'Kingfisher',
     ),
-    _ => null,
+    // A client app's TikTok App Events bridge (2026-11-15): "no Swift package
+    // is known for TikTokBusinessSDK", so the build left its native code out.
+    // The SDK ships a Package.swift from 1.3.4 on. No Objective-C module
+    // rename: before 1.7 the module is `TikTokBusinessSDK`, from 1.7 it is
+    // `TikTokBusinessSDKCore`, and the documented
+    // `#import <TikTokBusinessSDK/TikTokBusiness.h>` works with both.
+    'TikTokBusinessSDK' => const KnownPackage(
+      'https://github.com/tiktok/tiktok-business-ios-sdk',
+      'tiktok-business-ios-sdk',
+      'TikTokBusinessSDK',
+      defaultVersion: '1.7.0',
+      minimumIos: '12.0',
+      since: '1.3.4',
+    ),
+    // The pods below come from a scan of the most used pub.dev iOS plugins
+    // that still ship only a podspec (2026-11-15). Each package, its product
+    // and the module the plugin imports were checked against the vendor's
+    // Package.swift at the version the plugin asks for.
+    //
+    // flutter_inappwebview_ios (`import OrderedSet`); tags are `v6.0.3`,
+    // which SwiftPM reads as 6.0.3.
+    'OrderedSet' => const KnownPackage(
+      'https://github.com/Weebly/OrderedSet',
+      'OrderedSet',
+      'OrderedSet',
+      defaultVersion: '6.0.0',
+      since: '5.0.0',
+    ),
+    // flutter_libphonenumber_ios (`PhoneNumberKit/PhoneNumberKitCore`),
+    // libphonenumber_plugin. CocoaPods takes 4.x when no version is named.
+    'PhoneNumberKit' => const KnownPackage(
+      'https://github.com/marmelroy/PhoneNumberKit',
+      'PhoneNumberKit',
+      'PhoneNumberKit',
+      defaultVersion: '4.0.0',
+      minimumIos: '12.0',
+      since: '3.0.0',
+    ),
+    // video_thumbnail: it imports "webp/decode.h" first, the header path of
+    // this package (the libwebp pod itself has no Swift package).
+    'libwebp' => const KnownPackage(
+      'https://github.com/SDWebImage/libwebp-Xcode',
+      'libwebp-Xcode',
+      'libwebp',
+      defaultVersion: '1.1.0',
+      since: '1.1.0',
+    ),
+    // auth0_flutter before it built from darwin/ with its own Package.swift
+    // (it pins all three; Auth0 3.x pins the same JWTDecode and
+    // SimpleKeychain versions in its Package.swift). No iOS raise: the
+    // plugin's podspec already names what its Auth0 release needs.
+    'Auth0' => const KnownPackage(
+      'https://github.com/auth0/Auth0.swift',
+      'Auth0.swift',
+      'Auth0',
+    ),
+    'JWTDecode' => const KnownPackage(
+      'https://github.com/auth0/JWTDecode.swift',
+      'JWTDecode.swift',
+      'JWTDecode',
+    ),
+    'SimpleKeychain' => const KnownPackage(
+      'https://github.com/auth0/SimpleKeychain',
+      'SimpleKeychain',
+      'SimpleKeychain',
+    ),
+    // flutter_jailbreak_detection (no version named).
+    'IOSSecuritySuite' => const KnownPackage(
+      'https://github.com/securing/IOSSecuritySuite',
+      'IOSSecuritySuite',
+      'IOSSecuritySuite',
+      defaultVersion: '2.0.0',
+      since: '2.0.0',
+    ),
+    // instabug_flutter: a binary package; the framework inside is
+    // `InstabugSDK`, which is what the plugin imports.
+    'Instabug' => const KnownPackage(
+      'https://github.com/Instabug/Instabug-SP',
+      'Instabug-SP',
+      'Instabug',
+      since: '10.1.0',
+    ),
+    // applovin_max: a binary package with the same releases as the pod.
+    'AppLovinSDK' => const KnownPackage(
+      'https://github.com/AppLovin/AppLovin-MAX-Swift-Package',
+      'AppLovin-MAX-Swift-Package',
+      'AppLovinSDK',
+      since: '10.3.7',
+    ),
+    // facebook_audience_network (`~> 6.3`): Meta publishes the Swift
+    // package from 6.21.0 on, for iOS 15.
+    'FBAudienceNetwork' => const KnownPackage(
+      'https://github.com/facebook/FBAudienceNetwork',
+      'FBAudienceNetwork',
+      'FBAudienceNetwork',
+      minimumIos: '15.0',
+      since: '6.21.0',
+    ),
+    // edge_detection (no version named) ships WeScan 3.0.0's sources and is
+    // written against it; WeScan 1.x has no library package.
+    'WeScan' => const KnownPackage(
+      'https://github.com/WeTransfer/WeScan',
+      'WeScan',
+      'WeScan',
+      defaultVersion: '3.0.0',
+      minimumIos: '13.0',
+      since: '3.0.0',
+    ),
+    _ => _vendorPackages[base],
   };
 }
+
+/// Pods of SDK vendors that publish their own Swift package, mapped the way
+/// the plugins that moved to Swift Package Manager map them in their
+/// Package.swift (pub.dev, 2026-11-15). Older versions of those plugins
+/// ship only a podspec, so apps that did not upgrade still need a draft.
+/// `since` is the vendor's first tag with a Package.swift; `defaultVersion`
+/// mirrors CocoaPods taking the newest release when no version is named.
+const _vendorPackages = <String, KnownPackage>{
+  // image_cropper. The package's headers are not in a TOCropViewController/
+  // folder: image_cropper 8.0.2 failed with "'TOCropViewController/
+  // TOCropViewController.h' file not found" (a probe build, 2026-11-15).
+  'TOCropViewController': KnownPackage(
+    'https://github.com/TimOliver/TOCropViewController',
+    'TOCropViewController',
+    'TOCropViewController',
+    defaultVersion: '3.0.0',
+    since: '2.5.3',
+    flatHeaders: true,
+  ),
+  // flutter_callkit_incoming
+  'CryptoSwift': KnownPackage(
+    'https://github.com/krzyzanowskim/CryptoSwift',
+    'CryptoSwift',
+    'CryptoSwift',
+    defaultVersion: '1.8.0',
+  ),
+  // flutter_udid
+  'KeychainAccess': KnownPackage(
+    'https://github.com/kishikawakatsumi/KeychainAccess',
+    'KeychainAccess',
+    'KeychainAccess',
+    defaultVersion: '4.0.0',
+    since: '2.3.2',
+  ),
+  // flutter_archive
+  'ZIPFoundation': KnownPackage(
+    'https://github.com/weichsel/ZIPFoundation',
+    'ZIPFoundation',
+    'ZIPFoundation',
+    defaultVersion: '0.9.0',
+  ),
+  // posthog_flutter
+  'PostHog': KnownPackage(
+    'https://github.com/PostHog/posthog-ios',
+    'posthog-ios',
+    'PostHog',
+    defaultVersion: '3.0.0',
+    since: '2.0.0',
+  ),
+  // amplitude_flutter
+  'AmplitudeSwift': KnownPackage(
+    'https://github.com/amplitude/Amplitude-Swift',
+    'Amplitude-Swift',
+    'AmplitudeSwift',
+    defaultVersion: '1.0.0',
+  ),
+  // speech_to_text
+  'CwlCatchException': KnownPackage(
+    'https://github.com/mattgallagher/CwlCatchException',
+    'CwlCatchException',
+    'CwlCatchException',
+    defaultVersion: '2.0.0',
+    since: '1.0.0',
+  ),
+  // barcode_scan2, reactive_ble_mobile
+  'SwiftProtobuf': KnownPackage(
+    'https://github.com/apple/swift-protobuf',
+    'swift-protobuf',
+    'SwiftProtobuf',
+    defaultVersion: '1.0.0',
+    since: '0.9.13',
+  ),
+  // patrol
+  'CocoaAsyncSocket': KnownPackage(
+    'https://github.com/robbiehanson/CocoaAsyncSocket',
+    'CocoaAsyncSocket',
+    'CocoaAsyncSocket',
+    defaultVersion: '7.6.4',
+    since: '7.6.4',
+  ),
+  // google_sign_in_ios
+  'GoogleSignIn': KnownPackage(
+    'https://github.com/google/GoogleSignIn-iOS',
+    'GoogleSignIn-iOS',
+    'GoogleSignIn',
+    defaultVersion: '10.0.0',
+    since: '6.0.0',
+  ),
+  // google_mobile_ads and its mediation adapters
+  'Google-Mobile-Ads-SDK': KnownPackage(
+    'https://github.com/googleads/swift-package-manager-google-mobile-ads',
+    'swift-package-manager-google-mobile-ads',
+    'GoogleMobileAds',
+    defaultVersion: '13.0.0',
+    since: '9.0.0',
+  ),
+  // flutter_appauth: its own Package.swift build uses `@import AppAuth;`
+  // where CocoaPods builds use `#import <AppAuth/AppAuth.h>`.
+  'AppAuth': KnownPackage(
+    'https://github.com/openid/AppAuth-iOS',
+    'AppAuth-iOS',
+    'AppAuth',
+    defaultVersion: '3.0.0',
+    since: '1.4.0',
+    flatHeaders: true,
+  ),
+  // msal_auth
+  'MSAL': KnownPackage(
+    'https://github.com/AzureAD/microsoft-authentication-library-for-objc',
+    'microsoft-authentication-library-for-objc',
+    'MSAL',
+    defaultVersion: '2.0.0',
+    since: '1.1.14',
+  ),
+  // purchases_flutter
+  'PurchasesHybridCommon': KnownPackage(
+    'https://github.com/RevenueCat/purchases-hybrid-common',
+    'purchases-hybrid-common',
+    'PurchasesHybridCommon',
+    since: '13.3.0',
+  ),
+  // appsflyer_sdk: its Main and Strict subspecs are both AppsFlyerLib.
+  'AppsFlyerFramework': KnownPackage(
+    'https://github.com/AppsFlyerSDK/AppsFlyerFramework',
+    'AppsFlyerFramework',
+    'AppsFlyerLib',
+    since: '6.0.8',
+  ),
+  // flutter_branch_sdk; before 3.0 the pod and module were `Branch`.
+  'BranchSDK': KnownPackage(
+    'https://github.com/BranchMetrics/ios-branch-sdk-spm',
+    'ios-branch-sdk-spm',
+    'BranchSDK',
+    since: '3.0.0',
+  ),
+  // intercom_flutter (no version named)
+  'Intercom': KnownPackage(
+    'https://github.com/intercom/intercom-ios-sp',
+    'intercom-ios-sp',
+    'Intercom',
+    defaultVersion: '19.0.0',
+    since: '15.0.2',
+  ),
+  // clevertap_plugin: the headers sit directly in include/, so
+  // `#import <CleverTapSDK/…>` needs `@import CleverTapSDK;`.
+  'CleverTap-iOS-SDK': KnownPackage(
+    'https://github.com/CleverTap/clevertap-ios-sdk',
+    'clevertap-ios-sdk',
+    'CleverTapSDK',
+    since: '3.9.3',
+    flatHeaders: true,
+  ),
+  // singular_flutter_sdk
+  'Singular-SDK': KnownPackage(
+    'https://github.com/singular-labs/Singular-iOS-SDK',
+    'Singular-iOS-SDK',
+    'Singular',
+    since: '10.4.1',
+  ),
+  // unity_ads_plugin
+  'UnityAds': KnownPackage(
+    'https://github.com/Unity-Technologies/Unity-Ads-Swift-Package',
+    'Unity-Ads-Swift-Package',
+    'UnityAds',
+    since: '4.16.5',
+  ),
+  // flutter_line_sdk
+  'LineSDKSwift': KnownPackage(
+    'https://github.com/line/line-sdk-ios-swift',
+    'line-sdk-ios-swift',
+    'LineSDK',
+    since: '5.4.0',
+  ),
+  // mixpanel_flutter
+  'Mixpanel-swift': KnownPackage(
+    'https://github.com/mixpanel/mixpanel-swift',
+    'mixpanel-swift',
+    'Mixpanel',
+    since: '2.8.0',
+  ),
+  // freshchat_sdk
+  'FreshchatSDK': KnownPackage(
+    'https://github.com/freshworks-oss/freshchat-ios',
+    'freshchat-ios',
+    'FreshchatSDK',
+    since: '5.0.7',
+  ),
+  // crisp_chat
+  'Crisp': KnownPackage(
+    'https://github.com/crisp-im/crisp-sdk-ios',
+    'crisp-sdk-ios',
+    'Crisp',
+    since: '1.0.6',
+  ),
+  // twilio_voice
+  'TwilioVoice': KnownPackage(
+    'https://github.com/twilio/twilio-voice-ios',
+    'twilio-voice-ios',
+    'TwilioVoice',
+    since: '6.2.0',
+  ),
+  // screen_protector
+  'ScreenProtectorKit': KnownPackage(
+    'https://github.com/prongbang/ScreenProtectorKit',
+    'ScreenProtectorKit',
+    'ScreenProtectorKit',
+    since: '1.0.0',
+  ),
+  // newrelic_mobile
+  'NewRelicAgent': KnownPackage(
+    'https://github.com/newrelic/newrelic-ios-agent-spm',
+    'newrelic-ios-agent-spm',
+    'NewRelic',
+    since: '7.1.0',
+  ),
+  // superwallkit_flutter
+  'SuperwallKit': KnownPackage(
+    'https://github.com/superwall/Superwall-iOS',
+    'Superwall-iOS',
+    'SuperwallKit',
+  ),
+  // qonversion_flutter
+  'QonversionSandwich': KnownPackage(
+    'https://github.com/qonversion/sandwich-sdk',
+    'sandwich-sdk',
+    'QonversionSandwich',
+    since: '7.13.0',
+  ),
+  // flutter_naver_map
+  'NMapsMap': KnownPackage(
+    'https://github.com/navermaps/SPM-NMapsMap',
+    'SPM-NMapsMap',
+    'NMapsMap',
+    since: '3.16.2',
+  ),
+  // maplibre_gl
+  'MapLibre': KnownPackage(
+    'https://github.com/maplibre/maplibre-gl-native-distribution',
+    'maplibre-gl-native-distribution',
+    'MapLibre',
+    since: '5.9.0',
+  ),
+  // background_fetch, flutter_background_geolocation
+  'TSBackgroundFetch': KnownPackage(
+    'https://github.com/transistorsoft/transistor-background-fetch',
+    'transistor-background-fetch',
+    'TSBackgroundFetch',
+    since: '4.0.0',
+  ),
+  // awesome_notifications
+  'IosAwnCore': KnownPackage(
+    'https://github.com/rafaelsetragni/IosAwnCore',
+    'IosAwnCore',
+    'IosAwnCore',
+    since: '0.12.0',
+  ),
+  // braze_plugin: each pod is the product of the same name.
+  'BrazeKit': KnownPackage(
+    'https://github.com/braze-inc/braze-swift-sdk',
+    'braze-swift-sdk',
+    'BrazeKit',
+    since: '5.0.0',
+  ),
+  'BrazeUI': KnownPackage(
+    'https://github.com/braze-inc/braze-swift-sdk',
+    'braze-swift-sdk',
+    'BrazeUI',
+    since: '5.0.0',
+  ),
+  'BrazeLocation': KnownPackage(
+    'https://github.com/braze-inc/braze-swift-sdk',
+    'braze-swift-sdk',
+    'BrazeLocation',
+    since: '5.0.0',
+  ),
+};
 
 /// The SwiftPM version requirement for a CocoaPods [requirement]:
 /// `~> 8.4` → up to next major from 8.4.0, `~> 8.4.1` → up to next minor,
@@ -488,7 +949,7 @@ PackageSwiftDraft draftPackageSwift({
   final flatHeaderModules = <String>{};
   for (final dependency in spec.dependencies) {
     if (dependency.name == 'Flutter') continue;
-    final known = knownPackageFor(dependency.name);
+    final known = swiftPackageFor(dependency.name, dependency.requirement);
     if (known == null) {
       todo.add(
         "// TODO: pod '$dependency' has no known Swift package; add it here.",
@@ -501,12 +962,14 @@ PackageSwiftDraft draftPackageSwift({
     if (seenPackages.add(known.package)) {
       dependencyLines.add(
         '.package(url: "${known.url}", '
-        '${swiftRequirement(dependency.requirement, defaultVersion: known.defaultVersion)})',
+        '${swiftRequirement(dependency.requirement, defaultVersion: known.defaultVersion ?? known.since)})',
       );
     }
-    productLines.add(
-      '.product(name: "${known.product}", package: "${known.package}")',
-    );
+    // Two subspecs can be one product (AppsFlyerFramework/Main and /Strict).
+    for (final product in [known.product, ...known.extraProducts]) {
+      final line = '.product(name: "$product", package: "${known.package}")';
+      if (!productLines.contains(line)) productLines.add(line);
+    }
   }
 
   final linker = [
@@ -586,7 +1049,10 @@ PackageSwiftDraft draftPackageSwift({
   final product = plugin.replaceAll('_', '-');
   var platform = spec.deploymentTarget ?? '13.0';
   for (final dependency in spec.dependencies) {
-    final minimum = knownPackageFor(dependency.name)?.minimumIos;
+    final minimum = swiftPackageFor(
+      dependency.name,
+      dependency.requirement,
+    )?.minimumIos;
     if (minimum != null) platform = _higherVersion(platform, minimum);
   }
   String list(List<String> items, String indent) =>

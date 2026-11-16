@@ -155,6 +155,270 @@ end
       expect(draft.text, isNot(contains('TODO')));
     });
 
+    // A client app's TikTok bridge (2026-11-15): "A build leaves out the
+    // native code of <plugin>: no Swift package is known for
+    // TikTokBusinessSDK".
+    test('TikTokBusinessSDK uses the official tiktok-business-ios-sdk '
+        'package', () {
+      final draft = draftPackageSwift(
+        plugin: 'tiktok_bridge',
+        spec: Podspec.parse('''
+Pod::Spec.new do |s|
+  s.name = 'tiktok_bridge'
+  s.source_files = 'Classes/**/*'
+  s.dependency 'Flutter'
+  s.dependency 'TikTokBusinessSDK', '1.7.2'
+  s.platform = :ios, '11.0'
+  s.libraries = 'c++'
+end
+'''),
+        files: const [
+          'Classes/TikTokBridgePlugin.m',
+          'Classes/TikTokBridgePlugin.h',
+        ],
+      );
+      expect(
+        draft.text,
+        contains(
+          '.package(url: "https://github.com/tiktok/tiktok-business-ios-sdk", '
+          'exact: "1.7.2")',
+        ),
+      );
+      expect(
+        draft.text,
+        contains(
+          '.product(name: "TikTokBusinessSDK", '
+          'package: "tiktok-business-ios-sdk")',
+        ),
+      );
+      expect(draft.text, contains('platforms: [.iOS("12.0")]'));
+      expect(draft.text, contains('.linkedLibrary("c++")'));
+      expect(draft.text, isNot(contains('TODO')));
+      expect(draft.moduleRenames, isEmpty);
+      expect(
+        swiftRequirement(
+          null,
+          defaultVersion: knownPackageFor('TikTokBusinessSDK')!.defaultVersion,
+        ),
+        'from: "1.7.0"',
+      );
+    });
+
+    test('a release older than the first Swift package is left out, not '
+        'drafted into a package SwiftPM cannot resolve', () {
+      expect(requirementReaches(null, '1.3.4'), isTrue);
+      expect(requirementReaches('1.7.2', '1.3.4'), isTrue);
+      expect(requirementReaches('1.3.4', '1.3.4'), isTrue);
+      expect(requirementReaches('1.2.0', '1.3.4'), isFalse);
+      expect(requirementReaches('= 1.2', '1.3.4'), isFalse);
+      // ~> 6.3 allows every 6.x; ~> 6.0.3 only 6.0.x.
+      expect(requirementReaches('~> 6.3', '6.21.0'), isTrue);
+      expect(requirementReaches('~> 5.9', '6.21.0'), isFalse);
+      expect(requirementReaches('~>6.0.3', '5.0.0'), isTrue);
+      expect(requirementReaches('~> 1.2.1', '1.3.4'), isFalse);
+      expect(requirementReaches('>= 1.0', '1.3.4'), isTrue);
+
+      expect(swiftPackageFor('TikTokBusinessSDK', '1.2.0'), isNull);
+      expect(swiftPackageFor('TikTokBusinessSDK', '1.7.2'), isNotNull);
+      expect(swiftPackageFor('Kingfisher', '1.0.0'), isNotNull);
+
+      final draft = draftPackageSwift(
+        plugin: 'old_tiktok',
+        spec: Podspec.parse('''
+Pod::Spec.new do |s|
+  s.source_files = 'Classes/**/*'
+  s.dependency 'TikTokBusinessSDK', '1.2.0'
+end
+'''),
+        files: const ['Classes/Plugin.m'],
+      );
+      expect(draft.text, contains('TODO'));
+      expect(draft.text, isNot(contains('tiktok-business-ios-sdk')));
+    });
+
+    // The most used pub.dev plugins that still ship only a podspec
+    // (2026-11-15): each pod maps to the vendor's own Swift package.
+    test("popular podspec-only plugins get their vendors' Swift "
+        'packages', () {
+      String draftFor(String pod, String? version, {String ios = '13.0'}) =>
+          draftPackageSwift(
+            plugin: 'p',
+            spec: Podspec.parse('''
+Pod::Spec.new do |s|
+  s.source_files = 'Classes/**/*'
+  s.dependency '$pod'${version == null ? '' : ", '$version'"}
+  s.platform = :ios, '$ios'
+end
+'''),
+            files: const ['Classes/Plugin.swift'],
+          ).text;
+
+      for (final (pod, version, package, requirement, product) in [
+        (
+          'OrderedSet',
+          '~>6.0.3',
+          'https://github.com/Weebly/OrderedSet',
+          '.upToNextMinor(from: "6.0.3")',
+          '.product(name: "OrderedSet", package: "OrderedSet")',
+        ),
+        (
+          'PhoneNumberKit/PhoneNumberKitCore',
+          '3.8.0',
+          'https://github.com/marmelroy/PhoneNumberKit',
+          'exact: "3.8.0"',
+          '.product(name: "PhoneNumberKit", package: "PhoneNumberKit")',
+        ),
+        (
+          'libwebp',
+          null,
+          'https://github.com/SDWebImage/libwebp-Xcode',
+          'from: "1.1.0"',
+          '.product(name: "libwebp", package: "libwebp-Xcode")',
+        ),
+        (
+          'JWTDecode',
+          '4.0.0',
+          'https://github.com/auth0/JWTDecode.swift',
+          'exact: "4.0.0"',
+          '.product(name: "JWTDecode", package: "JWTDecode.swift")',
+        ),
+        (
+          'IOSSecuritySuite',
+          null,
+          'https://github.com/securing/IOSSecuritySuite',
+          'from: "2.0.0"',
+          '.product(name: "IOSSecuritySuite", package: "IOSSecuritySuite")',
+        ),
+        (
+          'Instabug',
+          '16.0.3',
+          'https://github.com/Instabug/Instabug-SP',
+          'exact: "16.0.3"',
+          '.product(name: "Instabug", package: "Instabug-SP")',
+        ),
+        (
+          'AppLovinSDK',
+          '13.6.3',
+          'https://github.com/AppLovin/AppLovin-MAX-Swift-Package',
+          'exact: "13.6.3"',
+          '.product(name: "AppLovinSDK", '
+              'package: "AppLovin-MAX-Swift-Package")',
+        ),
+        (
+          'FBAudienceNetwork',
+          '~> 6.3',
+          'https://github.com/facebook/FBAudienceNetwork',
+          '.upToNextMajor(from: "6.3.0")',
+          '.product(name: "FBAudienceNetwork", package: "FBAudienceNetwork")',
+        ),
+        (
+          'WeScan',
+          null,
+          'https://github.com/WeTransfer/WeScan',
+          'from: "3.0.0"',
+          '.product(name: "WeScan", package: "WeScan")',
+        ),
+      ]) {
+        final text = draftFor(pod, version);
+        expect(text, contains('.package(url: "$package", $requirement)'));
+        expect(text, contains(product), reason: pod);
+        expect(text, isNot(contains('TODO')), reason: pod);
+      }
+      // Meta's package needs iOS 15.
+      expect(
+        draftFor('FBAudienceNetwork', '~> 6.3'),
+        contains('platforms: [.iOS("15.0")]'),
+      );
+      // An exact pin from before the Swift package stays out.
+      expect(draftFor('FBAudienceNetwork', '6.3.0'), contains('TODO'));
+    });
+
+    // Older versions of plugins that now ship Package.swift: the pods map to
+    // what the plugins' own Package.swift uses.
+    test("SDK pods of older plugin versions map like the plugins' own "
+        'Package.swift', () {
+      String draftFor(List<String> pods) => draftPackageSwift(
+        plugin: 'p',
+        spec: Podspec.parse(
+          [
+            'Pod::Spec.new do |s|',
+            "  s.source_files = 'Classes/**/*'",
+            ...pods.map((pod) => '  s.dependency $pod'),
+            'end',
+          ].join('\n'),
+        ),
+        files: const ['Classes/Plugin.m'],
+      ).text;
+
+      for (final (pod, product) in [
+        ("'TOCropViewController', '~> 2.6.1'", 'TOCropViewController'),
+        ("'CryptoSwift'", 'CryptoSwift'),
+        ("'GoogleSignIn', '~> 7.1'", 'GoogleSignIn'),
+        ("'Google-Mobile-Ads-SDK', '~> 11.2.0'", 'GoogleMobileAds'),
+        ("'AppAuth', '1.7.5'", 'AppAuth'),
+        ("'PurchasesHybridCommon', '13.5.2'", 'PurchasesHybridCommon'),
+        ("'Intercom'", 'Intercom'),
+        ("'CleverTap-iOS-SDK', '6.2.1'", 'CleverTapSDK'),
+        ("'Mixpanel-swift', '4.2.0'", 'Mixpanel'),
+        ("'BrazeKit', '~> 9.0.0'", 'BrazeKit'),
+        ("'SwiftProtobuf', '~> 1.0'", 'SwiftProtobuf'),
+      ]) {
+        final text = draftFor([pod]);
+        expect(text, contains('.product(name: "$product"'), reason: pod);
+        expect(text, isNot(contains('TODO')), reason: pod);
+      }
+      expect(
+        draftFor(["'Intercom'"]),
+        contains(
+          '.package(url: "https://github.com/intercom/intercom-ios-sp", '
+          'from: "19.0.0")',
+        ),
+      );
+
+      // Packages whose headers are not in a <Module>/ folder: image_cropper
+      // 8.0.2 failed on `#import <TOCropViewController/…>` (probe build).
+      for (final pod in [
+        'TOCropViewController',
+        'AppAuth',
+        'CleverTap-iOS-SDK',
+      ]) {
+        expect(knownPackageFor(pod)!.flatHeaders, isTrue, reason: pod);
+      }
+
+      // The Main and Strict subspecs are one product.
+      final appsFlyer = draftFor([
+        "'AppsFlyerFramework/Main', '6.15.3'",
+        "'AppsFlyerFramework/Strict', '6.15.3'",
+      ]);
+      expect(RegExp('name: "AppsFlyerLib"').allMatches(appsFlyer).length, 1);
+
+      // The whole OneSignal pod is four products; a subspec is one.
+      final oneSignal = draftFor(["'OneSignalXCFramework', '5.2.0'"]);
+      for (final product in [
+        'OneSignalFramework',
+        'OneSignalInAppMessages',
+        'OneSignalLocation',
+        'OneSignalExtension',
+      ]) {
+        expect(oneSignal, contains('.product(name: "$product"'));
+      }
+      final inApp = draftFor([
+        "'OneSignalXCFramework/OneSignalInAppMessages', '5.2.0'",
+      ]);
+      expect(inApp, contains('name: "OneSignalInAppMessages"'));
+      expect(inApp, isNot(contains('name: "OneSignalLocation"')));
+
+      // Releases from before the vendor's Swift package stay out.
+      for (final pod in [
+        "'OneSignalXCFramework', '3.12.4'",
+        "'PurchasesHybridCommon', '4.3.0'",
+        "'BranchSDK', '2.2.1'",
+        "'Intercom', '14.0.0'",
+      ]) {
+        expect(draftFor([pod]), contains('TODO'), reason: pod);
+      }
+    });
+
     test('a podspec above the package minimum keeps its own iOS version', () {
       final draft = draftPackageSwift(
         plugin: 'newer',
