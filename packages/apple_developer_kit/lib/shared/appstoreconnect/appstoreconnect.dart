@@ -300,12 +300,29 @@ final class AscProvisioning {
         await client.registerDevice(udid: udid, name: udid);
   }
 
-  Future<AscBundleId> _findOrRegisterBundleId(String bundleId) async =>
-      await client.findBundleId(bundleId) ??
-      await client.registerBundleId(
+  Future<AscBundleId> _findOrRegisterBundleId(String bundleId) async {
+    final existing = await client.findBundleId(bundleId);
+    if (existing != null) return existing;
+    try {
+      return await client.registerBundleId(
         identifier: bundleId,
         name: ProvisioningIdentifiers.appName(bundleId),
       );
+    } on AppleApiError catch (error) {
+      if (error.statusCode == 409) {
+        throw AppleApiError(
+          409,
+          'An App ID with Identifier \'$bundleId\' is not available on your '
+          'App Store Connect account (HTTP 409).\n'
+          'This identifier is already claimed by another developer team or account.\n'
+          'To fix this:\n'
+          '  1. Verify your App Store Connect API Key belongs to the team that owns \'$bundleId\'.\n'
+          '  2. Or change the Bundle Identifier in your project to a unique string.',
+        );
+      }
+      rethrow;
+    }
+  }
 
   /// Registers any missing App Groups and enables the App Groups capability
   /// on the bundle id, so the issued profile's entitlements actually carry
