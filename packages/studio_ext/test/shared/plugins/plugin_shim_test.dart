@@ -714,6 +714,19 @@ end
         'Classes/OldSwiftPlugin.m',
         'Classes/OldSwiftPlugin.h',
       ]);
+      // Like the pod's own module in Xcode: Flutter (UIKit, UserNotifications)
+      // in every Swift file, as flutter_foreground_task 9.2.2 expects.
+      final swiftTarget = text.substring(
+        text.indexOf('name: "old_swift_plugin_swift"'),
+        text.lastIndexOf('name: "old_swift_plugin",'),
+      );
+      expect(
+        swiftTarget,
+        contains(
+          '.unsafeFlags(["-Xfrontend", "-import-module", "-Xfrontend", '
+          '"Flutter"])',
+        ),
+      );
     });
 
     group('Swift that calls the Objective-C side back', () {

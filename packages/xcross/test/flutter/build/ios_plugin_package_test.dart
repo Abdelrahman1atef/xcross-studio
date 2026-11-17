@@ -3748,6 +3748,11 @@ let package = Package(
           );
           expect(path, isNot(contains(r'\')));
         }
+        // Xcode's clang only warns about `nil` passed to an enum parameter.
+        expect(
+          (toolset['cCompiler'] as Map<String, dynamic>)['extraCLIOptions'],
+          [r'-fdebug-prefix-map=C:\=/', '-Wno-error=int-conversion'],
+        );
       },
     );
 
@@ -3768,7 +3773,15 @@ let package = Package(
       final toolset =
           jsonDecode(File(toolsetPath).readAsStringSync())
               as Map<String, dynamic>;
-      expect(toolset.keys, ['schemaVersion', 'rootPath', 'librarian']);
+      expect(toolset.keys, [
+        'schemaVersion',
+        'rootPath',
+        'librarian',
+        'cCompiler',
+      ]);
+      expect(toolset['cCompiler'], {
+        'extraCLIOptions': ['-Wno-error=int-conversion'],
+      }, reason: "no path: the SDK's own clang, with Xcode's diagnostics");
       expect(
         (toolset['librarian'] as Map<String, dynamic>)['path'],
         File(

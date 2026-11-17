@@ -455,6 +455,54 @@ let other: [SwiftSetting] = [.unsafeFlags(["-a"])]
 
   // FlutterFire 3.x/11.x manifests: `URL(string: #file)` on a `C:\…` path
   // took `C:` for a URL scheme and read "C/../../pubspec.yaml" (2026-11-03).
+  group('platform versions newer than the manifest tools version', () {
+    // webrtc-sdk/Specs 137.7151.04, the WebRTC binary of videosdk_webrtc.
+    const webrtc = '''
+// swift-tools-version:5.9
+import PackageDescription
+
+let package = Package(
+    name: "WebRTC",
+    platforms: [
+        .iOS(.v13),
+        .macOS(.v10_15),
+        .macCatalyst(.v14),
+        .tvOS(.v17),
+        .visionOS(.v2),
+    ],
+    targets: [
+        .binaryTarget(name: "WebRTC", url: "https://x/WebRTC.zip", checksum: "0"),
+        .target(name: "Uses", condition: .when(platforms: [.iOS])),
+    ]
+)
+''';
+
+    test('are spelled as strings with the same minimum', () {
+      final spelled = SwiftPmManifestCompiler.spellPlatformVersions(webrtc);
+      expect(spelled, contains('.visionOS("2.0")'));
+      expect(spelled, contains('.iOS("13.0")'));
+      expect(spelled, contains('.macOS("10.15")'));
+      expect(spelled, contains('.macCatalyst("14.0")'));
+      expect(spelled, contains('.tvOS("17.0")'));
+      expect(spelled, isNot(contains('.v2)')));
+      expect(
+        spelled,
+        contains('.when(platforms: [.iOS])'),
+        reason: 'a platform list in a condition is not a version',
+      );
+    });
+
+    test('a 6.2 manifest, or one with no tools line, is unchanged', () {
+      final modern = webrtc.replaceFirst(
+        'swift-tools-version:5.9',
+        'swift-tools-version: 6.2',
+      );
+      expect(SwiftPmManifestCompiler.spellPlatformVersions(modern), modern);
+      const bare = 'let p = Package(platforms: [.iOS(.v13)])\n';
+      expect(SwiftPmManifestCompiler.spellPlatformVersions(bare), bare);
+    });
+  });
+
   group('FlutterFire manifests find their folder on every host', () {
     const flutterFire = '''
 let analyticsDirectory = String(URL(string: #file)!.deletingLastPathComponent().absoluteString

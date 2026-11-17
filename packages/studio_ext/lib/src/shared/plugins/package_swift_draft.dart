@@ -71,6 +71,10 @@ KnownPackage _facebook(String product) => KnownPackage(
   minimumIos: '12.0',
 );
 
+/// Swift settings that import Flutter in every file of a target.
+const _importFlutter =
+    '.unsafeFlags(["-Xfrontend", "-import-module", "-Xfrontend", "Flutter"])';
+
 /// The higher of two dotted versions.
 String _higherVersion(String a, String b) {
   List<int> parts(String v) => [
@@ -1242,6 +1246,14 @@ PackageSwiftDraft draftPackageSwift({
                 copy.substring(targetPath.length + 1),
             ],
             swiftSettings: [
+              // In Xcode a pod's Swift files see its own Objective-C module,
+              // whose headers import Flutter (and with it UIKit, which brings
+              // UserNotifications). flutter_foreground_task 9.2.2 calls
+              // UNUserNotificationCenter with only `import Foundation`
+              // ("cannot find 'UNUserNotificationCenter' in scope", a client
+              // app, 2026-11-17). The split Swift target imports Flutter the
+              // same way, in every file.
+              _importFlutter,
               if (bridgingHeader != null)
                 [
                   '.unsafeFlags([',

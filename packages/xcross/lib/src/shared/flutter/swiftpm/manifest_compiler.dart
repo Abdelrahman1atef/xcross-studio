@@ -174,6 +174,39 @@ final class SwiftPmManifestCompiler {
     );
   }
 
+  // studio: webrtc-sdk/Specs 137.7151.04 (videosdk_webrtc, a client app,
+  // 2026-11-17) says `// swift-tools-version:5.9` but uses
+  // `.visionOS(.v2)`, a case PackageDescription has only from 6.0
+  // ("'v2' is unavailable"); its later tags use `.v26` (6.2). The string
+  // form names the same minimum and works with every tools version that
+  // has the platform.
+  static final _toolsVersion = RegExp(
+    r'^\s*//\s*swift-tools-version\s*:\s*(\d+)\.(\d+)',
+  );
+  static final _platformVersion = RegExp(
+    r'\.(iOS|macOS|macCatalyst|tvOS|watchOS|visionOS|driverKit)'
+    r'\(\s*\.v(\d+)((?:_\d+){0,2})\s*\)',
+  );
+
+  /// [manifest] with `.visionOS(.v2)`-style platform versions written as
+  /// `.visionOS("2.0")` when its tools version is below 6.2, the newest
+  /// PackageDescription that added such cases. Others are unchanged.
+  static String spellPlatformVersions(String manifest) {
+    final tools = _toolsVersion.firstMatch(manifest);
+    if (tools == null) return manifest;
+    final major = int.parse(tools[1]!);
+    final minor = int.parse(tools[2]!);
+    if (major > 6 || (major == 6 && minor >= 2)) return manifest;
+    return manifest.replaceAllMapped(_platformVersion, (match) {
+      final parts = [
+        match[2]!,
+        ...match[3]!.split('_').where((part) => part.isNotEmpty),
+      ];
+      if (parts.length == 1) parts.add('0');
+      return '.${match[1]}("${parts.join('.')}")';
+    });
+  }
+
   Future<String> rewrite(
     String original, {
     required String manifestPath,
@@ -182,7 +215,9 @@ final class SwiftPmManifestCompiler {
   }) async {
     final products = {...?configuration.consumedProducts[identity]};
     final directory = p.dirname(manifestPath);
-    final manifest = locateManifestFolder(original, directory);
+    final manifest = spellPlatformVersions(
+      locateManifestFolder(original, directory),
+    );
     if (directory == manifestPath ||
         fileSystem.typeSync(p.join(directory, 'Package.swift')) !=
             FileSystemEntityType.file) {
