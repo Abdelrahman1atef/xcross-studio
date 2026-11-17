@@ -127,7 +127,9 @@ List<PluginStatus> readPluginStatus(
   final records = (ledger ?? DraftLedger(fs, paths, base)).read();
   final result = <PluginStatus>[];
 
-  for (final plugin in plugins.read(project)) {
+  final all = plugins.read(project);
+  final unknownByName = writer.unknownPodsOf(project, all);
+  for (final plugin in all) {
     final root = paths.join(base, plugin.name);
     final version = plugin.version;
     String? folder;
@@ -281,7 +283,7 @@ List<PluginStatus> readPluginStatus(
         ),
       );
     } else {
-      final unknown = writer.unknownPods(plugin);
+      final unknown = unknownByName[plugin.name] ?? writer.unknownPods(plugin);
       result.add(
         PluginStatus(
           name: plugin.name,

@@ -444,6 +444,13 @@ end
           '.product(name: "FBAudienceNetwork", package: "FBAudienceNetwork")',
         ),
         (
+          'WebRTC-SDK',
+          '137.7151.04',
+          'https://github.com/webrtc-sdk/Specs',
+          'exact: "137.7151.04"',
+          '.product(name: "WebRTC", package: "Specs")',
+        ),
+        (
           'WeScan',
           null,
           'https://github.com/WeTransfer/WeScan',

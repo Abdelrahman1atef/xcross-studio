@@ -24,13 +24,14 @@ void main() {
     await File(
       path.join(pluginRoot.path, 'ios', 'example.podspec'),
     ).create(recursive: true);
+    // A binary pod with no known Swift package (WebRTC-SDK has one now).
     await File(
       path.join(pluginRoot.path, 'ios', 'example.podspec'),
     ).writeAsString('''
 Pod::Spec.new do |s|
   s.name = 'example'
   s.dependency 'Flutter'
-  s.dependency 'WebRTC-SDK', '= 137.7151.04'
+  s.dependency 'VendorRTC-SDK', '= 137.7151.04'
 end
 ''');
     await File(
@@ -56,16 +57,16 @@ end
     );
     plugins = ProjectPlugins(const IoFileSystem(), path.context);
     final index = File(
-      path.join(cdn.cacheRoot.path, 'index', '${cdn.shard('WebRTC-SDK')}.txt'),
+      path.join(cdn.cacheRoot.path, 'index', '${cdn.shard('VendorRTC-SDK')}.txt'),
     );
     await index.create(recursive: true);
-    await index.writeAsString('WebRTC-SDK/137.7151.04\n');
+    await index.writeAsString('VendorRTC-SDK/137.7151.04\n');
     final spec = File(
-      path.join(cdn.cacheRoot.path, 'specs', 'WebRTC-SDK', '137.7151.04.json'),
+      path.join(cdn.cacheRoot.path, 'specs', 'VendorRTC-SDK', '137.7151.04.json'),
     );
     await spec.create(recursive: true);
     await spec.writeAsString(
-      '{"name":"WebRTC-SDK",'
+      '{"name":"VendorRTC-SDK",'
       '"vendored_frameworks":"SDK.xcframework"}',
     );
   });
@@ -102,7 +103,7 @@ end
       cdn: cdn,
       converterEnabled: true,
       enabledKinds: const {'binary'},
-      skipped: const {'WebRTC-SDK'},
+      skipped: const {'VendorRTC-SDK'},
     ).plan(root.path, offline: true);
     expect(skipped.byPlugin['example']!.last.reason, 'skipped_by_user');
     expect(networkCalls, 0);
@@ -188,7 +189,7 @@ end
       '''
 Pod::Spec.new do |s|
   s.name = 'second'
-  s.dependency 'WebRTC-SDK', '< 138'
+  s.dependency 'VendorRTC-SDK', '< 138'
 end
 ''',
     );
@@ -205,9 +206,9 @@ end
       }),
     );
     final index = File(
-      path.join(cdn.cacheRoot.path, 'index', '${cdn.shard('WebRTC-SDK')}.txt'),
+      path.join(cdn.cacheRoot.path, 'index', '${cdn.shard('VendorRTC-SDK')}.txt'),
     );
-    await index.writeAsString('WebRTC-SDK/137.7151.04/138.0.0\n');
+    await index.writeAsString('VendorRTC-SDK/137.7151.04/138.0.0\n');
     final plan = await PodGraphPlanner(
       plugins: plugins,
       cdn: cdn,
@@ -221,7 +222,7 @@ end
       '''
 Pod::Spec.new do |s|
   s.name = 'second'
-  s.dependency 'WebRTC-SDK', '>= 138'
+  s.dependency 'VendorRTC-SDK', '>= 138'
 end
 ''',
     );

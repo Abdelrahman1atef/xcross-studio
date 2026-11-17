@@ -1,5 +1,6 @@
 ## Unreleased (XCross Studio)
 
+- **videosdk, and plugins that need WebRTC or another plugin, keep their native code**: "A build leaves out the native code of videosdk_webrtc: no Swift package is known for WebRTC-SDK" and "... of videosdk: no Swift package is known for videosdk_webrtc" (a client app). WebRTC-SDK now maps to the vendor's own Swift package (`webrtc-sdk/Specs`, product `WebRTC`, numbered like the pod, from 92.4515.01). A podspec-only plugin whose pod is another plugin of the app is no longer left out when that plugin is built too: the draft links it by `path:`. If that plugin is left out, the plugin that needs it is left out with it, and the warning names it. Next to flutter_webrtc, which ships the same WebRTC binary, WebRTC-SDK stays left out, so the build does not fail on two targets named `WebRTC`. Not yet built on a real app.
 - **Build Flutter plugins that rely on CocoaPods without CocoaPods or macOS (feature 046)**:
   - Plugins depending on pods without official Swift packages (WebRTC, ObjectBox, MobileVLCKit, GoogleMLKit, speech_to_text, go_sell_sdk, flutter_braintree, TensorFlowLite, onnxruntime, etc.) are converted into local Swift packages (`Packages/pod-<Pod>`).
   - Converts binary pods (`.xcframework`, legacy `.framework`, and vendored `.a` with headers into standard xcframeworks).

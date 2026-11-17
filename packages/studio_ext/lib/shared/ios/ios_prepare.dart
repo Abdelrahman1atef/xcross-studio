@@ -370,6 +370,7 @@ final class IosPrepare {
       return null;
     }
     final drafts = environment['XCROSS_PLUGIN_DRAFTS'] != 'off';
+    final unknownByName = writer.unknownPodsOf(project, all);
     final status = {
       for (final entry in readPluginStatus(projectPlugins, project))
         entry.name: entry,
@@ -412,7 +413,8 @@ final class IosPrepare {
         result.add(make('ready', 'no iOS code', kind: 'no_ios_code'));
       } else {
         try {
-          final unknown = writer.unknownPods(plugin);
+          final unknown =
+              unknownByName[plugin.name] ?? writer.unknownPods(plugin);
           if (unknown.isNotEmpty) {
             result.add(
               make(

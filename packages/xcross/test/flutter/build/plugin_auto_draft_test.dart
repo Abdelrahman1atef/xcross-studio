@@ -101,6 +101,69 @@ void main() {
     expect(text, isNot(contains('[build.plugin_drafted]')));
   });
 
+  test('AC-025-2 a podspec that needs another plugin of the app links it when '
+      'that plugin is drafted too', () {
+    final webrtc = plugin(
+      'videosdk_webrtc',
+      pods: "  s.dependency 'WebRTC-SDK', '137.7151.04'\n",
+    );
+    final sdk = plugin('videosdk', pods: "  s.dependency 'videosdk_webrtc'\n");
+    expect(draft([sdk, webrtc]), isEmpty);
+
+    expect(
+      File(draftPath('videosdk')).readAsStringSync(),
+      allOf(
+        contains(
+          '.package(name: "videosdk_webrtc", path: "../videosdk_webrtc")',
+        ),
+        contains(
+          '.product(name: "videosdk-webrtc", package: "videosdk_webrtc")',
+        ),
+        isNot(contains('TODO')),
+      ),
+    );
+    expect(
+      File(draftPath('videosdk_webrtc')).readAsStringSync(),
+      contains(
+        '.package(url: "https://github.com/webrtc-sdk/Specs", '
+        'exact: "137.7151.04")',
+      ),
+    );
+  });
+
+  test(
+    'AC-025-2 a plugin whose sibling plugin is left out is left out too',
+    () {
+      final base = plugin('base_sdk', pods: "  s.dependency 'SomeVendorSDK'\n");
+      final top = plugin('top_sdk', pods: "  s.dependency 'base_sdk'\n");
+      expect(draft([top, base]), {'top_sdk', 'base_sdk'});
+
+      expect(File(draftPath('top_sdk')).existsSync(), isFalse);
+      final text = log.messages.join('\n');
+      expect(
+        text,
+        contains('"top_sdk" only ships a podspec and needs base_sdk'),
+      );
+      expect(text, contains('SomeVendorSDK'));
+    },
+  );
+
+  test('AC-025-2 next to flutter_webrtc (its own WebRTC binary) WebRTC-SDK '
+      'stays left out instead of breaking the build', () {
+    final own = plugin('flutter_webrtc', swiftPackage: true);
+    final other = plugin(
+      'livekit_client',
+      pods:
+          "  s.dependency 'WebRTC-SDK', '137.7151.04'\n"
+          "  s.dependency 'flutter_webrtc'\n",
+    );
+    expect(draft([own, other]), {'livekit_client'});
+    expect(
+      log.messages.join('\n'),
+      contains('WebRTC-SDK (flutter_webrtc brings its own copy)'),
+    );
+  });
+
   test('AC-025-3 a plugin with its own package is left alone', () {
     expect(draft([plugin('foo', swiftPackage: true)]), isEmpty);
     expect(

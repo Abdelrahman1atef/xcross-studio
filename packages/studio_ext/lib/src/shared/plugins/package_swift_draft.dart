@@ -16,7 +16,14 @@ final class KnownPackage {
     this.flatHeaders = false,
     this.since,
     this.extraProducts = const [],
+    this.leftOutWith = const {},
   });
+
+  /// Plugins that bring this package's binary themselves, under the same
+  /// target name. SwiftPM refuses two targets with one name, so with one of
+  /// them in the project a plugin that needs the pod stays left out instead
+  /// of breaking the whole build.
+  final Set<String> leftOutWith;
 
   /// More products of the same package the pod brings (the whole
   /// OneSignalXCFramework pod is four SwiftPM products).
@@ -332,6 +339,18 @@ KnownPackage? knownPackageFor(String pod) {
       'IOSSecuritySuite',
       defaultVersion: '2.0.0',
       since: '2.0.0',
+    ),
+    // videosdk_webrtc and older livekit_client: the vendor's Specs repository
+    // has a Package.swift (the binary WebRTC.xcframework) on every release
+    // tag, numbered like the pod (137.7151.04). flutter_webrtc declares the
+    // same binary target itself.
+    'WebRTC-SDK' => const KnownPackage(
+      'https://github.com/webrtc-sdk/Specs',
+      'Specs',
+      'WebRTC',
+      minimumIos: '13.0',
+      since: '92.4515.01',
+      leftOutWith: {'flutter_webrtc'},
     ),
     // instabug_flutter: a binary package; the framework inside is
     // `InstabugSDK`, which is what the plugin imports.

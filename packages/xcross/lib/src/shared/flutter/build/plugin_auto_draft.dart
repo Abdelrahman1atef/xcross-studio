@@ -38,29 +38,43 @@ final class PluginAutoDraft {
     if (environment[switchName] == 'off') return const {};
     final writer = PluginDraftWriter(ProjectPlugins(fileSystem, paths));
     final undraftable = <String>{};
+    // Plugins linked as they are; a podspec that names one of them, or a
+    // plugin drafted here, links it by `path:`.
+    final included = <String>{};
+    final targets = <ProjectPlugin>[];
     for (final plugin in plugins) {
+      if (plugin.usesSwiftPackageManager) included.add(plugin.name);
       if (plugin.usesSwiftPackageManager || !plugin.usesCocoaPods) continue;
       final version = PluginOverrides.versionOf(plugin, paths);
       // The developer's own folder decides, even one that does not apply.
       final lookup = locator.find(plugin.name, version);
+      if (lookup.override != null) included.add(plugin.name);
       if (lookup.override != null || lookup.problems.isNotEmpty) continue;
-      final target = ProjectPlugin(
-        name: plugin.name,
-        root: plugin.packageRoot,
-        platformDirectory: paths.join(
-          plugin.packageRoot,
-          plugin.platformDirectoryName,
+      targets.add(
+        ProjectPlugin(
+          name: plugin.name,
+          root: plugin.packageRoot,
+          platformDirectory: paths.join(
+            plugin.packageRoot,
+            plugin.platformDirectoryName,
+          ),
+          version: version,
         ),
-        version: version,
       );
-      final unknown = writer.unknownPods(target);
+    }
+    final unknownByName = writer.unknownPodsInProject(
+      targets,
+      included: included,
+    );
+    for (final target in targets) {
+      final unknown = unknownByName[target.name] ?? writer.unknownPods(target);
       if (unknown.isNotEmpty) {
-        undraftable.add(plugin.name);
+        undraftable.add(target.name);
         warnings.warn(
           XcrossCodes.buildPluginUnknownPods,
-          subject: plugin.name,
+          subject: target.name,
           message:
-              'Plugin "${plugin.name}" only ships a podspec and needs '
+              'Plugin "${target.name}" only ships a podspec and needs '
               '${unknown.join(', ')}, with no known Swift package; its native '
               'iOS code will not be included.',
         );
@@ -69,12 +83,17 @@ final class PluginAutoDraft {
       final written = writer.write(
         target,
         base: paths.join(projectRoot, 'xcross_overrides'),
+        siblingPlugins: {
+          ...included,
+          for (final MapEntry(:key, :value) in unknownByName.entries)
+            if (value.isEmpty && key != target.name) key,
+        },
       );
       warnings.warn(
         XcrossCodes.buildPluginDrafted,
-        subject: plugin.name,
+        subject: target.name,
         message:
-            'Plugin "${plugin.name}" only ships a podspec; xcross drafted '
+            'Plugin "${target.name}" only ships a podspec; xcross drafted '
             '${written.path}. ${written.notes.join(' ')}',
       );
     }

@@ -200,15 +200,93 @@ final class PluginDraftWriter {
     for (final dependency in _spec(target).dependencies)
       if (dependency.name != 'Flutter' &&
           !convertedPods.containsKey(dependency.name.split('/').first) &&
-          !siblingPlugins.contains(dependency.name.split('/').first) &&
-          swiftPackageFor(dependency.name, dependency.requirement) == null)
-        switch (knownPackageFor(dependency.name)?.since) {
-          final since? =>
-            '${dependency.name} ${dependency.requirement} (its Swift package '
-                'starts at $since)',
-          null => dependency.name,
-        },
+          !siblingPlugins.contains(dependency.name.split('/').first))
+        if (knownPackageFor(
+              dependency.name,
+            )?.leftOutWith.where(siblingPlugins.contains).firstOrNull
+            case final other?)
+          '${dependency.name} ($other brings its own copy)'
+        else if (swiftPackageFor(dependency.name, dependency.requirement) ==
+            null)
+          switch (knownPackageFor(dependency.name)?.since) {
+            final since? =>
+              '${dependency.name} ${dependency.requirement} (its Swift package '
+                  'starts at $since)',
+            null => dependency.name,
+          },
   ];
+
+  /// [unknownPods] of each plugin in [podspecOnly] (plugins a build drafts
+  /// from their podspec), where a pod that is another plugin of the project
+  /// counts as linked when that plugin is in [included] (a Swift package or
+  /// an override) or is drafted itself: the draft adds it by `path:` and the
+  /// build links the two. A plugin whose sibling is left out is left out too,
+  /// and names it.
+  Map<String, List<String>> unknownPodsInProject(
+    List<ProjectPlugin> podspecOnly, {
+    Set<String> included = const {},
+    Map<String, String> convertedPods = const {},
+  }) {
+    var drafted = {for (final plugin in podspecOnly) plugin.name};
+    final unknown = <String, List<String>>{};
+    final unreadable = <String>{};
+    // Drop the plugins with unknown pods until none is dropped: a plugin can
+    // need a sibling that the previous round dropped.
+    while (true) {
+      final dropped = <String>{};
+      for (final plugin in podspecOnly) {
+        if (!drafted.contains(plugin.name)) continue;
+        final List<String> pods;
+        try {
+          pods = unknownPods(
+            plugin,
+            convertedPods: convertedPods,
+            siblingPlugins: {...included, ...drafted}..remove(plugin.name),
+          );
+        } on Object {
+          // Not drafted; the caller's own [unknownPods] call reports it.
+          unreadable.add(plugin.name);
+          dropped.add(plugin.name);
+          continue;
+        }
+        if (pods.isEmpty) continue;
+        unknown[plugin.name] = pods;
+        dropped.add(plugin.name);
+      }
+      if (dropped.isEmpty) break;
+      drafted = drafted.difference(dropped);
+    }
+    return {
+      for (final plugin in podspecOnly)
+        if (!unreadable.contains(plugin.name))
+          plugin.name: unknown[plugin.name] ?? const [],
+    };
+  }
+
+  /// [unknownPodsInProject] for [all] the plugins of [project] as a build
+  /// sees them: one with a folder under `xcross_overrides` or its own Swift
+  /// package is linked as it is; one with only a podspec is drafted. A
+  /// plugin whose podspec cannot be read is missing from the result.
+  Map<String, List<String>> unknownPodsOf(
+    String project,
+    List<ProjectPlugin> all,
+  ) {
+    final included = <String>{};
+    final podspecOnly = <ProjectPlugin>[];
+    for (final plugin in all) {
+      final overridden = plugins.fileSystem
+          .directory(
+            plugins.paths.join(project, 'xcross_overrides', plugin.name),
+          )
+          .existsSync();
+      if (overridden || plugins.hasSwiftPackage(plugin)) {
+        included.add(plugin.name);
+      } else if (plugins.hasPodspec(plugin)) {
+        podspecOnly.add(plugin);
+      }
+    }
+    return unknownPodsInProject(podspecOnly, included: included);
+  }
 
   /// The project folder an override [base] (`<project>/xcross_overrides`)
   /// belongs to; null for the shared `~/.xcross/overrides`.
@@ -447,6 +525,7 @@ final class PluginCheckCommand extends Command<void> {
       final out = StringBuffer();
       final problems = <String>[];
       final all = plugins.read(project);
+      final unknownByName = writer.unknownPodsOf(project, all);
       final staleNames = {
         for (final status in readPluginStatus(plugins, project))
           if (status.problems.any((p) => p.code == 'stale')) status.name,
@@ -475,7 +554,8 @@ final class PluginCheckCommand extends Command<void> {
         } else if (!plugins.hasPodspec(plugin)) {
           out.writeln('✔ $label  (no iOS code)');
         } else {
-          final unknown = writer.unknownPods(plugin);
+          final unknown =
+              unknownByName[plugin.name] ?? writer.unknownPods(plugin);
           if (unknown.isEmpty) {
             out.writeln('✔ $label  (podspec only: the next build drafts it)');
           } else {
