@@ -118,8 +118,11 @@ final class PodSourceLayout {
     final normalizedHDir = normalizeHeaderDir(headerDir);
     final linkAliases = <Directory>[];
 
-    // Alias: <PodName>/ when it differs from <Module>
-    if (podName.toLowerCase() != moduleName.toLowerCase()) {
+    // Alias: <PodName>/ when it differs from <Module>, case included:
+    // `<Protobuf/...>` must resolve to module `protobuf` on case-sensitive
+    // hosts (Linux). On case-insensitive hosts the alias is the same
+    // directory and re-linking it is harmless.
+    if (podName != moduleName) {
       linkAliases.add(directoryFactory(p.join(publicBase.path, podName)));
     }
     // Alias: <header_dir>/ when set
