@@ -910,6 +910,43 @@ end
     expect(draft.notes, isEmpty);
   });
 
+  test("AC-006-9 the pod's own umbrella header is replaced by a stub and "
+      'its module map excluded', () {
+    // google_maps_flutter_ios 2.16.0: `s.module_map` points at a framework
+    // module map; its umbrella header imports <google_maps_flutter_ios/X.h>,
+    // a folder a flat Classes/ has no such directory for. SwiftPM's module
+    // map is `umbrella "<folder>"`: clang reads every header of the folder,
+    // so an `exclude:` of the header does not keep it out ("file not found",
+    // 2026-11-18). The draft writes an empty header over it instead.
+    final draft = draftPackageSwift(
+      plugin: 'flat_pod',
+      spec: Podspec.parse('''
+Pod::Spec.new do |s|
+  s.name = 'flat_pod'
+  s.source_files = 'Classes/**/*.{h,m}'
+  s.public_header_files = 'Classes/**/*.h'
+  s.module_map = 'Classes/flat_pod.modulemap'
+  s.dependency 'Flutter'
+end
+'''),
+      files: const [
+        'Classes/Plugin.h',
+        'Classes/Plugin.m',
+        'Classes/flat_pod-umbrella.h',
+        'Classes/flat_pod.modulemap',
+      ],
+    );
+    expect(draft.text, contains('"flat_pod.modulemap"'));
+    expect(draft.text, isNot(contains('"flat_pod-umbrella.h"')));
+    expect(draft.text, isNot(contains('"Plugin.h"')));
+    final stub = draft.generatedFiles['Classes/flat_pod-umbrella.h'];
+    expect(stub, isNotNull);
+    expect(stub, isNot(contains('<flat_pod/')));
+    expect(stub, contains('#import <Foundation/Foundation.h>'));
+    expect(draft.objcSources, isNot(contains('Classes/flat_pod-umbrella.h')));
+    expect(draft.notes.join('\n'), contains('umbrella header'));
+  });
+
   test('AC-006-9 resources come before publicHeadersPath (Swift argument '
       'order)', () {
     // google_maps_flutter_ios 2.18.3: a privacy manifest plus include/.

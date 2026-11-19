@@ -1014,7 +1014,26 @@ PackageSwiftDraft draftPackageSwift({
   final native = inTarget
       .where((f) => RegExp(r'\.(m|mm|c|cc|cpp)$').hasMatch(f))
       .toList();
-  final headers = inTarget.where((f) => f.endsWith('.h')).toList();
+  // The pod's own module map and umbrella header (`s.module_map =`). They
+  // describe a framework module whose headers sit under `<Name>/`, which a
+  // flat SwiftPM target does not have. SwiftPM's module map for the target is
+  // `umbrella "<folder>"`, and clang reads EVERY header of that folder into
+  // the module, whatever the manifest excludes: the pod's umbrella header,
+  // with its `#import <Name/Header.h>` lines, stops the build with "file not
+  // found" (google_maps_flutter_ios 2.16.0, a client app, 2026-11-18; an
+  // `exclude:` did not help). So the module map is left out of the target
+  // and the umbrella header is replaced by a stub in the override folder.
+  final podModuleMaps = [
+    for (final file in inTarget)
+      if (file.endsWith('.modulemap')) file,
+  ];
+  final podUmbrellas = [
+    for (final file in inTarget)
+      if (file.endsWith('-umbrella.h')) file,
+  ];
+  final headers = inTarget
+      .where((f) => f.endsWith('.h') && !podUmbrellas.contains(f))
+      .toList();
   final headerDirectory = _commonDirectory(spec.publicHeaderFiles);
   final publicHeaders =
       spec.publicHeaderFiles.isNotEmpty &&
@@ -1119,6 +1138,16 @@ PackageSwiftDraft draftPackageSwift({
         'for development builds).',
       );
     }
+  }
+
+  if (podModuleMaps.isNotEmpty || podUmbrellas.isNotEmpty) {
+    notes.add(
+      "The pod's own module map and umbrella header "
+      '(${[...podModuleMaps, ...podUmbrellas].join(', ')}) do not fit a '
+      'SwiftPM target: the module map is excluded and the umbrella header is '
+      "replaced by an empty one, since SwiftPM generates the target's module "
+      'map.',
+    );
   }
 
   final mixed = swift.isNotEmpty && native.isNotEmpty;
@@ -1232,6 +1261,19 @@ PackageSwiftDraft draftPackageSwift({
   }
 
   final generatedHeader = generatedFiles.isEmpty ? null : bridgingHeader;
+  // Written after the bridging header is settled: they must not make a
+  // pod's own header look generated.
+  final umbrellaStubs = {
+    for (final umbrella in podUmbrellas)
+      inPodspecFolder(umbrella): [
+        "// Replaced by `xcross plugin shim`: the pod's framework umbrella",
+        '// header imports <Name/Header.h>, a folder a flat SwiftPM target does',
+        "// not have, and clang reads every header of the target's folder into",
+        '// its module.',
+        '#import <Foundation/Foundation.h>',
+        '',
+      ].join('\n'),
+  };
   final targets = mixed
       ? [
           target(
@@ -1240,6 +1282,7 @@ PackageSwiftDraft draftPackageSwift({
             exclude: [
               ...native,
               ...headers,
+              ...podModuleMaps,
               ?generatedHeader,
               // Declared by the Objective-C target, in this same folder.
               for (final copy in resourceCopies.values)
@@ -1266,11 +1309,18 @@ PackageSwiftDraft draftPackageSwift({
           target(
             name: plugin,
             dependencies: [...productLines, '"${plugin}_swift"'],
-            exclude: [...swift, ?generatedHeader],
+            exclude: [...swift, ...podModuleMaps, ?generatedHeader],
             objc: true,
           ),
         ]
-      : [target(name: plugin, dependencies: productLines, objc: swift.isEmpty)];
+      : [
+          target(
+            name: plugin,
+            dependencies: productLines,
+            exclude: podModuleMaps,
+            objc: swift.isEmpty,
+          ),
+        ];
 
   final text = StringBuffer()
     ..writeln('// swift-tools-version: 5.9')
@@ -1327,7 +1377,7 @@ PackageSwiftDraft draftPackageSwift({
     moduleRenames: moduleRenames,
     flatHeaderModules: flatHeaderModules,
     resourceCopies: resourceCopies,
-    generatedFiles: generatedFiles,
+    generatedFiles: {...generatedFiles, ...umbrellaStubs},
   );
 }
 

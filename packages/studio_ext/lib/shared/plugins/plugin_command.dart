@@ -485,8 +485,9 @@ final class PluginDraftWriter {
       final file = fs.file(paths.joinAll([folder, ...relative.split('/')]));
       file.parent.createSync(recursive: true);
       file.writeAsStringSync(text);
-      patched[relative] =
-          'written by xcross: the headers the Swift target uses';
+      patched[relative] = relative.endsWith('-umbrella.h')
+          ? "written by xcross: replaces the pod's framework umbrella header"
+          : 'written by xcross: the headers the Swift target uses';
     }
     // studio: 028 — xcross wrote this one; the developer has yet to look.
     DraftLedger(fs, paths, base).record(name, target.version);
