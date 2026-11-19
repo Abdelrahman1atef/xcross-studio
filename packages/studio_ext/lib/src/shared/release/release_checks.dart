@@ -162,6 +162,42 @@ final class ReleaseProject {
     return entries;
   }();
 
+  /// The app's `ios/Runner/Info.plist` as written in the project (build
+  /// variables such as `$(FLUTTER_BUILD_NAME)` are not resolved); empty when
+  /// it is missing or unreadable.
+  Map<String, Object?> infoPlist() {
+    final file = fileSystem.file(_join(['ios', 'Runner', 'Info.plist']));
+    if (!file.existsSync()) return const {};
+    return readPlist(file.readAsBytesSync())?.dictionary ?? const {};
+  }
+
+  /// Whether the Runner target has its own privacy manifest.
+  bool get hasPrivacyManifest => fileSystem
+      .file(_join(['ios', 'Runner', 'PrivacyInfo.xcprivacy']))
+      .existsSync();
+
+  /// `key: value` under the top-level `xcross:` key of `pubspec.yaml`, or
+  /// null (a line scan, as for [directDependencies]).
+  String? xcrossSetting(String key) {
+    final pubspec = _read(['pubspec.yaml']);
+    if (pubspec == null) return null;
+    var inside = false;
+    for (final raw in const LineSplitter().convert(pubspec)) {
+      final line = raw.replaceFirst(RegExp(r'\s+#.*$'), '');
+      if (line.trim().isEmpty || line.trimLeft().startsWith('#')) continue;
+      if (!line.startsWith(' ') && !line.startsWith('	')) {
+        inside = line.startsWith('xcross:');
+        continue;
+      }
+      if (!inside) continue;
+      final match = RegExp(
+        r'^\s+' + RegExp.escape(key) + r'\s*:\s*(.*?)\s*$',
+      ).firstMatch(line);
+      if (match != null) return match.group(1);
+    }
+    return null;
+  }
+
   /// Whether the project has its own `xcross_overrides/<plugin>` folder.
   bool hasOverride(String plugin) =>
       fileSystem.directory(_join(['xcross_overrides', plugin])).existsSync();
@@ -260,6 +296,187 @@ final class ReleaseProject {
         ? 'AppIcon.appiconset'
         : sets.first;
   }
+}
+
+/// The permission, App Transport Security and background-mode findings for
+/// an app whose Info.plist is [info] and that uses [plugins]. [known] is
+/// whether the Flutter project (so the plugin list) is known. Shared by the
+/// check of a built app and the one before the build.
+@internal
+List<ReleaseIssue> permissionIssues(
+  Map<String, Object?> info,
+  Set<String> plugins, {
+  required bool known,
+}) {
+  final issues = <ReleaseIssue>[];
+  void add(
+    String code,
+    ReleaseSeverity severity,
+    String message, {
+    String? path,
+    String? hint,
+  }) =>
+      issues.add(ReleaseIssue(code, severity, message, path: path, hint: hint));
+
+  for (final plugin in plugins.toList()..sort()) {
+    for (final requirement
+        in ReleaseTables.pluginUsage[plugin] ?? const <UsageRequirement>[]) {
+      if (requirement.anyOf.any((key) => info.containsKey(key))) continue;
+      add(
+        'release.permission_missing',
+        ReleaseSeverity.error,
+        '$plugin uses the ${requirement.resource} but Info.plist has no '
+            '${requirement.anyOf.join(' or ')}; iOS ends the app when it asks.',
+        path: 'Info.plist',
+        hint:
+            'Add ${requirement.anyOf.first} to ios/Runner/Info.plist with '
+            'a sentence saying why the app needs it.',
+      );
+    }
+  }
+  for (final key
+      in info.keys.where(ReleaseTables.isUsageKey).toList()..sort()) {
+    final value = info[key];
+    final text = value is String ? value.trim() : '';
+    if (ReleaseTables.isPlaceholderPurpose(key, value)) {
+      add(
+        'release.permission_placeholder',
+        ReleaseSeverity.warning,
+        '$key is "${text.length > 40 ? '${text.substring(0, 40)}…' : text}"; '
+            'App Review rejects empty or placeholder purpose strings.',
+        path: 'Info.plist',
+        hint: 'Explain what the app does with it, in a full sentence.',
+      );
+    }
+  }
+  if (info['NSAppTransportSecurity'] case {'NSAllowsArbitraryLoads': true}) {
+    add(
+      'release.ats_arbitrary_loads',
+      ReleaseSeverity.warning,
+      'NSAllowsArbitraryLoads turns off App Transport Security for every '
+          'domain; App Review asks for a justification.',
+      path: 'Info.plist',
+      hint: 'Use NSExceptionDomains for the hosts that need it.',
+    );
+  }
+  final modes = info['UIBackgroundModes'];
+  if (modes is List) {
+    for (final mode in modes.whereType<String>()) {
+      final explainedBy = [
+        for (final plugin
+            in ReleaseTables.backgroundModePlugins[mode] ?? const <String>[])
+          if (plugins.contains(plugin)) plugin,
+      ];
+      add(
+        'release.background_mode',
+        known && explainedBy.isEmpty
+            ? ReleaseSeverity.warning
+            : ReleaseSeverity.info,
+        explainedBy.isNotEmpty
+            ? 'Background mode "$mode" (used by ${explainedBy.join(', ')}).'
+            : known
+            ? 'Background mode "$mode" has no plugin that explains it; App '
+                  'Review asks what it is for.'
+            : 'Background mode "$mode".',
+        path: 'Info.plist',
+      );
+    }
+  }
+  return issues;
+}
+
+/// What is wrong with the App Store icon of [project]'s icon set: none, an
+/// unusable PNG (size, alpha channel, transparency), or no 1024 px icon at
+/// all. Shared by the check of a built app and the one before the build.
+@internal
+List<ReleaseIssue> marketingIconIssues(ReleaseProject project) {
+  final icon = project.marketingIcon();
+  if (icon.problem case final problem?) {
+    return [
+      ReleaseIssue(
+        'release.marketing_icon',
+        ReleaseSeverity.error,
+        'No usable app icon set ($problem).',
+        path: 'ios/Runner/Assets.xcassets',
+        hint: 'Add an AppIcon set with a 1024×1024 icon.',
+      ),
+    ];
+  }
+  if (icon.fileName == null) {
+    return const [
+      ReleaseIssue(
+        'release.marketing_icon',
+        ReleaseSeverity.error,
+        'The app icon set has no 1024×1024 App Store icon.',
+        path: 'ios/Runner/Assets.xcassets',
+        hint: 'Add a 1024×1024 PNG without transparency to the icon set.',
+      ),
+    ];
+  }
+  final bytes = icon.bytes;
+  final problem = bytes == null
+      ? 'is missing'
+      : ReleaseChecker.pngProblem(bytes);
+  if (problem == null) return const [];
+  return [
+    ReleaseIssue(
+      'release.marketing_icon',
+      ReleaseSeverity.error,
+      'The App Store icon ${icon.fileName} $problem.',
+      path: 'ios/Runner/Assets.xcassets',
+      hint:
+          'Export it as a 1024×1024 PNG without an alpha channel '
+          '(App Store Connect rejects transparency: ITMS-90717).',
+    ),
+  ];
+}
+
+/// The checks that need no built app, only the project's sources: they run
+/// before `xcross flutter build --export-method app-store` compiles anything,
+/// so an App Store rejection found here costs seconds, not a whole build.
+/// The codes are the ones `xcross release check` uses for the same findings.
+@internal
+ReleaseReport runPreflightChecks(ReleaseProject project) {
+  final info = project.infoPlist();
+  final issues = <ReleaseIssue>[
+    ...marketingIconIssues(project),
+    ...permissionIssues(info, project.plugins, known: true),
+  ];
+  if (!project.hasPrivacyManifest) {
+    issues.add(
+      const ReleaseIssue(
+        'release.privacy_manifest_missing',
+        ReleaseSeverity.warning,
+        'The app has no PrivacyInfo.xcprivacy at its root.',
+        path: 'ios/Runner/PrivacyInfo.xcprivacy',
+        hint:
+            'Add ios/Runner/PrivacyInfo.xcprivacy (data collected, '
+            'required-reason APIs) to the Runner target: '
+            '`xcross privacy init` does both.',
+        fix: ['privacy', 'init'],
+      ),
+    );
+  }
+  if (!info.containsKey('ITSAppUsesNonExemptEncryption') &&
+      project.xcrossSetting('uses_non_exempt_encryption') == null) {
+    issues.add(
+      const ReleaseIssue(
+        'release.encryption_unset',
+        ReleaseSeverity.warning,
+        'ITSAppUsesNonExemptEncryption is not set, so App Store Connect asks '
+            'the export compliance questions for every build.',
+        path: 'pubspec.yaml',
+        hint:
+            'Set uses_non_exempt_encryption: false (or true) under xcross: in '
+            "pubspec.yaml after checking the app's encryption.",
+      ),
+    );
+  }
+  return ReleaseReport(
+    input: project.root,
+    configuration: const {'stage': 'preflight'},
+    issues: issues,
+  );
 }
 
 /// Runs every release check on [source] (and [project] when known).
@@ -630,74 +847,13 @@ final class ReleaseChecker {
 
   // --- Permissions (AC-018-11) --------------------------------------------
 
-  void _permissions() {
-    final plugins = project?.plugins ?? const <String>{};
-    for (final plugin in plugins.toList()..sort()) {
-      for (final requirement
-          in ReleaseTables.pluginUsage[plugin] ?? const <UsageRequirement>[]) {
-        if (requirement.anyOf.any((key) => _info.containsKey(key))) continue;
-        _add(
-          'release.permission_missing',
-          ReleaseSeverity.error,
-          '$plugin uses the ${requirement.resource} but Info.plist has no '
-              '${requirement.anyOf.join(' or ')}; iOS ends the app when it asks.',
-          path: 'Info.plist',
-          hint:
-              'Add ${requirement.anyOf.first} to ios/Runner/Info.plist with '
-              'a sentence saying why the app needs it.',
-        );
-      }
-    }
-    for (final key
-        in _info.keys.where(ReleaseTables.isUsageKey).toList()..sort()) {
-      final value = _info[key];
-      final text = value is String ? value.trim() : '';
-      if (ReleaseTables.isPlaceholderPurpose(key, value)) {
-        _add(
-          'release.permission_placeholder',
-          ReleaseSeverity.warning,
-          '$key is "${text.length > 40 ? '${text.substring(0, 40)}…' : text}"; '
-              'App Review rejects empty or placeholder purpose strings.',
-          path: 'Info.plist',
-          hint: 'Explain what the app does with it, in a full sentence.',
-        );
-      }
-    }
-    if (_info['NSAppTransportSecurity'] case {'NSAllowsArbitraryLoads': true}) {
-      _add(
-        'release.ats_arbitrary_loads',
-        ReleaseSeverity.warning,
-        'NSAllowsArbitraryLoads turns off App Transport Security for every '
-            'domain; App Review asks for a justification.',
-        path: 'Info.plist',
-        hint: 'Use NSExceptionDomains for the hosts that need it.',
-      );
-    }
-    final modes = _info['UIBackgroundModes'];
-    if (modes is List) {
-      for (final mode in modes.whereType<String>()) {
-        final explainedBy = [
-          for (final plugin
-              in ReleaseTables.backgroundModePlugins[mode] ?? const <String>[])
-            if (plugins.contains(plugin)) plugin,
-        ];
-        final known = project != null;
-        _add(
-          'release.background_mode',
-          known && explainedBy.isEmpty
-              ? ReleaseSeverity.warning
-              : ReleaseSeverity.info,
-          explainedBy.isNotEmpty
-              ? 'Background mode "$mode" (used by ${explainedBy.join(', ')}).'
-              : known
-              ? 'Background mode "$mode" has no plugin that explains it; App '
-                    'Review asks what it is for.'
-              : 'Background mode "$mode".',
-          path: 'Info.plist',
-        );
-      }
-    }
-  }
+  void _permissions() => _issues.addAll(
+    permissionIssues(
+      _info,
+      project?.plugins ?? const <String>{},
+      known: project != null,
+    ),
+  );
 
   /// The purpose strings App Store Connect finds by reading the code
   /// (AC-018-17): a call such as `requestAlwaysAuthorization` in any binary,
@@ -938,40 +1094,7 @@ final class ReleaseChecker {
 
   void _assets() {
     final project = this.project;
-    if (project != null) {
-      final icon = project.marketingIcon();
-      if (icon.problem case final problem?) {
-        _add(
-          'release.marketing_icon',
-          ReleaseSeverity.error,
-          'No usable app icon set ($problem).',
-          path: 'ios/Runner/Assets.xcassets',
-          hint: 'Add an AppIcon set with a 1024×1024 icon.',
-        );
-      } else if (icon.fileName == null) {
-        _add(
-          'release.marketing_icon',
-          ReleaseSeverity.error,
-          'The app icon set has no 1024×1024 App Store icon.',
-          path: 'ios/Runner/Assets.xcassets',
-          hint: 'Add a 1024×1024 PNG without transparency to the icon set.',
-        );
-      } else {
-        final bytes = icon.bytes;
-        final problem = bytes == null ? 'is missing' : _pngProblem(bytes);
-        if (problem != null) {
-          _add(
-            'release.marketing_icon',
-            ReleaseSeverity.error,
-            'The App Store icon ${icon.fileName} $problem.',
-            path: 'ios/Runner/Assets.xcassets',
-            hint:
-                'Export it as a 1024×1024 PNG without an alpha channel '
-                '(App Store Connect rejects transparency: ITMS-90717).',
-          );
-        }
-      }
-    }
+    if (project != null) _issues.addAll(marketingIconIssues(project));
     _iconCatalog();
     if (_report.resources.launchScreen.kind == LaunchScreenKind.none) {
       _add(

@@ -6,11 +6,13 @@ import 'package:build_cli_annotations/build_cli_annotations.dart';
 import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:meta/meta.dart';
 import 'package:studio_ext/shared/appstore/build_numbers.dart'; // studio: 019
+import 'package:studio_ext/shared/release/release_preflight.dart'; // studio: 018
 import 'package:xcross/src/composition/cli/asc_commands.dart'; // studio: 019
 import 'package:xcross/src/composition/ios_target.dart';
 import 'package:xcross/src/shared/cli/internal/parsed_command.dart';
 import 'package:xcross/src/shared/cli/shared/ipa_packager.dart';
 import 'package:xcross/src/shared/diagnostics/xcross_diagnostics.dart'; // studio: 018
+import 'package:xcross/src/shared/errors/errors.dart'; // studio: 018
 import 'package:xcross/src/shared/flutter/build/flutter_pack_operation.dart';
 import 'package:xcross/src/shared/flutter/models/flutter/flutter_build_mode.dart';
 import 'package:xcross/src/shared/runtime/xcross_runtime.dart';
@@ -148,10 +150,22 @@ final class FlutterBuildCommand<T extends PlatformHostInterface>
               'app-store: sign for App Store distribution (team API key with '
               'the Admin or App Manager role) and write build/xcross-ios/ipa '
               'and build/xcross-ios/archive/Runner.xcarchive. Needs --release.',
+        )
+        // studio: 018 — what App Store Connect would reject and the project's
+        // sources already show (icon, purpose strings, background modes,
+        // privacy manifest, export compliance), before anything compiles.
+        ..addFlag(
+          preflightOption,
+          defaultsTo: true,
+          help:
+              'With --export-method app-store: check the project sources '
+              'first and stop on errors App Store Connect would reject '
+              '(`xcross release preflight`).',
         );
 
   // studio: 018
   static const exportMethodOption = 'export-method';
+  static const preflightOption = 'preflight'; // studio: 018
   @override
   FlutterBuildArgs parseOptions(ArgResults results) =>
       _$parseFlutterBuildArgsResult(results);
@@ -186,6 +200,10 @@ final class FlutterBuildCommand<T extends PlatformHostInterface>
     // studio: 018 — a missing or individual key stops the build before it
     // compiles, not after.
     if (appStore) await _appStoreExport().credentials();
+    // studio: 018 — so do the project's own App Store problems.
+    if (appStore && argResults?[preflightOption] != false) {
+      _preflight(projectRoot);
+    }
     // studio: 019 — `--build-number auto`: one past App Store Connect's newest.
     // `--build-number keep`: the pubspec number unless this version already
     // has it (or a higher one) on App Store Connect.
@@ -234,6 +252,36 @@ final class FlutterBuildCommand<T extends PlatformHostInterface>
     if (options.ipa) {
       runtime.log.events?.event('artifact', {'kind': 'ipa', 'path': finalPath});
     }
+  }
+
+  // studio: 018 — `xcross release preflight` before an App Store build:
+  // warnings are shown, errors stop the build with all of them named.
+  void _preflight(String projectRoot) {
+    final result = preflightProject(
+      fileSystem: runtime.host.fileSystem,
+      paths: runtime.host.paths.context,
+      projectRoot: projectRoot,
+    );
+    final errors = <String>[];
+    for (final finding in result.findings) {
+      if (finding.isError) {
+        errors.add(finding.text);
+      } else {
+        runtime.log.logWarn(finding.text);
+      }
+    }
+    if (errors.isEmpty) {
+      runtime.log.logInfo(
+        'Preflight',
+        result.warnings == 0 ? 'no problems found' : 'no errors',
+      );
+      return;
+    }
+    throw XcrossError(
+      '${errors.join('\n')}\n'
+      'The build stopped before compiling: App Store Connect would reject '
+      'this. Fix it, or build with --no-preflight.',
+    );
   }
 
   // studio: 018

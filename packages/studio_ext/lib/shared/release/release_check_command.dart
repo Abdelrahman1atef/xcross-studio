@@ -9,6 +9,7 @@ import 'package:cli_kit/shared/errors/errors.dart';
 import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:path/path.dart' as p;
 import 'package:studio_ext/shared/release/release_gate_command.dart'; // studio: 022
+import 'package:studio_ext/shared/release/release_preflight.dart'; // studio: 018
 import 'package:studio_ext/src/shared/inspect/inspect_failure.dart';
 import 'package:studio_ext/src/shared/inspect/inspect_source.dart';
 import 'package:studio_ext/src/shared/release/release_checks.dart';
@@ -36,6 +37,14 @@ final class ReleaseCommand extends Command<void> {
         write: write,
         now: now,
         openApi: openApi,
+      ),
+    );
+    addSubcommand(
+      ReleasePreflightCommand(
+        fileSystem: fileSystem,
+        paths: paths,
+        currentDirectory: currentDirectory,
+        write: write,
       ),
     );
     if (flutter != null && runTool != null) {
@@ -277,5 +286,93 @@ final class ReleaseCheckCommand extends Command<void> {
                 '${report.warnings == 1 ? '' : 's'}.',
     );
     return out.toString();
+  }
+}
+
+/// `xcross release preflight [--json] [--project <dir>]`: the release checks
+/// that need no built app, found in seconds instead of after a build.
+final class ReleasePreflightCommand extends Command<void> {
+  ReleasePreflightCommand({
+    required HostFileSystemInterface fileSystem,
+    required p.Context paths,
+    required String Function() currentDirectory,
+    required void Function(String) write,
+  }) : _fileSystem = fileSystem,
+       _paths = paths,
+       _currentDirectory = currentDirectory,
+       _write = write {
+    argParser
+      ..addFlag(
+        'json',
+        negatable: false,
+        help: 'Print one JSON object instead of the report.',
+      )
+      ..addOption(
+        'project',
+        valueHelp: 'dir',
+        help: 'The Flutter project (default: the current folder).',
+      );
+  }
+
+  final HostFileSystemInterface _fileSystem;
+  final p.Context _paths;
+  final String Function() _currentDirectory;
+  final void Function(String) _write;
+
+  @override
+  String get name => 'preflight';
+
+  @override
+  String get description =>
+      'Check the project before building: the App Store icon, purpose '
+      'strings, background modes, privacy manifest, export compliance. '
+      '`xcross flutter build --export-method app-store` runs it first.';
+
+  @override
+  String get invocation =>
+      'xcross release preflight [--json] [--project <dir>]';
+
+  @override
+  Future<void> run() async {
+    final results = argResults!;
+    final option = results.option('project');
+    final root = option == null
+        ? _currentDirectory()
+        : _paths.normalize(_paths.absolute(option));
+    if (!_fileSystem.file(_paths.join(root, 'pubspec.yaml')).existsSync()) {
+      throw CliError(
+        '[release.no_project] $root has no pubspec.yaml.\n'
+        'hint: Run in the Flutter project folder or pass --project <dir>.',
+      );
+    }
+    final result = preflightProject(
+      fileSystem: _fileSystem,
+      paths: _paths,
+      projectRoot: root,
+    );
+    if (results.flag('json')) {
+      _write('${jsonEncode(result.toJson())}\n');
+    } else {
+      final out = StringBuffer('Release preflight: $root\n\n');
+      for (final finding in result.findings) {
+        out.writeln('${finding.isError ? 'error' : 'warning'} ${finding.text}');
+      }
+      out.writeln(
+        result.errors == 0 && result.warnings == 0
+            ? 'No problems found.'
+            : '${result.errors} error${result.errors == 1 ? '' : 's'}, '
+                  '${result.warnings} warning'
+                  '${result.warnings == 1 ? '' : 's'}.',
+      );
+      _write(out.toString());
+    }
+    if (result.errors > 0) {
+      throw CliError(
+        '[release.preflight_failed] ${result.errors} '
+        'error${result.errors == 1 ? '' : 's'} would stop the App Store '
+        'upload.\n'
+        'hint: Fix the errors above, then build.',
+      );
+    }
   }
 }
