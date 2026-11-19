@@ -359,6 +359,66 @@ final class SwiftPmPlanReader {
     );
   }
 
+  /// studio: 006 — puts every one of [archives] on the link command of the
+  /// plugins dylib in the plan, as `-Xlinker <path>`, where it is missing.
+  /// Returns whether the plan changed.
+  ///
+  /// A `-Xlinker <archive>` given to `swift build` does not always reach the
+  /// link command SwiftPM writes to `debug.yaml` (Swift 6.4.2, Windows host:
+  /// the dylib linked without GoogleMaps.a and failed with undefined `GMS…`
+  /// symbols, a client app, 2026-11-18, although the build was started with
+  /// the flags), and llbuild replays that file verbatim. So the plan is
+  /// completed here, once it is final.
+  bool linkArchivesIntoPluginsProduct(
+    String scratchPath,
+    List<String> archives,
+  ) {
+    if (archives.isEmpty) return false;
+    final file = fileSystem.file(p.join(scratchPath, 'debug.yaml'));
+    final String text;
+    try {
+      text = file.readAsStringSync();
+    } on Object {
+      return false;
+    }
+    final lines = text.split('\n');
+    final header = RegExp('^  "C\\.$pluginsProductName-[^"]*\\.dylib":');
+    var changed = false;
+    for (var i = 0; i < lines.length; i++) {
+      if (!header.hasMatch(lines[i])) continue;
+      for (var j = i + 1; j < lines.length; j++) {
+        final line = lines[j];
+        if (line.isNotEmpty && !line.startsWith('    ')) break;
+        final trimmed = line.trimRight();
+        if (!trimmed.startsWith('    args: [') || !trimmed.endsWith(']')) {
+          continue;
+        }
+        final carriage = line.length - trimmed.length;
+        final arguments = trimmed.substring('    args: ['.length);
+        final missing = [
+          for (final archive in archives)
+            if (!arguments.contains(
+              '${jsonEncode('-Xlinker')},${jsonEncode(archive)}',
+            ))
+              archive,
+        ];
+        if (missing.isEmpty) break;
+        final added = [
+          for (final archive in missing)
+            '${jsonEncode('-Xlinker')},${jsonEncode(archive)}',
+        ].join(',');
+        lines[j] =
+            '    args: ['
+            '${arguments.substring(0, arguments.length - 1)},$added]'
+            '${line.substring(line.length - carriage)}';
+        changed = true;
+        break;
+      }
+    }
+    if (changed) file.writeAsStringSync(lines.join('\n'));
+    return changed;
+  }
+
   bool manifestCarriesInteropSearchPaths(
     String scratchPath,
     List<String> interopArguments,

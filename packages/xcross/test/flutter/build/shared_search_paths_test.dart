@@ -188,6 +188,30 @@ void main() {
       yaml(['swiftc', '-L', debug, '-Xlinker', maps]),
     );
     expect(reader.manifestLinksArchives(scratch, archives), isTrue);
+
+    // AC-006-13: SwiftPM did not put the flags on the plugins dylib's link
+    // command (Swift 6.4.2 on Windows, 2026-11-18): the plan is completed.
+    final plain = yaml(['swiftc', '-L', debug]);
+    write(p.join(scratch, 'debug.yaml'), plain);
+    expect(reader.linkArchivesIntoPluginsProduct(scratch, archives), isTrue);
+    final completed = File(p.join(scratch, 'debug.yaml')).readAsStringSync();
+    expect(
+      completed,
+      contains('${jsonEncode('-L')},${jsonEncode(debug)},'),
+      reason: 'the arguments already there stay',
+    );
+    expect(
+      completed,
+      contains('${jsonEncode('-Xlinker')},${jsonEncode(maps)}]'),
+    );
+    expect(reader.manifestLinksArchives(scratch, archives), isTrue);
+    expect(
+      reader.linkArchivesIntoPluginsProduct(scratch, archives),
+      isFalse,
+      reason: 'nothing left to add',
+    );
+    expect(File(p.join(scratch, 'debug.yaml')).readAsStringSync(), completed);
+    expect(reader.linkArchivesIntoPluginsProduct(scratch, const []), isFalse);
   });
 
   test('AC-046-8 scans converted pod xcframeworks under Packages/pod-X', () {

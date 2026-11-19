@@ -391,6 +391,8 @@ final class SwiftPmBuildDriver<T extends PlatformHostInterface> {
       );
       await hostPolicy.repairBuildPlan(scratchPath, targetBuildDir);
     }
+    // The flags above do not always reach the plan's link command.
+    planReader.linkArchivesIntoPluginsProduct(scratchPath, archives);
     return (targetBuildDir: targetBuildDir, interopArguments: arguments);
   }
 }
