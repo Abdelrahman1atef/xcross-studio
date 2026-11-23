@@ -59,16 +59,32 @@ Uint8List _runnerZip() {
         utf8.encode('<plist/>'),
       ),
     )
+    ..add(
+      ArchiveFile.bytes(
+        '$app/PlugIns/WebDriverAgentRunner.xctest/WebDriverAgentRunner',
+        [5, 5, 5],
+      ),
+    )
+    ..add(
+      ArchiveFile.bytes(
+        '$app/PlugIns/WebDriverAgentRunner.xctest/Frameworks/WebDriverAgentLib.framework/WebDriverAgentLib',
+        [6, 6, 6],
+      ),
+    )
     ..add(ArchiveFile.bytes('../escape.txt', utf8.encode('no')));
   return Uint8List.fromList(ZipEncoder().encode(archive));
 }
 
 @internal
 final class FakeServices implements TouchHelperServices {
-  FakeServices(this.zip, {this.signFails = false});
+  FakeServices(this.zip, {this.signFails = false, this.buildFails = false});
 
   final Uint8List zip;
   final bool signFails;
+  final bool buildFails;
+  String? builtFrom;
+  Uint8List? testBundleAtSign;
+  bool frameworksAtSign = false;
   int downloads = 0;
   String? signedApp;
   String? installedApp;
@@ -97,12 +113,27 @@ final class FakeServices implements TouchHelperServices {
     runnerAtSign = File(
       p.join(appPath, 'WebDriverAgentRunner-Runner'),
     ).readAsBytesSync();
+    final bundle = p.join(appPath, 'PlugIns', 'WebDriverAgentRunner.xctest');
+    final binary = File(p.join(bundle, 'WebDriverAgentRunner'));
+    testBundleAtSign = binary.existsSync() ? binary.readAsBytesSync() : null;
+    frameworksAtSign = Directory(p.join(bundle, 'Frameworks')).existsSync();
     return 'XCR-TEAM.$bundleId';
   }
 
   @override
   Future<void> install(String appPath, {required String udid}) async =>
       installedApp = appPath;
+
+  static final builtBinary = Uint8List.fromList([0xCF, 0xFA, 0xED, 0xFE, 1]);
+
+  @override
+  Future<void> buildRunner(String sourcePath, String binaryPath) async {
+    builtFrom = File(sourcePath).readAsStringSync();
+    if (buildFails) {
+      throw CliError('[touch_setup.build] No iOS SDK on this PC.');
+    }
+    File(binaryPath).writeAsBytesSync(builtBinary);
+  }
 }
 
 void main() {
@@ -120,17 +151,20 @@ void main() {
       (jsonDecode(line) as Map).cast<String, Object?>(),
   ];
 
-  Future<void> run(FakeServices services, {String? sha}) =>
-      CommandRunner<void>('xcross', 'test')
-          .addCommandAnd(
-            ScreenTouchSetupCommand(
-              services: services,
-              workRoot: work.path,
-              writeBytes: out.addAll,
-              expectedSha256: sha ?? sha256.convert(services.zip).toString(),
-            ),
-          )
-          .run(['touch-setup', '--udid', 'UDID1', '--json']);
+  Future<void> run(
+    FakeServices services, {
+    String? sha,
+    List<String> extra = const [],
+  }) => CommandRunner<void>('xcross', 'test')
+      .addCommandAnd(
+        ScreenTouchSetupCommand(
+          services: services,
+          workRoot: work.path,
+          writeBytes: out.addAll,
+          expectedSha256: sha ?? sha256.convert(services.zip).toString(),
+        ),
+      )
+      .run(['touch-setup', '--udid', 'UDID1', '--json', ...extra]);
 
   test('AC-048-T5 a FAT file keeps only its plain arm64 slice', () {
     final fat = _fat(x86: [1, 2], arm: [9, 8, 7]);
@@ -156,12 +190,21 @@ void main() {
       expect(events().map((e) => e['step'] ?? e['type']), [
         'download',
         'prepare',
+        'build',
         'sign',
         'install',
         'touch_setup_done',
       ]);
       final done = events().last;
       expect(done['ok'], true);
+      expect(done['fast'], true);
+      expect(services.builtFrom, contains('@interface XcrossTouchRunner'));
+      expect(
+        services.testBundleAtSign,
+        FakeServices.builtBinary,
+        reason: 'our runner in place of WebDriverAgent',
+      );
+      expect(services.frameworksAtSign, isFalse);
       expect(done['bundleId'], 'XCR-TEAM.${TouchHelperRelease.bundleId}');
       expect(services.installedApp, services.signedApp);
       expect(
@@ -221,6 +264,29 @@ void main() {
       expect(done['step'], 'sign');
       expect(done['message'], contains('Sign in to your Apple account'));
       expect(services.installedApp, isNull);
+    },
+  );
+
+  test(
+    'AC-048-T11 the fast helper cannot be built here (or --wda): WebDriverAgent is installed instead',
+    () async {
+      final services = FakeServices(_runnerZip(), buildFails: true);
+      await run(services);
+      final done = events().last;
+      expect(done['ok'], true);
+      expect(done['fast'], false);
+      expect(
+        events().where((e) => e['step'] == 'build').last['detail'],
+        allOf(contains('No iOS SDK'), contains('WebDriverAgent')),
+      );
+      expect(services.testBundleAtSign, [5, 5, 5]);
+      expect(services.frameworksAtSign, isTrue);
+
+      out.clear();
+      final wda = FakeServices(_runnerZip());
+      await run(wda, extra: ['--wda']);
+      expect(wda.builtFrom, isNull, reason: '--wda skips the build');
+      expect(events().last['fast'], false);
     },
   );
 }

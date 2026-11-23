@@ -254,8 +254,9 @@ fn stream(args: &[String]) -> i32 {
                         if let Err(e) = w.prepare() {
                             log::info!("touch: session not ready yet ({e})");
                         }
+                        let fast = w.is_fast();
                         hub.set_wda(w);
-                        emit(json!({ "type": "screen_touch", "available": true }));
+                        emit(json!({ "type": "screen_touch", "available": true, "fast": fast }));
                     });
                 }
             }

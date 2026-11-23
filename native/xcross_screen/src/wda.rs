@@ -21,6 +21,9 @@ pub struct Wda {
     /// The kept-open connection; one request at a time, so touches stay in order.
     conn: Mutex<Option<TcpStream>>,
     session: Mutex<Option<(String, f64, f64)>>,
+    /// The screen in points when the phone runs the xcross touch runner (Studio's own, faster
+    /// touch helper): touches go straight to it, no WebDriverAgent session.
+    fast: Mutex<Option<(f64, f64)>>,
 }
 
 /// A tap or a drag from the viewer, in 0..1 of the picture.
@@ -86,6 +89,20 @@ impl Gesture {
     }
 }
 
+impl Gesture {
+    /// The xcross touch runner's request (path, body), in screen points.
+    pub fn fast_request(&self, w: f64, h: f64) -> (&'static str, Value) {
+        let pt = |v: f64, size: f64| (v * size * 10.0).round() / 10.0;
+        match *self {
+            Gesture::Tap { x, y, hold } => ("/touch/tap", json!({ "x": pt(x, w), "y": pt(y, h), "hold": hold })),
+            Gesture::Swipe { x1, y1, x2, y2, seconds } => (
+                "/touch/swipe",
+                json!({ "x1": pt(x1, w), "y1": pt(y1, h), "x2": pt(x2, w), "y2": pt(y2, h), "seconds": seconds }),
+            ),
+        }
+    }
+}
+
 impl Wda {
     /// `base` is `http://127.0.0.1:<port>` (anything else is refused: the phone is reached only
     /// through the engine's local forward).
@@ -97,6 +114,7 @@ impl Wda {
             device_port: 8100,
             conn: Mutex::new(None),
             session: Mutex::new(None),
+            fast: Mutex::new(None),
         })
     }
 
@@ -211,6 +229,10 @@ impl Wda {
 
     /// Sends a gesture; retries once with a new session (WDA drops idle sessions).
     pub fn gesture(&self, g: Gesture) -> Result<(), String> {
+        if let Some((w, h)) = *self.fast.lock().unwrap() {
+            let (path, body) = g.fast_request(w, h);
+            return self.call("POST", path, Some(&body)).map(|_| ());
+        }
         for attempt in 0..2 {
             let (sid, w, h) = self.session()?;
             let (path, body) = g.request(w, h);
@@ -229,14 +251,30 @@ impl Wda {
     /// `home` (Home button); other names are refused.
     pub fn button(&self, name: &str) -> Result<(), String> {
         match name {
+            "home" if self.fast.lock().unwrap().is_some() => self.call("POST", "/touch/home", None).map(|_| ()),
             "home" => self.call("POST", "/wda/homescreen", None).map(|_| ()),
             _ => Err(format!("unknown button {name}")),
         }
     }
 
-    /// Opens the session ahead of the first touch.
+    /// Learns which touch helper the phone runs; for WebDriverAgent, opens the session ahead of
+    /// the first touch.
     pub fn prepare(&self) -> Result<(), String> {
+        let status = self.call("GET", "/status", None)?;
+        if status.pointer("/value/xcrossTouch").is_some() {
+            let w = status.pointer("/value/screen/width").and_then(Value::as_f64).unwrap_or(375.0);
+            let h = status.pointer("/value/screen/height").and_then(Value::as_f64).unwrap_or(812.0);
+            log::info!("touch: xcross touch runner, screen {w}x{h} points");
+            *self.fast.lock().unwrap() = Some((w, h));
+            return Ok(());
+        }
+        log::info!("touch: WebDriverAgent");
         self.session().map(|_| ())
+    }
+
+    /// Whether the phone runs the xcross touch runner (after [prepare]).
+    pub fn is_fast(&self) -> bool {
+        self.fast.lock().unwrap().is_some()
     }
 
     /// Whether WDA answers.
@@ -443,6 +481,60 @@ mod tests {
         let stay = Wda::new(&format!("http://127.0.0.1:{fwd2}")).unwrap().with_device_port(free);
         assert!(stay.prefer_direct().is_none());
         assert!(stay.ready());
+    }
+
+    #[test]
+    fn the_xcross_runner_gets_points_without_a_session() {
+        use std::io::BufRead;
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = l.local_addr().unwrap().port();
+        let (tx, rx) = std::sync::mpsc::channel::<(String, String)>();
+        std::thread::spawn(move || {
+            for conn in l.incoming().flatten() {
+                let tx = tx.clone();
+                std::thread::spawn(move || {
+                    let mut reader = std::io::BufReader::new(conn.try_clone().unwrap());
+                    let mut conn = conn;
+                    loop {
+                        let mut line = String::new();
+                        if reader.read_line(&mut line).unwrap_or(0) == 0 {
+                            return;
+                        }
+                        let mut length = 0;
+                        loop {
+                            let mut h = String::new();
+                            reader.read_line(&mut h).unwrap();
+                            if h == "\r\n" {
+                                break;
+                            }
+                            if let Some(v) = h.to_ascii_lowercase().strip_prefix("content-length:") {
+                                length = v.trim().parse().unwrap();
+                            }
+                        }
+                        let mut body = vec![0; length];
+                        reader.read_exact(&mut body).unwrap();
+                        let path = line.split_whitespace().nth(1).unwrap().to_string();
+                        let reply = if path == "/status" {
+                            r#"{"value":{"ready":true,"xcrossTouch":1,"screen":{"width":375,"height":812}}}"#.to_string()
+                        } else {
+                            tx.send((path, String::from_utf8(body).unwrap())).unwrap();
+                            r#"{"value":null}"#.to_string()
+                        };
+                        write!(conn, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{reply}", reply.len()).unwrap();
+                    }
+                });
+            }
+        });
+        let wda = Wda::new(&format!("http://127.0.0.1:{port}")).unwrap();
+        wda.prepare().unwrap();
+        assert!(wda.is_fast());
+        wda.gesture(Gesture::Tap { x: 0.5, y: 0.5, hold: 0.03 }).unwrap();
+        let (path, body) = rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert_eq!(path, "/touch/tap");
+        let v: Value = serde_json::from_str(&body).unwrap();
+        assert_eq!((v["x"].as_f64(), v["y"].as_f64()), (Some(187.5), Some(406.0)));
+        wda.button("home").unwrap();
+        assert_eq!(rx.recv_timeout(Duration::from_secs(2)).unwrap().0, "/touch/home");
     }
 
     #[test]

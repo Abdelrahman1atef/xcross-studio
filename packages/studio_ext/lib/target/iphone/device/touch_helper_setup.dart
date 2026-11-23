@@ -12,6 +12,7 @@ import 'package:cli_kit/shared/errors/errors.dart';
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 import 'package:studio_ext/src/target/iphone/device/log_output.dart';
+import 'package:studio_ext/src/target/iphone/device/touch_runner_source.dart';
 
 /// The touch helper the engine installs: Appium's WebDriverAgent runner for
 /// real devices (BSD-3-Clause), pinned by version and SHA-256.
@@ -43,6 +44,11 @@ abstract interface class TouchHelperServices {
 
   /// Installs the signed `.app` on the iPhone.
   Future<void> install(String appPath, {required String udid});
+
+  /// Compiles the xcross touch runner ([sourcePath], Objective-C) into an
+  /// iPhone XCTest bundle binary at [binaryPath], with the installed iOS SDK.
+  /// Throws (with the reason) when this PC cannot build it.
+  Future<void> buildRunner(String sourcePath, String binaryPath);
 }
 
 /// Unpacks and prepares the runner (file work only).
@@ -94,6 +100,20 @@ final class TouchHelperPackage {
       );
     }
     return app;
+  }
+
+  /// The test bundle XCTest runs inside the runner app.
+  static String testBundle(String appPath) =>
+      p.join(appPath, 'PlugIns', 'WebDriverAgentRunner.xctest');
+
+  /// Puts the xcross touch runner [binary] in place of WebDriverAgent's test
+  /// bundle (same name, so the runner app finds it); WebDriverAgent's library
+  /// is no longer needed.
+  void useFastRunner(String appPath, String binary) {
+    final bundle = testBundle(appPath);
+    File(binary).copySync(p.join(bundle, 'WebDriverAgentRunner'));
+    final frameworks = Directory(p.join(bundle, 'Frameworks'));
+    if (frameworks.existsSync()) frameworks.deleteSync(recursive: true);
   }
 
   /// Leaves out the debug symbols and keeps only the plain arm64 slice of
@@ -176,6 +196,13 @@ final class ScreenTouchSetupCommand extends Command<void> {
         help: 'App ID for the touch helper.',
         defaultsTo: TouchHelperRelease.bundleId,
       )
+      ..addFlag(
+        'wda',
+        negatable: false,
+        help:
+            'Install WebDriverAgent as it is instead of building the faster '
+            'xcross touch runner.',
+      )
       ..addFlag('json', negatable: false, help: 'One JSON event per line.');
   }
 
@@ -189,18 +216,22 @@ final class ScreenTouchSetupCommand extends Command<void> {
 
   @override
   String get description =>
-      'Install the touch helper (WebDriverAgent) on the iPhone, signed with '
-      'your Apple account, so the live screen takes taps and swipes.';
+      'Install the touch helper on the iPhone, signed with your Apple '
+      'account, so the live screen takes taps and swipes. It is built on this '
+      'PC from the xcross touch runner (faster); WebDriverAgent is the '
+      'fallback.';
 
   @override
   String get invocation =>
-      'xcross screen touch-setup --udid <udid> [--bundle-id <id>] [--json]';
+      'xcross screen touch-setup --udid <udid> [--bundle-id <id>] [--wda] '
+      '[--json]';
 
   @override
   Future<void> run() async {
     final json = argResults!.flag('json');
     final udid = argResults!.option('udid')!;
     final bundleId = argResults!.option('bundle-id')!;
+    final wantFast = !argResults!.flag('wda');
     void step(String step, String detail) => _write({
       'v': 1,
       'type': 'touch_setup',
@@ -219,7 +250,7 @@ final class ScreenTouchSetupCommand extends Command<void> {
       if (!package.verified(bytes)) {
         step(
           'download',
-          'Downloading the touch helper (WebDriverAgent ${TouchHelperRelease.version})',
+          'Downloading the runner app (WebDriverAgent ${TouchHelperRelease.version})',
         );
         zip.parent.createSync(recursive: true);
         await _services.download(TouchHelperRelease.url, zip.path);
@@ -236,6 +267,28 @@ final class ScreenTouchSetupCommand extends Command<void> {
       step('prepare', 'Preparing the touch helper');
       final app = package.unpack(bytes);
       package.prepare(app);
+      var fast = false;
+      if (wantFast) {
+        failedStep = 'build';
+        step('build', 'Building the fast touch helper on this PC');
+        final dir = Directory(p.join(_workRoot, 'runner'))
+          ..createSync(recursive: true);
+        final source = File(p.join(dir.path, touchRunnerSourceName))
+          ..writeAsStringSync(touchRunnerSource);
+        final binary = p.join(dir.path, 'XcrossTouchRunner');
+        try {
+          await _services.buildRunner(source.path, binary);
+          package.useFastRunner(app, binary);
+          fast = true;
+        } on Object catch (e) {
+          final why = e is CliError ? e.message : '$e';
+          step(
+            'build',
+            'The fast touch helper could not be built on this PC ($why). '
+                'Installing WebDriverAgent instead (slower touch).',
+          );
+        }
+      }
       failedStep = 'sign';
       step('sign', 'Signing it with your Apple account');
       final signedAs = await _services.sign(
@@ -251,7 +304,10 @@ final class ScreenTouchSetupCommand extends Command<void> {
         'type': 'touch_setup_done',
         'ok': true,
         'bundleId': signedAs,
-        'message': 'The touch helper is on the iPhone.',
+        'fast': fast,
+        'message': fast
+            ? 'The fast touch helper is on the iPhone.'
+            : 'The touch helper (WebDriverAgent) is on the iPhone.',
       }, json: json);
     } on Object catch (e) {
       final message = e is CliError ? e.message : '$e';
@@ -275,7 +331,7 @@ final class ScreenTouchSetupCommand extends Command<void> {
     final text = switch (event['type']) {
       'touch_setup' => '… ${event['detail']}',
       'touch_setup_done' when event['ok'] == true =>
-        'Done: the touch helper is on the iPhone (${event['bundleId']}).',
+        'Done: ${event['message']} (${event['bundleId']})',
       _ => 'Touch helper not installed: ${event['message']}',
     };
     _writeBytes(utf8.encode('$text\n'));
