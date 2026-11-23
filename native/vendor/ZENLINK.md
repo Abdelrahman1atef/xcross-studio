@@ -9,8 +9,8 @@ engine, never in closed-source software.
 |---|---|---|
 | `zenlink-apple/` | `ZenshiroDev/crates/zenlink-apple/` | `Cargo.toml`: workspace keys written out. `examples/` left out. Source unchanged. |
 | `zenlink-core/` | two functions of `ZenshiroDev/crates/zenlink-core/src/lib.rs` | Only `quick_ack` (unchanged) and `local_data_dir` (now `%LOCALAPPDATA%\xcross\screen`). |
-| `zenlink-drivers/usb_filter.ps1` | `ZenshiroDev/tooling/windows/tools/usb_filter.ps1` | unchanged |
-| `zenlink-drivers/libusb-win32/amd64/` | `ZenshiroDev/resources/windows/drivers/libusb-win32/amd64/` | unchanged signed binaries of libusb-win32 1.2.6.0 (driver GPL, library LGPL; source: https://sourceforge.net/projects/libusb-win32/) |
+| `zenlink-drivers/tools/usb_filter.ps1` | `ZenshiroDev/tooling/windows/tools/usb_filter.ps1` | unchanged (run elevated and hidden by `xcross-screen driver enable/restore`; it keeps its backups in `%ProgramData%\ZenLink\drivers\backups`) |
+| `zenlink-drivers/drivers/libusb-win32/amd64/` | `ZenshiroDev/resources/windows/drivers/libusb-win32/amd64/` | unchanged signed binaries of libusb-win32 1.2.6.0 (driver GPL, library LGPL; source: https://sourceforge.net/projects/libusb-win32/). Folder layout matches what the script expects (`..\drivers\libusb-win32` from `tools`). |
 
 ZenLink itself builds on: `idevice` (MIT, https://github.com/jkcoxson/idevice), quicktime_video_hack
 (MIT, Daniel Paulus) as the QuickTime protocol reference, and the libwdi/Zadig driver-package approach

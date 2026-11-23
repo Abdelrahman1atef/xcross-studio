@@ -179,6 +179,24 @@ fn stream(args: &[String]) -> i32 {
     }
     let seconds: Option<u64> = opt(args, "--seconds").and_then(|s| s.parse().ok());
 
+    // Windows: say plainly when the iPhone is on Apple's driver (Smooth mode off) or not
+    // plugged in, instead of a generic "device not found" from the capture session.
+    if cfg!(windows) {
+        if let Ok(nodes) = driver::nodes() {
+            match driver::find(&nodes, serial) {
+                None => {
+                    emit(json!({ "type": "screen_end", "reason": "unplugged", "message": "This iPhone is not plugged in by USB." }));
+                    return 1;
+                }
+                Some(node) if node.state() != "smooth" => {
+                    emit(json!({ "type": "screen_end", "reason": "driver_needed", "message": "Smooth mode is off for this iPhone." }));
+                    return 1;
+                }
+                Some(_) => {}
+            }
+        }
+    }
+
     let listener = match TcpListener::bind(listen) {
         Ok(l) => l,
         Err(e) => {
