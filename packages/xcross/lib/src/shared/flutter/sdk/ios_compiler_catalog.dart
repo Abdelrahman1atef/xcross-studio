@@ -76,12 +76,22 @@ final class IosCompilerCatalog {
     required this.platform,
     required this.createHttpClient,
     this.apiUrl = defaultApiUrl,
+    this.moreApiUrls = const [],
     this.maxAge = const Duration(hours: 6),
     DateTime Function()? now,
   }) : _now = now ?? DateTime.now;
 
   static const defaultApiUrl =
       'https://api.github.com/repos/arxdeus/xcross_gen_snapshot/releases';
+
+  // studio: XCross Studio's own compiler releases (xcross-compilers), built
+  // for every Flutter release; read before the upstream list.
+  static const studioApiUrl =
+      'https://api.github.com/repos/Abdelrahman1atef/xcross-compilers/releases';
+
+  /// More release lists, merged with [apiUrl]'s. One that fails (missing,
+  /// offline) is left out while another answers.
+  final List<String> moreApiUrls;
 
   final HostFileSystemInterface fileSystem;
   final p.Context paths;
@@ -137,7 +147,33 @@ final class IosCompilerCatalog {
     );
   }
 
+  /// Every source's releases merged (asset lists joined per tag). Throws only
+  /// when no source answered.
   Future<CompilerReleases> _fetch() async {
+    final assets = <String, Set<String>>{};
+    (Object, StackTrace)? firstError;
+    var answered = 0;
+    for (final url in [apiUrl, ...moreApiUrls]) {
+      try {
+        for (final MapEntry(key: tag, value: names) in (await _fetchOne(
+          url,
+        )).entries) {
+          (assets[tag] ??= {}).addAll(names);
+        }
+        answered++;
+      } on Object catch (error, stack) {
+        firstError ??= (error, stack);
+      }
+    }
+    if (answered == 0 && firstError != null) {
+      Error.throwWithStackTrace(firstError.$1, firstError.$2);
+    }
+    return CompilerReleases({
+      for (final MapEntry(:key, :value) in assets.entries) key: [...value],
+    }, _now().toUtc());
+  }
+
+  Future<Map<String, List<String>>> _fetchOne(String apiUrl) async {
     final assets = <String, List<String>>{};
     for (var page = 1; page <= 5; page++) {
       final client = createHttpClient();
@@ -177,7 +213,7 @@ final class IosCompilerCatalog {
         client.close();
       }
     }
-    return CompilerReleases(assets, _now().toUtc());
+    return assets;
   }
 
   CompilerReleases? _readCache() {

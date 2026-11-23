@@ -67,6 +67,13 @@ final class IosGenSnapshot {
 /// 4. A release of xcross_gen_snapshot tagged with the Flutter version whose
 ///    manifest names the same engine. The archive and the executable are
 ///    checked against the manifest digests before they are cached.
+/// 5. studio: when no release exists for the Flutter version, the compiler of
+///    another release of the same major.minor line built from the same Dart
+///    revision. The compiler depends only on the Dart revision: releases
+///    that share one publish byte-identical compilers (3.44.2 to 3.44.9 do),
+///    so a patch release that kept its Dart works before it is published.
+///    It is checked like a normal download, and its `--version` must name
+///    this SDK's Dart version.
 @internal
 final class IosGenSnapshotResolver<T extends PlatformHostInterface> {
   IosGenSnapshotResolver({
@@ -77,7 +84,9 @@ final class IosGenSnapshotResolver<T extends PlatformHostInterface> {
     required this.cacheRoot,
     this.pins = const {},
     this.releaseBaseUrl = defaultReleaseBaseUrl,
+    this.moreReleaseBaseUrls = const [],
     this.suggestVersion,
+    this.publishedVersions,
     DateTime Function()? now,
   }) : _now = now ?? DateTime.now {
     if (!identical(hostPolicy.host, runner.host)) {
@@ -87,6 +96,21 @@ final class IosGenSnapshotResolver<T extends PlatformHostInterface> {
 
   static const repositoryUrl = 'https://github.com/arxdeus/xcross_gen_snapshot';
   static const defaultReleaseBaseUrl = '$repositoryUrl/releases/download';
+
+  // studio: XCross Studio's own compiler releases, built for every Flutter
+  // release by xcross-compilers and verified against Flutter's compiler.
+  static const studioRepositoryUrl =
+      'https://github.com/Abdelrahman1atef/xcross-compilers';
+  static const studioReleaseBaseUrl = '$studioRepositoryUrl/releases/download';
+
+  /// Release sources tried after [releaseBaseUrl], in order; a compiler is
+  /// downloaded from the source whose manifest named it.
+  final List<String> moreReleaseBaseUrls;
+
+  List<String> get _sources => [releaseBaseUrl, ...moreReleaseBaseUrls];
+
+  /// The source each looked-up manifest came from.
+  final _sourceOf = Expando<String>('gen_snapshot release source');
 
   final IosGenSnapshotHost hostPolicy;
   final ProcessRunner<T> runner;
@@ -106,6 +130,11 @@ final class IosGenSnapshotResolver<T extends PlatformHostInterface> {
   /// error when a release has none.
   final Future<String?> Function(FlutterSdkRelease release, String platform)?
   suggestVersion;
+
+  // studio: the releases to search for a compiler built from the same Dart
+  // revision when the Flutter version itself has none (null: no search).
+  /// Flutter versions with a published compiler for a host, newest first.
+  final Future<List<String>> Function(String platform)? publishedVersions;
   final DateTime Function() _now;
 
   T get host => runner.host;
@@ -200,6 +229,18 @@ final class IosGenSnapshotResolver<T extends PlatformHostInterface> {
           source: IosGenSnapshotSource.download,
           release: release,
         );
+      }
+      if (manifest == null) {
+        final same = await _sameDartManifest(release, mode, platform);
+        if (same != null) {
+          return IosGenSnapshotAvailability(
+            source: IosGenSnapshotSource.download,
+            release: release,
+            detail:
+                'Uses the compiler published for Flutter ${same.flutter} '
+                '(same Dart revision ${_short(same.dart!)}).',
+          );
+        }
       }
       return IosGenSnapshotAvailability(
         release: release,
@@ -333,10 +374,14 @@ final class IosGenSnapshotResolver<T extends PlatformHostInterface> {
     IosGenSnapshotMode mode,
     String platform,
   ) async {
-    final manifest = await log.logStep(
+    var manifest = await log.logStep(
       'Looking up iOS gen_snapshot for Flutter ${release.version}',
       () => _manifest(release),
     );
+    // studio: no release for this version: a compiler from the same Dart.
+    final sameDart =
+        manifest == null &&
+        (manifest = await _sameDartManifest(release, mode, platform)) != null;
     if (manifest == null) {
       throw _unavailable(
         release,
@@ -345,7 +390,14 @@ final class IosGenSnapshotResolver<T extends PlatformHostInterface> {
         platform: platform,
       );
     }
-    if (manifest.engine != release.engine ||
+    if (sameDart) {
+      log.logInfo(
+        'No compiler is published for Flutter ${release.version} yet; using '
+        'the one for Flutter ${manifest.flutter}, built from the same Dart '
+        'revision',
+        _short(manifest.dart!),
+      );
+    } else if (manifest.engine != release.engine ||
         manifest.flutter != release.version) {
       throw _unavailable(
         release,
@@ -381,7 +433,8 @@ final class IosGenSnapshotResolver<T extends PlatformHostInterface> {
       final archive = host.paths.context.join(temporary.path, name);
       try {
         await downloader.downloadToFile(
-          '$releaseBaseUrl/${Uri.encodeComponent(release.version)}/$name',
+          '${_sourceOf[manifest] ?? releaseBaseUrl}/'
+          '${Uri.encodeComponent(manifest.flutter)}/$name',
           host.fileSystem.file(archive),
           maxAttempts: 5,
           label: 'iOS gen_snapshot (${mode.name})',
@@ -412,16 +465,20 @@ final class IosGenSnapshotResolver<T extends PlatformHostInterface> {
           await _digest(executable),
         );
         host.fileSystem.makeExecutable(executable);
+        if (sameDart) {
+          await _checkDartVersion(executable, release, manifest!.flutter);
+        }
         await host.fileSystem
             .file(meta)
             .writeAsString(
               const JsonEncoder.withIndent('  ').convert({
                 'flutter': release.version,
                 'engine': release.engine,
-                'dart': manifest.dart ?? release.dart,
+                'dart': manifest!.dart ?? release.dart,
                 'mode': mode.name,
                 'host': platform,
                 'source': 'download',
+                if (sameDart) 'compiler_from': manifest.flutter,
                 'executable_sha256': asset.executableSha256,
                 'asset_sha256': asset.sha256,
                 'checked_at': _now().toUtc().toIso8601String(),
@@ -502,10 +559,41 @@ final class IosGenSnapshotResolver<T extends PlatformHostInterface> {
     );
   }
 
-  /// The release manifest, or `null` when no release exists for the version.
-  Future<IosGenSnapshotManifest?> _manifest(FlutterSdkRelease release) async {
+  /// The release manifest from the first source that has one, or `null` when
+  /// none has a release for the version. A source that fails is skipped
+  /// while another answers; when none answers, the first failure is thrown.
+  Future<IosGenSnapshotManifest?> _manifest(FlutterSdkRelease release) =>
+      _fromSources((base) => _manifestAt(base, release.version));
+
+  /// The first manifest [lookup] finds across [_sources], remembering its
+  /// source. Never null-and-silent about failures: when no source found one
+  /// and a source failed, that failure is thrown.
+  Future<IosGenSnapshotManifest?> _fromSources(
+    Future<IosGenSnapshotManifest?> Function(String base) lookup,
+  ) async {
+    (Object, StackTrace)? failure;
+    for (final base in _sources) {
+      try {
+        final manifest = await lookup(base);
+        if (manifest != null) {
+          _sourceOf[manifest] = base;
+          return manifest;
+        }
+      } on Object catch (error, stack) {
+        log.logTrace('No compiler manifest from $base: $error');
+        failure ??= (error, stack);
+      }
+    }
+    if (failure != null) Error.throwWithStackTrace(failure.$1, failure.$2);
+    return null;
+  }
+
+  Future<IosGenSnapshotManifest?> _manifestAt(
+    String base,
+    String version,
+  ) async {
     final url = Uri.parse(
-      '$releaseBaseUrl/${Uri.encodeComponent(release.version)}/manifest.json',
+      '$base/${Uri.encodeComponent(version)}/manifest.json',
     );
     for (var attempt = 1; ; attempt++) {
       final client = createHttpClient();
@@ -590,7 +678,8 @@ final class IosGenSnapshotResolver<T extends PlatformHostInterface> {
     if (reason != null) buffer.writeln(reason);
     buffer.writeln(
       'Flutter publishes this compiler for macOS only; xcross downloads '
-      'Linux and Windows builds from $repositoryUrl/releases.',
+      'Linux and Windows builds from '
+      '${[for (final base in _sources) base.replaceFirst('/download', '')].join(' and ')}.',
     );
     if (suggestion != null) {
       buffer.writeln(
@@ -694,6 +783,91 @@ final class IosGenSnapshotResolver<T extends PlatformHostInterface> {
     return cached;
   }
 
+  // studio: patch releases that keep their Dart revision share a compiler.
+  /// The manifest of another published release of [release]'s major.minor
+  /// line built from the same Dart revision, with a [mode] compiler for
+  /// [platform]; null when there is none, [release]'s Dart revision is
+  /// unknown, or the releases cannot be listed. Never throws.
+  Future<IosGenSnapshotManifest?> _sameDartManifest(
+    FlutterSdkRelease release,
+    IosGenSnapshotMode mode,
+    String platform,
+  ) async {
+    final dart = release.dart?.trim().toLowerCase();
+    final list = publishedVersions;
+    if (dart == null || dart.isEmpty || list == null) return null;
+    final line = _minorLine(release.version);
+    if (line == null) return null;
+    final List<String> versions;
+    try {
+      versions = await list(platform).timeout(const Duration(seconds: 15));
+    } on Object catch (error) {
+      log.logTrace('Could not list published compilers: $error');
+      return null;
+    }
+    final asset = IosGenSnapshotManifest.assetName(mode, platform);
+    final candidates = versions
+        .where((v) => v != release.version && _minorLine(v) == line)
+        .take(maxSameDartLookups);
+    for (final version in candidates) {
+      final IosGenSnapshotManifest? manifest;
+      try {
+        manifest = await _fetchManifestOnceFor(version);
+      } on Object catch (error) {
+        log.logTrace('Skipping the Flutter $version compiler: $error');
+        continue;
+      }
+      if (manifest != null &&
+          manifest.flutter == version &&
+          manifest.dart?.toLowerCase() == dart &&
+          manifest.assets.containsKey(asset)) {
+        return manifest;
+      }
+    }
+    return null;
+  }
+
+  /// At most this many releases of a line are read for a same-Dart compiler.
+  @visibleForTesting
+  static const maxSameDartLookups = 12;
+
+  /// `3.47` for `3.47.7`; null for anything else.
+  static String? _minorLine(String version) =>
+      RegExp(r'^(\d+\.\d+)\.\d+$').firstMatch(version)?.group(1);
+
+  /// A compiler borrowed from Flutter [from] must report this SDK's Dart
+  /// version, as a pinned one must.
+  Future<void> _checkDartVersion(
+    String executable,
+    FlutterSdkRelease release,
+    String from,
+  ) async {
+    final expected = release.dartSdkVersion?.trim();
+    if (expected == null || expected.isEmpty) return;
+    String problem(String detail) =>
+        'The iOS gen_snapshot published for Flutter $from (same Dart '
+        'revision as Flutter ${release.version}) $detail, so it was not used.';
+    final CapturedProcess check;
+    try {
+      check = await runner.run(executable, const [
+        '--version',
+      ], timeout: const Duration(seconds: 30));
+    } on Object catch (error) {
+      throw FlutterBuildError(problem('cannot be run here ($error)'));
+    }
+    final version = _dartVersion
+        .firstMatch('${check.stdout}\n${check.stderr}')
+        ?.group(1);
+    if (check.exitCode != 0 || version == null) {
+      throw FlutterBuildError(problem('does not answer `--version`'));
+    }
+    if (version != expected) {
+      throw FlutterBuildError(
+        problem('is Dart $version, but this SDK uses Dart $expected'),
+      );
+    }
+  }
+
   /// One manifest request without the retries a first download uses.
   ///
   /// The timeout bounds the request itself rather than its caller, so the
@@ -701,9 +875,17 @@ final class IosGenSnapshotResolver<T extends PlatformHostInterface> {
   /// that never answers would otherwise keep xcross from exiting.
   Future<IosGenSnapshotManifest?> _fetchManifestOnce(
     FlutterSdkRelease release,
+  ) => _fetchManifestOnceFor(release.version);
+
+  Future<IosGenSnapshotManifest?> _fetchManifestOnceFor(String version) =>
+      _fromSources((base) => _fetchManifestOnceAt(base, version));
+
+  Future<IosGenSnapshotManifest?> _fetchManifestOnceAt(
+    String base,
+    String version,
   ) async {
     final url = Uri.parse(
-      '$releaseBaseUrl/${Uri.encodeComponent(release.version)}/manifest.json',
+      '$base/${Uri.encodeComponent(version)}/manifest.json',
     );
     final client = createHttpClient();
     try {

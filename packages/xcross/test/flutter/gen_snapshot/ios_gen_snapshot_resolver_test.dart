@@ -414,7 +414,8 @@ void main() {
               contains('Flutter 3.47.0 (engine 5f776256)'),
               contains('ios_gen_snapshot:'),
               contains('release: /absolute/path/to/gen_snapshot'),
-              contains(IosGenSnapshotResolver.repositoryUrl),
+              // studio: names the sources it looked in.
+              contains('builds from ${server.baseUrl}.'),
             ),
           ),
         ),
@@ -904,6 +905,246 @@ void main() {
       );
     });
 
+    group('more than one source', () {
+      IosGenSnapshotResolver<LinuxHost> twoSources() => _resolver(
+        LinuxIosGenSnapshotHost(host),
+        host,
+        cacheRoot: cacheRoot,
+        httpClient: server.manifestClient,
+        releaseBaseUrl: '${server.baseUrl}/studio',
+        moreReleaseBaseUrls: [server.baseUrl],
+      );
+
+      test('a source without the release is skipped; the compiler comes from '
+          'the source that has it', () async {
+        server.publish('3.47.0', IosGenSnapshotMode.release, 'linux-x64');
+        final resolved = await twoSources().resolve(
+          flutterRoot: flutterRoot,
+          engineDirectory: engineDirectory,
+          mode: IosGenSnapshotMode.release,
+        );
+        expect(resolved.source, IosGenSnapshotSource.download);
+        expect(server.requests, [
+          '/studio/3.47.0/manifest.json',
+          '/3.47.0/manifest.json',
+          '/3.47.0/gen_snapshot-release-linux-x64.zip',
+        ]);
+      });
+
+      test('a failing source is skipped while another answers', () async {
+        server
+          ..publish('3.47.0', IosGenSnapshotMode.release, 'linux-x64')
+          ..manifestFailures.addAll([
+            for (var i = 0; i < IosGenSnapshotResolver.manifestAttempts; i++)
+              503,
+          ]);
+        final resolved = await twoSources().resolve(
+          flutterRoot: flutterRoot,
+          engineDirectory: engineDirectory,
+          mode: IosGenSnapshotMode.release,
+        );
+        expect(resolved.source, IosGenSnapshotSource.download);
+        expect(
+          server.requests.last,
+          '/3.47.0/gen_snapshot-release-linux-x64.zip',
+        );
+      });
+
+      test('the error names every source', () async {
+        await expectLater(
+          twoSources().resolve(
+            flutterRoot: flutterRoot,
+            engineDirectory: engineDirectory,
+            mode: IosGenSnapshotMode.release,
+          ),
+          throwsA(
+            isA<FlutterBuildError>().having(
+              (error) => error.message,
+              'message',
+              contains('${server.baseUrl}/studio and ${server.baseUrl}.'),
+            ),
+          ),
+        );
+      });
+    }, testOn: 'posix');
+
+    group('a compiler from the same Dart revision', () {
+      /// This SDK becomes Flutter 3.47.7 (no release of its own), still on
+      /// [_dart] and Dart 3.13.0.
+      void become3477() {
+        File(
+          p.join(flutterRoot, 'bin', 'cache', 'flutter.version.json'),
+        ).writeAsStringSync(
+          jsonEncode({
+            'frameworkVersion': '3.47.7',
+            'engineRevision': _engine,
+            'dartSdkVersion': '3.13.0',
+          }),
+        );
+      }
+
+      /// A compiler that answers `--version` with [dartVersion].
+      List<int> compiler(String dartVersion) => utf8.encode(
+        '#!/bin/sh\n'
+        'echo "Dart SDK version: $dartVersion (stable) on \\"linux_x64\\"" '
+        '>&2\n',
+      );
+
+      IosGenSnapshotResolver<LinuxHost> searching(List<String> published) =>
+          _resolver(
+            LinuxIosGenSnapshotHost(host),
+            host,
+            cacheRoot: cacheRoot,
+            httpClient: server.manifestClient,
+            releaseBaseUrl: server.baseUrl,
+            publishedVersions: (_) async => published,
+          );
+
+      test('a patch release without its own uses the one of its line built '
+          'from the same Dart', () async {
+        become3477();
+        final binary = compiler('3.13.0');
+        server.publish(
+          '3.47.6',
+          IosGenSnapshotMode.release,
+          'linux-x64',
+          flutter: '3.47.6',
+          binary: binary,
+        );
+        final resolved = await searching(['3.47.6', '3.44.9']).resolve(
+          flutterRoot: flutterRoot,
+          engineDirectory: engineDirectory,
+          mode: IosGenSnapshotMode.release,
+        );
+        expect(resolved.source, IosGenSnapshotSource.download);
+        expect(File(resolved.executable).readAsBytesSync(), binary);
+        expect(server.requests, [
+          '/3.47.7/manifest.json',
+          '/3.47.6/manifest.json',
+          '/3.47.6/gen_snapshot-release-linux-x64.zip',
+        ]);
+        final meta = _readMeta(cacheRoot);
+        expect(meta['flutter'], '3.47.7');
+        expect(meta['compiler_from'], '3.47.6');
+        expect(meta['dart'], _dart);
+        // Cached under this SDK's engine like any other download.
+        server.requests.clear();
+        final again = await searching(['3.47.6']).resolve(
+          flutterRoot: flutterRoot,
+          engineDirectory: engineDirectory,
+          mode: IosGenSnapshotMode.release,
+        );
+        expect(again.source, IosGenSnapshotSource.cache);
+        expect(server.requests, isEmpty);
+      });
+
+      test('another Dart revision is never used', () async {
+        become3477();
+        server.publish(
+          '3.47.6',
+          IosGenSnapshotMode.release,
+          'linux-x64',
+          flutter: '3.47.6',
+          dart: 'f' * 40,
+          binary: compiler('3.13.0'),
+        );
+        await expectLater(
+          searching(['3.47.6']).resolve(
+            flutterRoot: flutterRoot,
+            engineDirectory: engineDirectory,
+            mode: IosGenSnapshotMode.release,
+          ),
+          throwsA(
+            isA<FlutterBuildError>().having(
+              (error) => error.message,
+              'message',
+              contains('Flutter 3.47.7'),
+            ),
+          ),
+        );
+        expect(
+          server.requests,
+          isNot(contains('/3.47.6/gen_snapshot-release-linux-x64.zip')),
+        );
+      });
+
+      test(
+        'a borrowed compiler that reports another Dart version is refused',
+        () async {
+          become3477();
+          server.publish(
+            '3.47.6',
+            IosGenSnapshotMode.release,
+            'linux-x64',
+            flutter: '3.47.6',
+            binary: compiler('3.12.9'),
+          );
+          await expectLater(
+            searching(['3.47.6']).resolve(
+              flutterRoot: flutterRoot,
+              engineDirectory: engineDirectory,
+              mode: IosGenSnapshotMode.release,
+            ),
+            throwsA(
+              isA<FlutterBuildError>().having(
+                (error) => error.message,
+                'message',
+                allOf(
+                  contains('published for Flutter 3.47.6'),
+                  contains('is Dart 3.12.9, but this SDK uses Dart 3.13.0'),
+                ),
+              ),
+            ),
+          );
+          expect(
+            File(_metaPath(cacheRoot)).existsSync(),
+            isFalse,
+            reason: 'nothing is cached',
+          );
+        },
+      );
+
+      test('only the same major.minor line is searched', () async {
+        become3477();
+        server.publish(
+          '3.44.9',
+          IosGenSnapshotMode.release,
+          'linux-x64',
+          flutter: '3.44.9',
+          binary: compiler('3.13.0'),
+        );
+        await expectLater(
+          searching(['3.44.9']).resolve(
+            flutterRoot: flutterRoot,
+            engineDirectory: engineDirectory,
+            mode: IosGenSnapshotMode.release,
+          ),
+          throwsA(isA<FlutterBuildError>()),
+        );
+        expect(server.requests, ['/3.47.7/manifest.json']);
+      });
+
+      test('availability names the release whose compiler is used', () async {
+        become3477();
+        server.publish(
+          '3.47.6',
+          IosGenSnapshotMode.profile,
+          'linux-x64',
+          flutter: '3.47.6',
+          binary: compiler('3.13.0'),
+        );
+        final found = await searching(['3.47.6']).availability(
+          flutterRoot: flutterRoot,
+          engineDirectory: engineDirectory,
+          mode: IosGenSnapshotMode.profile,
+        );
+        expect(found.available, isTrue);
+        expect(found.source, IosGenSnapshotSource.download);
+        expect(found.detail, contains('Flutter 3.47.6'));
+        expect(found.detail, contains(_dart.substring(0, 8)));
+      });
+    }, testOn: 'posix');
+
     group('pins', () {
       String fakeCompiler(String dartVersion, {int exitCode = 0}) {
         final script = File(p.join(temporary.path, 'pinned', 'gen_snapshot'))
@@ -1055,6 +1296,8 @@ IosGenSnapshotResolver<T> _resolver<T extends PlatformHostInterface>(
   Map<String, XcrossIosGenSnapshotPin> pins = const {},
   DateTime Function()? now,
   Future<String?> Function(FlutterSdkRelease, String)? suggestVersion,
+  Future<List<String>> Function(String platform)? publishedVersions,
+  List<String> moreReleaseBaseUrls = const [],
 }) {
   final log = testLog();
   return IosGenSnapshotResolver(
@@ -1070,9 +1313,11 @@ IosGenSnapshotResolver<T> _resolver<T extends PlatformHostInterface>(
     createHttpClient: () => httpClient,
     cacheRoot: cacheRoot,
     releaseBaseUrl: releaseBaseUrl,
+    moreReleaseBaseUrls: moreReleaseBaseUrls,
     pins: pins,
     now: now,
     suggestVersion: suggestVersion,
+    publishedVersions: publishedVersions,
   );
 }
 
@@ -1098,15 +1343,19 @@ void _writeFlutterSdk(String root) {
   );
 }
 
-Map<String, Object?> _manifest(Map<String, Object?> assets, {String? engine}) =>
-    {
-      'schema': 1,
-      'flutter': '3.47.0',
-      'engine': engine ?? _engine,
-      'dart': _dart,
-      'patch_sha256': 'c' * 64,
-      'assets': assets,
-    };
+Map<String, Object?> _manifest(
+  Map<String, Object?> assets, {
+  String? engine,
+  String flutter = '3.47.0',
+  String dart = _dart,
+}) => {
+  'schema': 1,
+  'flutter': flutter,
+  'engine': engine ?? _engine,
+  'dart': dart,
+  'patch_sha256': 'c' * 64,
+  'assets': assets,
+};
 
 Map<String, Object?> _assetJson(String zip, String executable, int size) => {
   'sha256': zip,
@@ -1192,6 +1441,8 @@ final class ReleaseServer {
     String? engine,
     ReleaseTamper tamper = ReleaseTamper.none,
     List<int> binary = _binary,
+    String? flutter,
+    String dart = _dart,
   }) {
     final executable = platform.startsWith('windows')
         ? 'gen_snapshot.exe'
@@ -1203,13 +1454,18 @@ final class ReleaseServer {
     final name = IosGenSnapshotManifest.assetName(mode, platform);
     _assets['/$version/$name'] = zip;
     _manifests['/$version/manifest.json'] = jsonEncode(
-      _manifest({
-        name: _assetJson(
-          tamper == ReleaseTamper.archive ? 'd' * 64 : _sha(zip),
-          tamper == ReleaseTamper.executable ? 'e' * 64 : _sha(binary),
-          zip.length,
-        ),
-      }, engine: engine),
+      _manifest(
+        {
+          name: _assetJson(
+            tamper == ReleaseTamper.archive ? 'd' * 64 : _sha(zip),
+            tamper == ReleaseTamper.executable ? 'e' * 64 : _sha(binary),
+            zip.length,
+          ),
+        },
+        engine: engine,
+        flutter: flutter ?? '3.47.0',
+        dart: dart,
+      ),
     );
   }
 

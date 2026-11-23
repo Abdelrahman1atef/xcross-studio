@@ -77,12 +77,21 @@ composeIosGenSnapshotResolver<T extends PlatformHostInterface>({
     downloader: downloader,
     createHttpClient: createHttpClient,
     cacheRoot: genSnapshotCacheRoot(runner),
+    // studio: XCross Studio's own compilers first, then upstream's.
+    releaseBaseUrl: IosGenSnapshotResolver.studioReleaseBaseUrl,
+    moreReleaseBaseUrls: const [IosGenSnapshotResolver.defaultReleaseBaseUrl],
     pins: config.config?.iosGenSnapshot ?? const {},
     // studio: 014 — the error names the Flutter version to switch to.
     suggestVersion: composeFlutterSdkSuggestion(
       runner: runner,
       createHttpClient: createHttpClient,
     ),
+    // studio: the releases searched for a same-Dart compiler.
+    publishedVersions: (platform) async => (await composeIosCompilerCatalog(
+      runner: runner,
+      createHttpClient: createHttpClient,
+      platform: platform,
+    ).load()).versions,
   );
 }
 

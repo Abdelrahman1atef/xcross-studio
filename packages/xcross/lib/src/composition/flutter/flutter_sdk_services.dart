@@ -29,6 +29,9 @@ IosCompilerCatalog composeIosCompilerCatalog<T extends PlatformHostInterface>({
     cacheRoot: genSnapshotCacheRoot(runner),
     platform: platform,
     createHttpClient: createHttpClient,
+    // studio: XCross Studio's own compiler releases, merged with upstream's.
+    apiUrl: IosCompilerCatalog.studioApiUrl,
+    moreApiUrls: const [IosCompilerCatalog.defaultApiUrl],
   );
 }
 

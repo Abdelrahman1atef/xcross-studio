@@ -192,8 +192,10 @@ abstract final class XcrossCodes {
   );
   static const toolchainFlutterSdkInstallFailed = DiagnosticCode(
     'toolchain.flutter_sdk_install_failed',
-    'Check the internet connection and free disk space, then run the same '
-        'command again; a partial download is cleaned up first.',
+    'Make sure github.com opens in a browser on this computer (a VPN, proxy, '
+        'firewall or antivirus web protection can block it) and the disk has '
+        'free space, then run the same command again; a partial download is '
+        'cleaned up first.',
   );
   static const toolchainFlutterSdkVersionUnavailable = DiagnosticCode(
     'toolchain.flutter_sdk_version_unavailable',

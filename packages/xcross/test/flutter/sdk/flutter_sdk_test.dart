@@ -73,6 +73,58 @@ void main() {
           now: now == null ? null : () => now,
         );
 
+    test('merges every source; a missing source is left out', () async {
+      final client = MockClient((request) async {
+        if (request.url.path.contains('studio')) {
+          return http.Response(
+            _releases({
+              '3.50.1': _assets(_platform),
+              '3.47.8': _assets(_platform),
+            }),
+            200,
+          );
+        }
+        if (request.url.path.contains('gone')) {
+          return http.Response('Not Found', 404);
+        }
+        return http.Response(
+          _releases({
+            '3.47.6': _assets(_platform),
+            '3.47.8': ['gen_snapshot-profile-$_platform.zip'],
+          }),
+          200,
+        );
+      });
+      final catalog = await IosCompilerCatalog(
+        fileSystem: const SdkTestFileSystem(),
+        paths: p.context,
+        cacheRoot: temp.path,
+        platform: _platform,
+        createHttpClient: () => client,
+        apiUrl: 'https://api.test/repos/studio/releases',
+        moreApiUrls: const [
+          'https://api.test/repos/gone/releases',
+          'https://api.test/repos/upstream/releases',
+        ],
+      ).load();
+      expect(catalog.versions, ['3.50.1', '3.47.8', '3.47.6']);
+    });
+
+    test('fails only when no source answers', () async {
+      final client = MockClient((_) async => http.Response('Not Found', 404));
+      await expectLater(
+        IosCompilerCatalog(
+          fileSystem: const SdkTestFileSystem(),
+          paths: p.context,
+          cacheRoot: temp.path,
+          platform: _platform,
+          createHttpClient: () => client,
+          moreApiUrls: const ['https://api.test/repos/gone/releases'],
+        ).load(),
+        throwsA(isA<HttpException>()),
+      );
+    });
+
     test('lists versions with a release compiler for this host', () async {
       final requests = <Uri>[];
       final client = MockClient((request) async {
@@ -125,12 +177,16 @@ void main() {
 
   group('AC-014-3 managed install', () {
     late List<String> calls;
+    late List<Duration> waits;
     late ManagedFlutterSdks sdks;
     var failClone = false;
+    Exception cloneError = const ProcessException('git', [], 'offline');
 
     setUp(() {
       calls = [];
+      waits = [];
       failClone = false;
+      cloneError = const ProcessException('git', [], 'offline');
       sdks = ManagedFlutterSdks(
         fileSystem: const SdkTestFileSystem(),
         paths: p.context,
@@ -138,13 +194,12 @@ void main() {
         flutterExecutableName: 'flutter.bat',
         log: Log(output: TestLogOutput()),
         processId: 77,
+        sleep: (delay) async => waits.add(delay),
         runTool:
             (executable, arguments, {required label, workingDirectory}) async {
               calls.add('$label ${arguments.join(' ')}');
               if (label == 'git') {
-                if (failClone) {
-                  throw const ProcessException('git', [], 'offline');
-                }
+                if (failClone) throw cloneError;
                 File(p.join(arguments.last, 'bin', 'flutter'))
                   ..createSync(recursive: true)
                   ..writeAsStringSync('#!/bin/sh');
@@ -172,7 +227,7 @@ void main() {
         expect(root, p.join(temp.path, 'flutter-sdks', '3.47.6'));
         final partial = p.join(temp.path, 'flutter-sdks', '.3.47.6.partial-77');
         const clone =
-            'git clone --depth 1 --branch 3.47.6 '
+            'git -c core.longpaths=true clone --depth 1 --branch 3.47.6 '
             'https://github.com/flutter/flutter.git';
         expect(calls, ['$clone $partial', 'flutter --version']);
         expect(sdks.stateOf(root), ManagedSdkState.ready);
@@ -213,6 +268,151 @@ void main() {
         throwsA(isA<XcrossError>()),
       );
       expect(calls, isEmpty);
+    });
+
+    test('a dropped download is tried twice more over HTTP/1.1; the error '
+        'keeps what git said', () async {
+      failClone = true;
+      cloneError = Exception(
+        'command failed (128): git clone --depth 1 --branch 3.47.6 x y\n'
+        "Cloning into 'y'...\n"
+        'error: RPC failed; curl 92 HTTP/2 stream 5 was not closed cleanly\n'
+        'fatal: early EOF',
+      );
+      await expectLater(
+        sdks.install('3.47.6', git: 'git'),
+        throwsA(
+          isA<XcrossError>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              startsWith('[toolchain.flutter_sdk_install_failed]'),
+              contains('tried 3 times'),
+              contains('The connection to github.com dropped'),
+              contains('error: RPC failed; curl 92'),
+              contains('fatal: early EOF'),
+            ),
+          ),
+        ),
+      );
+      final clones = calls.where((c) => c.startsWith('git ')).toList();
+      expect(clones, hasLength(3));
+      expect(clones.first, isNot(contains('http.version')));
+      expect(clones.skip(1), everyElement(contains('http.version=HTTP/1.1')));
+      expect(waits, ManagedFlutterSdks.defaultCloneRetryDelays);
+      expect(
+        Directory(p.join(temp.path, 'flutter-sdks')).listSync(),
+        isEmpty,
+        reason: 'no partial folder is left behind',
+      );
+    });
+
+    test('a retry that works installs Flutter', () async {
+      var failures = 1;
+      final flaky = ManagedFlutterSdks(
+        fileSystem: const SdkTestFileSystem(),
+        paths: p.context,
+        root: p.join(temp.path, 'flutter-sdks'),
+        flutterExecutableName: 'flutter.bat',
+        log: Log(output: TestLogOutput()),
+        processId: 78,
+        sleep: (_) async {},
+        runTool:
+            (executable, arguments, {required label, workingDirectory}) async {
+              calls.add(label);
+              if (label == 'git') {
+                if (failures-- > 0) {
+                  throw Exception('command failed (128)\nfatal: early EOF');
+                }
+                File(p.join(arguments.last, 'bin', 'flutter'))
+                  ..createSync(recursive: true)
+                  ..writeAsStringSync('#!/bin/sh');
+              } else {
+                Directory(
+                  p.join(workingDirectory!, 'bin', 'cache', 'dart-sdk'),
+                ).createSync(recursive: true);
+                File(
+                  p.join(
+                    workingDirectory,
+                    'bin',
+                    'cache',
+                    'flutter.version.json',
+                  ),
+                ).writeAsStringSync('{}');
+              }
+            },
+      );
+      final root = await flaky.install('3.47.6', git: 'git');
+      expect(calls, ['git', 'git', 'flutter']);
+      expect(flaky.stateOf(root), ManagedSdkState.ready);
+    });
+
+    test('a missing version is not tried again', () async {
+      failClone = true;
+      cloneError = Exception(
+        'command failed (128)\n'
+        'fatal: Remote branch 3.47.6 not found in upstream origin',
+      );
+      await expectLater(
+        sdks.install('3.47.6', git: 'git'),
+        throwsA(
+          isA<XcrossError>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('tried 1 time)'),
+              contains('GitHub has no Flutter 3.47.6.'),
+            ),
+          ),
+        ),
+      );
+      expect(calls.where((c) => c.startsWith('git ')), hasLength(1));
+      expect(waits, isEmpty);
+    });
+  });
+
+  group('clone failure words', () {
+    test('known git errors get plain reasons', () {
+      String? reason(String output) =>
+          ManagedFlutterSdks.cloneFailure(output, '3.47.0').reason;
+      expect(
+        reason('fatal: unable to access x: Could not resolve host: github.com'),
+        startsWith('Could not reach github.com'),
+      );
+      expect(
+        reason('error: unable to create file a/b: Filename too long'),
+        'A file path is too long for Windows.',
+      );
+      expect(
+        reason('SSL certificate problem: unable to get local issuer'),
+        contains('antivirus web protection'),
+      );
+      expect(
+        reason('fatal: write error: No space left on device'),
+        'The disk is full.',
+      );
+      expect(reason('fatal: something new'), isNull);
+      expect(
+        ManagedFlutterSdks.cloneFailure('Filename too long', '1.0.0').retry,
+        isFalse,
+      );
+    });
+
+    test('toolSaid keeps fatal and error lines, else the last line', () {
+      expect(
+        ManagedFlutterSdks.toolSaid(
+          'command failed (128): git clone\nCloning...\nfatal: a\nfatal: a',
+        ),
+        'fatal: a',
+      );
+      expect(
+        ManagedFlutterSdks.toolSaid('command failed (1): x\nlast words'),
+        'last words',
+      );
+      expect(
+        ManagedFlutterSdks.toolSaid('command failed (128): git clone'),
+        'command failed (128): git clone',
+      );
     });
   });
 

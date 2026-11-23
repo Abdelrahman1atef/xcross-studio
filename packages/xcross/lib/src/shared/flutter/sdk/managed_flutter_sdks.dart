@@ -54,10 +54,20 @@ final class ManagedFlutterSdks {
     required this.runTool,
     required this.log,
     this.repositoryUrl = defaultRepositoryUrl,
+    this.cloneRetryDelays = defaultCloneRetryDelays,
+    Future<void> Function(Duration delay)? sleep,
     int? processId,
-  }) : _processId = processId ?? pid;
+  }) : _processId = processId ?? pid,
+       _sleep = sleep ?? Future<void>.delayed;
 
   static const defaultRepositoryUrl = 'https://github.com/flutter/flutter.git';
+
+  /// The wait before each extra clone attempt: a dropped connection often
+  /// works again a moment later. Two entries: three attempts in all.
+  static const defaultCloneRetryDelays = [
+    Duration(seconds: 3),
+    Duration(seconds: 10),
+  ];
 
   /// A plain release version: no flags, paths or branch expressions.
   static final versionPattern = RegExp(r'^\d+\.\d+\.\d+$');
@@ -73,6 +83,8 @@ final class ManagedFlutterSdks {
   final SdkToolRunner runTool;
   final Log log;
   final String repositoryUrl;
+  final List<Duration> cloneRetryDelays;
+  final Future<void> Function(Duration delay) _sleep;
   final int _processId;
 
   String directory(String version) => paths.join(root, version);
@@ -121,8 +133,18 @@ final class ManagedFlutterSdks {
     return sdks;
   }
 
-  /// `git clone` arguments for [version] into [target].
-  List<String> cloneArguments(String version, String target) => [
+  /// `git clone` arguments for [version] into [target]. Long paths are on
+  /// (Windows' 260-character limit otherwise fails deep checkouts). A [retry]
+  /// uses HTTP/1.1, which survives the HTTP/2 stream resets (`RPC failed;
+  /// curl 92`) that end many large downloads on unstable connections.
+  List<String> cloneArguments(
+    String version,
+    String target, {
+    bool retry = false,
+  }) => [
+    '-c',
+    'core.longpaths=true',
+    if (retry) ...['-c', 'http.version=HTTP/1.1'],
     'clone',
     '--depth',
     '1',
@@ -131,6 +153,139 @@ final class ManagedFlutterSdks {
     repositoryUrl,
     target,
   ];
+
+  /// Clones [version] into [partial], trying again after a failure that may
+  /// pass (a dropped or blocked connection), up to [cloneRetryDelays] more
+  /// times. Throws a coded error with git's own words when it gives up.
+  Future<void> _clone(String version, String partial, String git) async {
+    final attempts = cloneRetryDelays.length + 1;
+    for (var attempt = 1; ; attempt++) {
+      try {
+        await runTool(
+          git,
+          cloneArguments(version, partial, retry: attempt > 1),
+          label: 'git',
+        );
+        return;
+      } on Object catch (error) {
+        _removePartials(version);
+        final output = '$error';
+        final failure = cloneFailure(output, version);
+        if (attempt >= attempts || !failure.retry) {
+          throw codedError(
+            XcrossCodes.toolchainFlutterSdkInstallFailed,
+            'Could not download Flutter $version from GitHub (tried '
+            '$attempt ${attempt == 1 ? 'time' : 'times'}). '
+            '${failure.reason == null ? '' : '${failure.reason} '}'
+            'Git said: ${toolSaid(output)}',
+          );
+        }
+        log.logWarn(
+          'The Flutter download stopped'
+          '${failure.reason == null ? '' : ': ${failure.reason}'} '
+          'Trying again (${attempt + 1} of $attempts)…',
+        );
+        await _sleep(cloneRetryDelays[attempt - 1]);
+      }
+    }
+  }
+
+  /// Plain words for why `git clone` failed, read from its [output], and
+  /// whether another try may work. The reason is null when git said nothing
+  /// known.
+  @visibleForTesting
+  static ({String? reason, bool retry}) cloneFailure(
+    String output,
+    String version,
+  ) {
+    final text = output.toLowerCase();
+    bool has(List<String> words) => words.any(text.contains);
+    if (has(['not found in upstream', 'remote branch'])) {
+      return (reason: 'GitHub has no Flutter $version.', retry: false);
+    }
+    if (has(['no space left', 'not enough space', 'disk full'])) {
+      return (reason: 'The disk is full.', retry: false);
+    }
+    if (has(['filename too long'])) {
+      return (reason: 'A file path is too long for Windows.', retry: false);
+    }
+    if (has([
+      'ssl certificate',
+      'certificate verify',
+      'unable to get local issuer',
+      'schannel',
+    ])) {
+      return (
+        reason:
+            'The secure connection to github.com was blocked (often by '
+            'antivirus web protection, a proxy or a firewall).',
+        retry: false,
+      );
+    }
+    if (has([
+      'could not resolve host',
+      'failed to connect',
+      "couldn't connect",
+      'connection refused',
+      'timed out',
+      'proxy',
+    ])) {
+      return (
+        reason:
+            'Could not reach github.com (no internet, or a VPN, proxy or '
+            'firewall blocks it).',
+        retry: true,
+      );
+    }
+    if (has([
+      'rpc failed',
+      'early eof',
+      'unexpected disconnect',
+      'remote end hung up',
+      'transfer closed',
+      'connection was reset',
+      'connection reset',
+      'index-pack failed',
+      'curl 18',
+      'curl 56',
+      'curl 92',
+    ])) {
+      return (
+        reason: 'The connection to github.com dropped during the download.',
+        retry: true,
+      );
+    }
+    if (has(['permission denied', 'access is denied'])) {
+      return (
+        reason:
+            'Windows did not allow writing the download folder (an antivirus '
+            'may be holding it).',
+        retry: true,
+      );
+    }
+    return (reason: null, retry: true);
+  }
+
+  /// What a failed tool printed, in one line: its `fatal:` and `error:`
+  /// lines (at most three), else its last line, else the failure itself
+  /// (`command failed (128): …`).
+  @visibleForTesting
+  static String toolSaid(String failure) {
+    final lines = [
+      for (final line in failure.trim().split(RegExp(r'\r?\n')))
+        if (line.trim().isNotEmpty) line.trim(),
+    ];
+    if (lines.isEmpty) return failure.trim();
+    final said = <String>[];
+    for (final line in lines.skip(1)) {
+      final lower = line.toLowerCase();
+      if (!lower.contains('fatal') && !lower.contains('error')) continue;
+      if (!said.contains(line)) said.add(line);
+      if (said.length == 3) break;
+    }
+    if (said.isEmpty && lines.length > 1) said.add(lines.last);
+    return said.isEmpty ? lines.first : said.join(' / ');
+  }
 
   /// Installs Flutter [version] (safe to run again after a failure) and
   /// returns its root.
@@ -153,17 +308,18 @@ final class ManagedFlutterSdks {
       final leftover = fileSystem.directory(target);
       if (leftover.existsSync()) await leftover.delete(recursive: true);
       final partial = paths.join(root, '.$version.partial-$_processId');
+      await log.logStep(
+        'Downloading Flutter $version (about 1 GB, once)',
+        () => _clone(version, partial, git),
+      );
       try {
-        await log.logStep(
-          'Downloading Flutter $version (about 1 GB, once)',
-          () => runTool(git, cloneArguments(version, partial), label: 'git'),
-        );
         await fileSystem.directory(partial).rename(target);
       } on Object catch (error) {
         _removePartials(version);
         throw codedError(
           XcrossCodes.toolchainFlutterSdkInstallFailed,
-          'Could not download Flutter $version: ${_firstLine(error)}',
+          'Flutter $version was downloaded but could not be moved into '
+          'place: ${_firstLine(error)}',
         );
       }
       state = stateOf(target);
@@ -183,7 +339,7 @@ final class ManagedFlutterSdks {
         throw codedError(
           XcrossCodes.toolchainFlutterSdkInstallFailed,
           'Flutter $version was downloaded but could not prepare itself: '
-          '${_firstLine(error)}',
+          '${toolSaid('$error')}',
         );
       }
       if (stateOf(target) != ManagedSdkState.ready) {
