@@ -26,6 +26,7 @@ final class ScreenCommand extends Command<void> {
       ),
     );
     addSubcommand(ScreenDevicesCommand(helper: helper, writeBytes: writeBytes));
+    addSubcommand(ScreenDriverCommand(helper: helper, writeBytes: writeBytes));
   }
 
   @override
@@ -177,6 +178,95 @@ final class ScreenDevicesCommand extends Command<void> {
       if (text != null) _writeBytes(utf8.encode('$text\n'));
     }
   }
+}
+
+/// `xcross screen driver status|enable|restore [--udid <udid>] [--json]`:
+/// Smooth mode on Windows (the iPhone's USB driver; one admin prompt to
+/// change it). Studio asks the user before `enable`.
+final class ScreenDriverCommand extends Command<void> {
+  ScreenDriverCommand({
+    required ScreenHelper helper,
+    required void Function(List<int>) writeBytes,
+  }) : _helper = helper,
+       _writeBytes = writeBytes {
+    argParser
+      ..addOption('udid', help: 'The iPhone (required for enable/restore).')
+      ..addFlag('json', negatable: false, help: 'One JSON line.');
+  }
+
+  final ScreenHelper _helper;
+  final void Function(List<int>) _writeBytes;
+
+  @override
+  String get name => 'driver';
+
+  @override
+  String get description =>
+      'Smooth mode: show (status) or switch (enable / restore) the iPhone USB '
+      'driver. Windows asks for administrator permission to switch.';
+
+  @override
+  String get invocation =>
+      'xcross screen driver status|enable|restore [--udid <udid>] [--json]';
+
+  @override
+  Future<void> run() async {
+    final rest = argResults!.rest;
+    final action = rest.isEmpty ? 'status' : rest.first;
+    if (!const {'status', 'enable', 'restore'}.contains(action)) {
+      throw UsageException('Unknown action "$action".', usage);
+    }
+    final udid = argResults!.option('udid');
+    if (action != 'status' && (udid == null || udid.isEmpty)) {
+      throw UsageException('--udid is required for $action.', usage);
+    }
+    final json = argResults!.flag('json');
+    final process = await _helper.start([
+      'driver',
+      action,
+      if (action != 'status') ...['--serial', udid!],
+    ]);
+    if (process == null) {
+      if (json) _writeBytes(utf8.encode(ndjsonLine(_helperMissing())));
+      throw _helperMissingError();
+    }
+    final errorsDone = process.errors.drain<void>();
+    Map<String, Object?>? change;
+    await process.lines.forEach((line) {
+      final event = _parse(line);
+      if (event == null) return;
+      if (event['type'] == 'screen_driver_change') change = event;
+      if (json) {
+        _writeBytes(utf8.encode(ndjsonLine(event)));
+      } else {
+        _writeBytes(utf8.encode('${_describeDriver(event)}\n'));
+      }
+    });
+    final code = await process.exitCode;
+    await errorsDone;
+    if (code != 0) {
+      throw CliError(
+        '[screen.driver] ${change?['message'] ?? 'The driver switch failed.'}',
+      );
+    }
+  }
+}
+
+String _describeDriver(Map<String, Object?> e) {
+  if (e['type'] == 'screen_driver') {
+    final devices = (e['devices'] as List?) ?? const [];
+    if (devices.isEmpty) return 'No iPhone plugged in by USB.';
+    return [
+      for (final d in devices.cast<Map<Object?, Object?>>())
+        '${d['serial']}  ${switch (d['state']) {
+          'smooth' => 'Smooth mode on',
+          'apple' => "Apple's driver (Smooth mode off)",
+          _ => 'other driver',
+        }}',
+    ].join('\n');
+  }
+  final ok = e['ok'] == true;
+  return '${ok ? 'Done' : 'Not changed'}: ${e['message'] ?? ''}';
 }
 
 Map<String, Object?>? _parse(String line) {

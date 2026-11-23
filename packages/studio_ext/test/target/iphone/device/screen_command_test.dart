@@ -287,4 +287,85 @@ void main() {
       );
     },
   );
+
+  test('AC-048-E9 driver status passes the helper report through', () async {
+    final process = FakeScreenProcess();
+    final helper = FakeScreenHelper(process);
+    final run = runner(helper).run(['screen', 'driver', 'status', '--json']);
+    await Future<void>.delayed(Duration.zero);
+    expect(helper.startedWith, ['driver', 'status']);
+    process.emit({
+      'type': 'screen_driver',
+      'devices': [
+        {
+          'serial': 'ABC',
+          'instance': r'USB\VID_05AC&PID_12A8\ABC',
+          'name': 'iPhone',
+          'state': 'smooth',
+        },
+      ],
+    });
+    await process.finish();
+    await run;
+    expect(events().single['devices'], hasLength(1));
+  });
+
+  test(
+    'AC-048-E10 driver enable needs --udid and runs the helper for that iPhone',
+    () async {
+      await expectLater(
+        runner(
+          FakeScreenHelper(FakeScreenProcess()),
+        ).run(['screen', 'driver', 'enable']),
+        throwsA(isA<UsageException>()),
+      );
+      final process = FakeScreenProcess();
+      final helper = FakeScreenHelper(process);
+      final run = runner(
+        helper,
+      ).run(['screen', 'driver', 'enable', '--udid', 'ABC', '--json']);
+      await Future<void>.delayed(Duration.zero);
+      expect(helper.startedWith, ['driver', 'enable', '--serial', 'ABC']);
+      process.emit({
+        'type': 'screen_driver_change',
+        'action': 'enable',
+        'serial': 'ABC',
+        'ok': true,
+        'message': 'Done',
+        'replug': false,
+      });
+      await process.finish();
+      await run;
+      expect(events().single, containsPair('ok', true));
+    },
+  );
+
+  test(
+    'AC-048-E11 a declined or failed switch fails with its message (AC-048-23)',
+    () async {
+      final process = FakeScreenProcess(code: 1);
+      final run = runner(
+        FakeScreenHelper(process),
+      ).run(['screen', 'driver', 'restore', '--udid', 'ABC', '--json']);
+      await Future<void>.delayed(Duration.zero);
+      process.emit({
+        'type': 'screen_driver_change',
+        'action': 'restore',
+        'serial': 'ABC',
+        'ok': false,
+        'message': 'Windows permission was not given. Nothing was changed.',
+      });
+      await process.finish();
+      await expectLater(
+        run,
+        throwsA(
+          isA<CliError>().having(
+            (e) => e.message,
+            'message',
+            contains('Windows permission was not given'),
+          ),
+        ),
+      );
+    },
+  );
 }

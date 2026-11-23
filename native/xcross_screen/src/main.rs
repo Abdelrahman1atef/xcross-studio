@@ -8,6 +8,7 @@
 //! H.264 stream on 127.0.0.1 behind a random token, and stops when stdin closes.
 
 mod annexb;
+mod driver;
 mod hub;
 
 use std::io::Read;
@@ -54,12 +55,16 @@ fn main() {
     let code = match args.first().map(String::as_str) {
         Some("devices") => devices(),
         Some("stream") => stream(&args[1..]),
+        Some("driver") => driver_cmd(&args[1..]),
         Some("--version") => {
             println!("xcross-screen {}", env!("CARGO_PKG_VERSION"));
             0
         }
         _ => {
-            eprintln!("usage: xcross-screen devices | stream --serial <udid> [--listen 127.0.0.1:0] [--seconds N]");
+            eprintln!(
+                "usage: xcross-screen devices | stream --serial <udid> [--listen 127.0.0.1:0] [--seconds N]\n\
+                 \x20      xcross-screen driver status | enable --serial <udid> | restore --serial <udid>"
+            );
             64
         }
     };
@@ -88,6 +93,45 @@ fn devices() -> i32 {
         Err(e) => {
             emit(json!({ "type": "devices", "driver": "missing", "devices": [], "message": e }));
             0
+        }
+    }
+}
+
+/// `driver status`: each plugged-in iPhone and its driver; `driver enable|restore --serial`:
+/// Smooth mode on/off (Windows; one admin prompt).
+fn driver_cmd(args: &[String]) -> i32 {
+    if !cfg!(windows) {
+        emit(json!({ "type": "screen_driver", "devices": [], "message": "Smooth mode needs no driver change on this system." }));
+        return 0;
+    }
+    match args.first().map(String::as_str) {
+        Some("status") => match driver::nodes() {
+            Ok(nodes) => {
+                let devices: Vec<_> = nodes
+                    .iter()
+                    .map(|n| json!({ "serial": n.serial(), "instance": n.instance, "name": n.name, "state": n.state() }))
+                    .collect();
+                emit(json!({ "type": "screen_driver", "devices": devices }));
+                0
+            }
+            Err(e) => {
+                emit(json!({ "type": "screen_driver", "devices": [], "message": e }));
+                1
+            }
+        },
+        Some(action @ ("enable" | "restore")) => {
+            let Some(serial) = opt(args, "--serial") else {
+                eprintln!("driver {action}: --serial <udid> is required");
+                return 64;
+            };
+            let event = driver::change(serial, action == "enable");
+            let ok = event["ok"].as_bool().unwrap_or(false);
+            emit(event);
+            if ok { 0 } else { 1 }
+        }
+        _ => {
+            eprintln!("usage: xcross-screen driver status | enable --serial <udid> | restore --serial <udid>");
+            64
         }
     }
 }
