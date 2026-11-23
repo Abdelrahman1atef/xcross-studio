@@ -233,7 +233,7 @@ void main() {
     ).run(['screen', 'devices', '--json']);
     await Future<void>.delayed(Duration.zero);
     process.emit({
-      'type': 'devices',
+      'type': 'screen_devices',
       'driver': 'libusb0',
       'devices': [
         {'serial': 'ABC', 'configurations': 5, 'captureReady': true},

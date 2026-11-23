@@ -164,13 +164,13 @@ final class ScreenDevicesCommand extends Command<void> {
   void _out(Map<String, Object?> event, {required bool json}) {
     if (json) {
       _writeBytes(utf8.encode(ndjsonLine(event)));
-    } else if (event['type'] == 'devices') {
+    } else if (event['type'] == 'screen_devices') {
       final devices = (event['devices'] as List?) ?? const [];
       final text = devices.isEmpty
           ? 'No iPhone on the screen driver (${event['driver']}).'
           : [
               for (final d in devices.cast<Map<Object?, Object?>>())
-                '${d['serial']}  ${d['captureReady'] == true ? 'capture ready' : 'needs replug'}',
+                '${d['serial']}  ${d['captureReady'] == true ? 'ready (capture on)' : 'ready'}',
             ].join('\n');
       _writeBytes(utf8.encode('$text\n'));
     } else {

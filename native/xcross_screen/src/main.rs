@@ -87,11 +87,11 @@ fn devices() -> i32 {
                     json!({ "serial": serial, "configurations": d.configs.len(), "captureReady": capture })
                 })
                 .collect();
-            emit(json!({ "type": "devices", "driver": "libusb0", "devices": devices }));
+            emit(json!({ "type": "screen_devices", "driver": "libusb0", "devices": devices }));
             0
         }
         Err(e) => {
-            emit(json!({ "type": "devices", "driver": "missing", "devices": [], "message": e }));
+            emit(json!({ "type": "screen_devices", "driver": "missing", "devices": [], "message": e }));
             0
         }
     }
