@@ -53,6 +53,12 @@ Uint8List _runnerZip() {
         utf8.encode('<plist/>'),
       ),
     )
+    ..add(
+      ArchiveFile.bytes(
+        '$app/PlugIns/WebDriverAgentRunner.xctest/Info.plist',
+        utf8.encode('<plist/>'),
+      ),
+    )
     ..add(ArchiveFile.bytes('../escape.txt', utf8.encode('no')));
   return Uint8List.fromList(ZipEncoder().encode(archive));
 }
@@ -163,6 +169,17 @@ void main() {
         isEmpty,
       );
       expect(services.runnerAtSign, [7, 7, 7, 7], reason: 'arm64 slice only');
+      // iOS is case-sensitive: names on disk must keep their exact case
+      // (Windows would open them either way, so check the listing itself).
+      expect(p.basename(services.signedApp!), TouchHelperRelease.appName);
+      expect(
+        services.appFilesAtSign,
+        containsAll([
+          'PlugIns',
+          'PlugIns/WebDriverAgentRunner.xctest',
+          'WebDriverAgentRunner-Runner',
+        ]),
+      );
       expect(
         File(p.join(work.path, 'escape.txt')).existsSync() ||
             File(p.join(work.parent.path, 'escape.txt')).existsSync(),

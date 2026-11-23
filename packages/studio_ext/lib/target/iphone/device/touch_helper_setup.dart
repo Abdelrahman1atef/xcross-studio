@@ -72,9 +72,11 @@ final class TouchHelperPackage {
     final out = Directory(p.join(workRoot, 'app'));
     if (out.existsSync()) out.deleteSync(recursive: true);
     out.createSync(recursive: true);
-    final root = p.canonicalize(out.path);
+    // normalize, not canonicalize: canonicalize lower-cases on Windows, and an
+    // iPhone bundle needs its exact names (PlugIns/, the executable).
+    final root = p.normalize(p.absolute(out.path));
     for (final entry in ZipDecoder().decodeBytes(zipBytes)) {
-      final target = p.canonicalize(p.join(root, entry.name));
+      final target = p.normalize(p.join(root, entry.name));
       // Never write outside the folder (a hostile archive path).
       if (!p.isWithin(root, target)) continue;
       if (entry.isFile) {
