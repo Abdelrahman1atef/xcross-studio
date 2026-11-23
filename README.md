@@ -1,19 +1,18 @@
 <div align="center">
 
-# xcross
+# xcross · XCross Studio edition
 
-[![Integration Tests](https://img.shields.io/github/actions/workflow/status/arxdeus/xcross/integration.yml?branch=main&style=flat-square&label=tests)](https://github.com/arxdeus/xcross/actions/workflows/integration.yml)
-[![Latest release](https://img.shields.io/github/v/release/arxdeus/xcross?style=flat-square&label=release)](https://github.com/arxdeus/xcross/releases)
-[![GitHub stars](https://img.shields.io/github/stars/arxdeus/xcross?style=flat-square&label=stars)](https://github.com/arxdeus/xcross/stargazers)
-[![Open issues](https://img.shields.io/github/issues/arxdeus/xcross?style=flat-square)](https://github.com/arxdeus/xcross/issues)
+[![Unit Tests](https://img.shields.io/github/actions/workflow/status/Abdelrahman1atef/xcross-studio/unit-tests.yml?branch=main&style=flat-square&label=tests)](https://github.com/Abdelrahman1atef/xcross-studio/actions/workflows/unit-tests.yml)
+[![Latest release](https://img.shields.io/github/v/release/Abdelrahman1atef/xcross-studio?style=flat-square&label=release)](https://github.com/Abdelrahman1atef/xcross-studio/releases)
+[![iOS compilers](https://img.shields.io/github/v/release/Abdelrahman1atef/xcross-compilers?style=flat-square&label=newest%20iOS%20compiler)](https://github.com/Abdelrahman1atef/xcross-compilers/releases)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-3C873A?style=flat-square)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg?style=flat-square)](https://www.gnu.org/licenses/agpl-3.0)
 
-**Build, run, and hot-reload Flutter iOS apps natively from Windows or Linux.**
+**Build, run, hot-reload and ship Flutter iOS apps natively from Windows or Linux.**
 
 No Mac. No Xcode. No WSL.
 
-[Watch the demo](https://youtu.be/L8xhsSMJ8fU) • [Install](#installation) • [Quick start](#quick-start) • [Wi-Fi](#run-over-wi-fi) • [Commands](#command-reference) • [IDE](#ide-integration) • [FAQ](#faq) • [Under the hood](#under-the-hood)
+[What's new](#what-this-edition-adds) • [Flutter versions](#flutter-versions-and-ios-compilers) • [Install](#installation) • [Quick start](#quick-start) • [Wi-Fi](#run-over-wi-fi) • [Commands](#command-reference) • [App Store](#app-store-builds) • [IDE](#ide-integration) • [FAQ](#faq) • [Under the hood](#under-the-hood)
 
 </div>
 
@@ -21,18 +20,36 @@ No Mac. No Xcode. No WSL.
 
 xcross reimplements the Flutter iOS build pipeline and the iOS 17+ CoreDevice launch protocol in pure Dart. It compiles your Flutter app with the official Swift and LLVM toolchains, signs it with your Apple ID or an App Store Connect API key, installs it on a physical iPhone, launches it, and gives you full hot reload - all from a Windows or Linux machine.
 
+This repository is the **XCross Studio edition** of [arxdeus/xcross](https://github.com/arxdeus/xcross): the same engine, with the additions below, released here and used by the XCross Studio desktop app. It is the command-line engine only; everything it does works on its own.
+
 | Feature | Details |
 |---|---|
 | **Native Windows & Linux** | Runs directly on the host with official Swift and LLVM toolchains - no VM, no WSL, no macOS anywhere |
 | **Hot reload & hot restart** | Full `r` / `R` workflow on a real iPhone over an iOS 17+ RSD tunnel |
+| **Release builds for every Flutter version** | iOS AOT compilers for Windows and Linux, built for each Flutter release and checked byte for byte against Flutter's own ([details](#flutter-versions-and-ios-compilers)) |
+| **Plugins without CocoaPods** | SwiftPM plugins, CocoaPods pods converted to Swift packages, and podspec-only plugins drafted automatically |
+| **App Store from your PC** | Preflight checks, IPA, upload, TestFlight, store listing, icons and splash screens |
 | **Native signing & install** | Apple ID (free account works) or App Store Connect API key; signing runs in-process |
 | **USB and Wi-Fi devices** | Pair wirelessly over a trusted USB connection, or directly from Paired Devices on iOS 27+ |
-| **SwiftPM plugins** | Swift Package Manager iOS plugins compile on both Windows and Linux |
 | **IDE debugging** | One command sets up VS Code (F5, breakpoints, DevTools) or JetBrains IDEs via DAP |
 | **Direct build pipeline** | `frontend_server` → `clang` → `ld64.lld` → `.app` / `.ipa` - no Xcode build system involved |
 
 > [!IMPORTANT]
-> xcross builds **debug (JIT)** device and simulator apps, and **profile/release (AOT)** device apps. Launching with xcross requires **iOS 17 or later** on the device.
+> xcross builds **debug (JIT)** device and simulator apps, and **profile/release (AOT)** device apps. Launching with xcross requires **iOS 17 or later** on the device (`xcross install` also installs on iOS 15 and 16).
+
+## What this edition adds
+
+Everything below is in this repository's releases, on top of [arxdeus/xcross](https://github.com/arxdeus/xcross). The [changelog](CHANGELOG.md) has the details of each.
+
+- **iOS compilers for every Flutter release.** Release and profile builds need Flutter's iOS AOT compiler, which Flutter ships for macOS only. xcross downloads Windows and Linux builds of it from [xcross-compilers](https://github.com/Abdelrahman1atef/xcross-compilers), built for each Flutter stable release from the Dart SDK sources and published only when its output is byte-identical to Flutter's own compiler, then from [xcross_gen_snapshot](https://github.com/arxdeus/xcross_gen_snapshot). A Flutter patch release with no compiler of its own uses the one built from the same Dart revision. See [Flutter versions and iOS compilers](#flutter-versions-and-ios-compilers).
+- **Flutter SDKs for iOS builds.** `xcross flutter sdk list | install | use | auto | reset` keeps a Flutter that has an iOS compiler for iOS builds only, without touching your own Flutter. A failed download names the cause (GitHub not reachable, connection dropped, disk full, path too long) and retries by itself.
+- **Plugins that use CocoaPods, without CocoaPods.** Pods are fetched from the CocoaPods CDN and converted into local Swift packages: binary, Objective-C, Swift and mixed pods, with version resolution and lock files ([Flutter plugins](#flutter-plugins)).
+- **Podspec-only plugins keep their native code.** The build drafts a `Package.swift` override from the podspec, and knows the vendors' own Swift packages for many common pods (Google Maps, Firebase, OneSignal, RevenueCat, AppsFlyer, WebRTC and more).
+- **App Store pipeline.** `xcross release preflight` stops a build on problems App Store Connect would reject (icon alpha, missing purpose strings, privacy manifest, export compliance) before it compiles; then `release check`, `publish`, `testflight` and `appstore metadata`. `xcross privacy init` writes the privacy manifest without Xcode.
+- **Icons and splash screens.** `xcross icons` and `xcross splash` generate and check every size for iOS, Android, web and macOS from one image.
+- **Permissions, capabilities and launch screens like Xcode.** Real compiled launch storyboards, push and capability entitlements, and permission strings that make iOS actually ask.
+- **Device tools.** `xcross logs`, `crashes`, `app info`, `app list`, `inspect`, `sign` and `install` for any `.ipa`.
+- **Built for GUIs.** `XCROSS_EVENTS=ndjson` turns builds, runs and checks into a stream of JSON events, with stable diagnostic codes and hints ([Using xcross from a GUI](#using-xcross-from-a-gui)).
 
 ## Requirements
 
@@ -55,16 +72,41 @@ Both platforms need the same five ingredients:
 > [!NOTE]
 > Download the Xcode archive from [xcodereleases.com](https://xcodereleases.com/) (requires an Apple ID). It is only used as SDK *input* - neither Xcode nor macOS is ever installed or executed. xcross extracts the iOS SDK and frameworks from the archive with its own pure-Dart xar/pbzx/cpio readers. Don't redistribute the extracted Apple SDK.
 
+## Flutter versions and iOS compilers
+
+| Build | Flutter versions |
+|---|---|
+| **Debug** (`xcross flutter run`, hot reload) | Any Flutter version xcross supports: debug builds need no extra compiler |
+| **Profile and release** (`--profile`, `--release`, App Store) | Every Flutter version with an iOS compiler for your host (below) |
+
+Flutter publishes its iOS AOT compiler (`gen_snapshot`) for macOS only, and each compiler fits exactly one Flutter version. On Windows and Linux, xcross looks for the compiler of your Flutter version in this order:
+
+1. **[xcross-compilers](https://github.com/Abdelrahman1atef/xcross-compilers/releases)**: built for every Flutter stable release, newest first, for `windows-x64`, `windows-arm64`, `linux-x64` and `linux-arm64`, release and profile. A compiler is published only after it compiled a real `flutter build ios` app to an `App` and `app.o` byte-identical to what Flutter's official compiler wrote on a Mac. New Flutter releases are picked up automatically.
+2. **[xcross_gen_snapshot](https://github.com/arxdeus/xcross_gen_snapshot/releases)**, the upstream project's compilers.
+3. **The same Dart revision.** A patch release with no compiler of its own (for example 3.47.7) uses the one of its line built from the same Dart revision: the compiler depends only on the Dart revision, so they are byte-identical. It is checked like any download, and its `--version` must name your SDK's Dart version.
+
+Every download is checked against its release's SHA-256 digests (archive and executable) before it runs, and cached per engine revision.
+
+```sh
+xcross flutter doctor        # says, for profile and release, where the compiler comes from (or that none exists)
+xcross flutter sdk list      # the Flutter used for iOS builds, and whether it has a compiler
+xcross flutter sdk auto      # no compiler for yours? install the nearest Flutter that has one, for iOS builds only
+xcross flutter sdk install 3.47.8 && xcross flutter sdk use 3.47.8   # or pick one yourself
+xcross flutter sdk reset     # back to your own Flutter
+```
+
+Your own Flutter installation is never changed: iOS builds use the one xcross installed under `<config>/xcross/flutter-sdks/`. A compiler of your own can be pinned with `ios_gen_snapshot` in the [configuration](#configuration).
+
 ## Installation
 
-Both installers download the latest release, install it, **add xcross to your `PATH`**, verify the binary, and print any missing prerequisites with install hints.
+Both installers download the latest release of this repository, install it, **add xcross to your `PATH`**, verify the binary, and print any missing prerequisites with install hints. (The XCross Studio desktop app installs and updates the engine by itself.)
 
 ### Windows (native)
 
 1. One-line install (PowerShell). It picks the native x64 or ARM64 build, even when run from an emulated x64 PowerShell on Windows on ARM:
 
    ```powershell
-   irm https://raw.githubusercontent.com/arxdeus/xcross/main/install.ps1 | iex
+   irm https://raw.githubusercontent.com/Abdelrahman1atef/xcross-studio/main/install.ps1 | iex
    ```
 
 2. Install [Flutter](https://docs.flutter.dev/get-started/install/windows), then let xcross install everything else:
@@ -97,7 +139,7 @@ Both installers download the latest release, install it, **add xcross to your `P
 1. One-line install:
 
    ```sh
-   curl -fsSL https://raw.githubusercontent.com/arxdeus/xcross/main/install.sh | sh
+   curl -fsSL https://raw.githubusercontent.com/Abdelrahman1atef/xcross-studio/main/install.sh | sh
    ```
 
 2. Install the Swift toolchain, which xcross does not install for you ([swiftly](https://www.swift.org/install/linux/) is the easiest route):
@@ -130,8 +172,8 @@ To check an archive yourself with the [`gh`](https://cli.github.com) CLI (`SHA25
 
 ```sh
 gh attestation verify xcross-linux-x64.tar.gz \
-  --repo arxdeus/xcross \
-  --signer-workflow arxdeus/xcross/.github/workflows/release.yml \
+  --repo Abdelrahman1atef/xcross-studio \
+  --signer-workflow Abdelrahman1atef/xcross-studio/.github/workflows/release.yml \
   --source-digest <commit-sha-from-the-release-notes>
 ```
 
@@ -156,7 +198,7 @@ xcross update --ref 85e325fb487cc816c9839bf64439f65771c92f62  # build and instal
 xcross update --check --ref refs/heads/main  # report ref kind + commit, do not install
 ```
 
-If a tag and branch share the same short name, the exact tag wins. Tag refs install the existing verified release assets for that version. Branch and commit refs clone the official `arxdeus/xcross` repository into temporary storage, fetch the exact commit, run local `dart pub get` and the shared `tool/build_xcross.dart` wrapper, install the resulting bundle with the same atomic swap and rollback path as release updates, and delete the temporary checkout whether the install succeeds or fails.
+If a tag and branch share the same short name, the exact tag wins. Tag refs install the existing verified release assets for that version. Branch and commit refs clone this repository (`Abdelrahman1atef/xcross-studio`) into temporary storage, fetch the exact commit, run local `dart pub get` and the shared `tool/build_xcross.dart` wrapper, install the resulting bundle with the same atomic swap and rollback path as release updates, and delete the temporary checkout whether the install succeeds or fails.
 
 A source-ref install reports the normalized ref, for example `xcross main (unreleased build)`. Running `xcross update` from any unreleased build always returns to the latest official release.
 
@@ -369,7 +411,7 @@ roots:
 environment:
   PATH:
     - /absolute/toolchain/bin
-setup: https://raw.githubusercontent.com/arxdeus/xcross/main/setup/apt.sh
+setup: https://raw.githubusercontent.com/Abdelrahman1atef/xcross-studio/main/setup/apt.sh
 ```
 
 Edit it with `xcross config`, inspect it with `xcross config show`, prove it with `xcross config validate`.
@@ -418,6 +460,13 @@ Edit it with `xcross config`, inspect it with `xcross config show`, prove it wit
 | `xcross app list [--json]` | <!-- studio: --> List the apps you installed on the iPhone (used by the GUI's app picker) |
 | `xcross plugin list` / `xcross plugin shim <plugin>` | <!-- studio: --> Show how each iOS plugin is built; draft a `Package.swift` override from a podspec-only plugin's podspec |
 | `xcross inspect <ipa\|app> [--json] [--normalize]` | <!-- studio: --> Read-only report of what is inside an `.ipa` or `.app`: Info.plist, entitlements per Mach-O, provisioning profile summary, icons, launch screen, frameworks and extensions. XCross Studio fork addition |
+| `xcross flutter sdk list \| install <version> \| use <version\|path> \| auto \| reset` | <!-- studio: 014 --> Flutter SDKs for iOS builds only: list them, install one, select one (or your own folder), pick the nearest with an iOS compiler, or go back to your own Flutter ([details](#flutter-versions-and-ios-compilers)) |
+| `xcross plugin check` / `plugin status [--json]` | <!-- studio: --> What a build will do with each iOS plugin (SwiftPM, drafted, converted pods, left out) without compiling |
+| `xcross pods report [<Pod>] [--json]` / `cache clear pods` | <!-- studio: 046 --> Redacted reports for pods a build left out; clear cached pod downloads and converted packages |
+| `xcross release preflight [--json]` | <!-- studio: --> App Store problems the project already shows (icon alpha, purpose strings, privacy manifest, export compliance), in seconds and before compiling |
+| `xcross privacy init` | <!-- studio: --> Write `ios/Runner/PrivacyInfo.xcprivacy` and add it to the Runner target, without Xcode |
+| `xcross icons generate\|check` / `xcross splash generate\|check` | <!-- studio: 023, 024 --> App icons and splash screens for every size from one image ([App Store builds](#app-store-builds)) |
+| `xcross engine info --json` | <!-- studio: 008 --> Which engine and protocol version a GUI is talking to |
 
 <details>
 <summary><b><code>xcross flutter run</code> options</b></summary>
@@ -480,13 +529,9 @@ step list, progress bar, issue list and Install button. Schema:
 [specs/012-build-events/contracts/events.schema.json](specs/012-build-events/contracts/events.schema.json).
 
 <!-- studio: 014 -->
-**Flutter newer than the iOS compiler?** Release and profile iPhone builds need Flutter's iOS AOT compiler, which
-xcross downloads for Windows/Linux from `arxdeus/xcross_gen_snapshot`. That repository can trail Flutter by a patch
-release or two.
-- When it does, the build stops with `[build.gen_snapshot_unavailable]` and names the version to use.
-- `xcross flutter sdk auto` installs that version once (into `<config>/xcross/flutter-sdks/`) and uses it for iOS
-  builds only. Your own Flutter is not changed.
-- `xcross flutter sdk list` shows what is used; `xcross flutter sdk reset` switches back.
+**No iOS compiler for a Flutter version?** A release or profile build stops with `[build.gen_snapshot_unavailable]`,
+names the nearest Flutter version that has one, and `xcross flutter sdk auto` installs it for iOS builds only. See
+[Flutter versions and iOS compilers](#flutter-versions-and-ios-compilers) for where compilers come from.
 
 ## Compose Multiplatform
 
@@ -681,6 +726,7 @@ Push needs `aps-environment`: when the app uses `firebase_messaging` or the `rem
 With an App Store Connect **team** key (Admin or App Manager role):
 
 ```sh
+xcross release preflight        # problems the project already shows, in seconds (also run by the build below)
 xcross flutter build --release --ipa --export-method app-store
 xcross release check            # what App Store Connect would reject, before you upload
 xcross publish --wait           # upload (Build Upload API) and wait for Apple's processing
@@ -688,8 +734,11 @@ xcross testflight status        # processing and beta states; group create/add, 
 xcross appstore metadata push   # App Store page texts; screenshots push, attach, submit --dry-run, status
 xcross project version --bump patch   # or: xcross project version 1.2.0 --build 14
 xcross release gate             # flutter analyze + flutter test (warnings and infos only fail with --fatal-warnings/--fatal-infos)
-xcross release ci               # GitHub Actions workflow for ubuntu-latest (docs/ci/github-testflight.yml)
 ```
+
+`xcross flutter build --export-method app-store` runs the preflight first: errors stop it before anything compiles,
+warnings are shown (`--no-preflight` skips it). Issues xcross can fix carry the command in `release check --json`
+(`fix`), such as `xcross privacy init` for a missing privacy manifest.
 
 XCross Studio's **Release** page runs these steps in order, and **Archives** lists the archives.
 
@@ -766,9 +815,9 @@ Writes `.run/xcross_ios_device.run.xml` (debug, iOS 17+) and `.run/xcross_ios_re
 <details>
 <summary><b>How does it build release/AOT?</b></summary>
 
-Flutter publishes its iOS AOT compiler (`gen_snapshot`) for macOS only. On macOS xcross uses that compiler. On Linux and Windows it downloads the compiler [xcross_gen_snapshot](https://github.com/arxdeus/xcross_gen_snapshot) builds in GitHub Actions for each Flutter release, from the Dart revision that release pins. Each published compiler produced output byte-identical to Flutter's own on the reference app before it was released. xcross checks the engine revision and both digests before it uses a download. To use a compiler of your own, set `ios_gen_snapshot` in the xcross config. Simulators stay debug-only, because Flutter's simulator engines are JIT-only.
+Flutter publishes its iOS AOT compiler (`gen_snapshot`) for macOS only. On macOS xcross uses that compiler. On Linux and Windows it downloads a build of the same compiler, made from the Dart revision the Flutter release pins: first from [xcross-compilers](https://github.com/Abdelrahman1atef/xcross-compilers), then from [xcross_gen_snapshot](https://github.com/arxdeus/xcross_gen_snapshot), and for a patch release without one, the compiler of its line built from the same Dart revision ([details](#flutter-versions-and-ios-compilers)). Each published compiler produced output byte-identical to Flutter's own on a real `flutter build ios` before it was released. xcross checks the engine revision and both digests before it uses a download. To use a compiler of your own, set `ios_gen_snapshot` in the xcross config. Simulators stay debug-only, because Flutter's simulator engines are JIT-only.
 
-A downloaded compiler is cached per engine revision. Once a day a build checks the release again (a few seconds at most, and never failing offline), so a compiler xcross_gen_snapshot republishes for the same Flutter version replaces the cached one. `xcross flutter doctor` reports for profile and release whether a compiler is shipped, cached, pinned, published, or missing. `xcross flutter precache` fetches it ahead of time. `xcross cache prune` removes engine artifacts and compilers left behind by Flutter versions you no longer use; Kotlin/Native in `~/.konan` is shared with Gradle and never pruned. A release manifest written for a newer xcross asks you to run `xcross update`.
+A downloaded compiler is cached per engine revision. Once a day a build checks the release again (a few seconds at most, and never failing offline), so a compiler republished for the same Flutter version replaces the cached one. `xcross flutter doctor` reports for profile and release whether a compiler is shipped, cached, pinned, published, or missing. `xcross flutter precache` fetches it ahead of time. `xcross cache prune` removes engine artifacts and compilers left behind by Flutter versions you no longer use; Kotlin/Native in `~/.konan` is shared with Gradle and never pruned. A release manifest written for a newer xcross asks you to run `xcross update`.
 
 On Windows, output byte-identical to a macOS build needs an LF checkout of the Flutter SDK (`git config --global core.autocrlf false` before cloning). A CRLF checkout still produces working snapshots, but not byte-identical ones, because the source offsets they record shift.
 </details>
@@ -840,7 +889,7 @@ xcross flutter run / build
    │    ├─ IosEngineCache        download engine artifacts pinned to the SDK's engine hash
    │    ├─ FlutterDebugBundler   frontend_server → app.dill → App.framework (JIT, debug)
    │    ├─ FlutterAotSnapshotter AOT app.dill → gen_snapshot → App.framework/App + dSYM (profile/release)
-   │    │    └─ IosGenSnapshotResolver  Flutter's gen_snapshot on macOS, xcross_gen_snapshot releases elsewhere
+   │    │    └─ IosGenSnapshotResolver  Flutter's gen_snapshot on macOS, xcross-compilers / xcross_gen_snapshot elsewhere
    │    ├─ Native assets         Dart build hooks → arm64 frameworks + manifest
    │    ├─ SwiftPM plugins       swift build (Darwin SDK) → libFlutterPluginsGenerated.dylib
    │    ├─ RunnerShim            clang / ld64.lld → Runner Mach-O
@@ -863,7 +912,7 @@ In debug mode Flutter apps are not compiled to machine code - the Dart VM runs *
 - `AssetManifest.bin/json`, `FontManifest.json`, fonts and assets - generated in Dart from your `pubspec.yaml`, replicating Flutter's asset bundling
 - The `App.framework` *binary* in a debug build is only a stub - xcross compiles that stub with `clang` targeting `arm64-apple-ios` and writes the framework's `Info.plist` itself.
 
-Because a debug app is pure JIT, no `gen_snapshot` is needed. Profile and release builds instead compile a whole-program AOT kernel and `FlutterAotSnapshotter` lets `gen_snapshot` write `App.framework/App` directly, then extracts its dSYM and strips it, as `flutter build ios` does. `IosGenSnapshotResolver` picks the compiler: the one in your Flutter SDK on macOS, and on Linux and Windows a verified download from the [xcross_gen_snapshot](https://github.com/arxdeus/xcross_gen_snapshot) releases (see the FAQ).
+Because a debug app is pure JIT, no `gen_snapshot` is needed. Profile and release builds instead compile a whole-program AOT kernel and `FlutterAotSnapshotter` lets `gen_snapshot` write `App.framework/App` directly, then extracts its dSYM and strips it, as `flutter build ios` does. `IosGenSnapshotResolver` picks the compiler: the one in your Flutter SDK on macOS, and on Linux and Windows a verified download from the [xcross-compilers](https://github.com/Abdelrahman1atef/xcross-compilers) or [xcross_gen_snapshot](https://github.com/arxdeus/xcross_gen_snapshot) releases (see [Flutter versions and iOS compilers](#flutter-versions-and-ios-compilers)).
 
 ### 3. Native code without Xcode
 
@@ -871,7 +920,7 @@ Because a debug app is pure JIT, no `gen_snapshot` is needed. Profile and releas
 - **Runner** - the `Runner` executable (Flutter's `AppDelegate`/`main` shim) is compiled with `clang` and linked with `ld64.lld`, LLVM's Mach-O linker, against `Flutter.xcframework` from the SDK above.
 - **Native assets** - Dart package build hooks run through Flutter's native-assets target with cross-platform Apple tool shims. Their output is thinned to arm64, embedded as frameworks, and recorded in `NativeAssetsManifest.json`.
 - **Plugins** - SwiftPM iOS plugins are built with `swift build` against the same SDK into a single `libFlutterPluginsGenerated.dylib`, with a generated registrant mirroring Flutter's `GeneratedPluginRegistrant`. A Mach-O rewriter fixes install names and rpaths so the dylibs resolve inside the `.app` bundle.
-- <!-- studio: 004 --> **Asset catalogs** - `Assets.xcassets` is compiled to `Assets.car` in pure Dart (a port of [AssetKit](https://github.com/xtool-org/AssetKit)): image sets, colour sets and the app icon, plus the loose icon PNGs SpringBoard falls back to. `LaunchScreen.storyboard` cannot be compiled without Xcode, so it becomes a `UILaunchScreen` (its background colour and centred image); anything else in it is reported as `build.launch_screen_approximated`. iOS caches launch screens: delete the app and reboot to see a changed one.
+- <!-- studio: 004 --> **Asset catalogs** - `Assets.xcassets` is compiled to `Assets.car` in pure Dart (a port of [AssetKit](https://github.com/xtool-org/AssetKit)): image sets, colour sets and the app icon, plus the loose icon PNGs SpringBoard falls back to. A `LaunchScreen.storyboard` with a colour and one image view is compiled by xcross itself into `LaunchScreen.storyboardc`, with the logo shipped as loose PNGs; a storyboard with more in it becomes a `UILaunchScreen` (its background colour and centred image), and the rest is reported as `build.launch_screen_approximated` (`XCROSS_LAUNCH_STORYBOARD=off` forces the `UILaunchScreen`). iOS caches launch screens: delete the app and reboot to see a changed one.
 
 ### 4. Signing and device install, natively
 
@@ -897,7 +946,9 @@ Hot reload is pure Flutter-internals territory, reimplemented protocol-for-proto
 
 ## Credits
 
-Thanks for maintainers for these repositories for their work, i took and adapt a lot from them:
+This edition is built on [**arxdeus/xcross**](https://github.com/arxdeus/xcross) by Artemis Kushner, which created the engine: the build pipeline, signing, CoreDevice launch and hot reload described above. The upstream project's iOS compilers come from [xcross_gen_snapshot](https://github.com/arxdeus/xcross_gen_snapshot); this edition's are built by [xcross-compilers](https://github.com/Abdelrahman1atef/xcross-compilers) from the [Dart SDK](https://github.com/dart-lang/sdk) sources.
+
+The upstream author thanks the maintainers of these repositories, from which a lot was taken and adapted:
 
 - [xtool](https://github.com/xtool-org/xtool) - cross-platform Xcode replacement that pioneered building and deploying iOS apps with SwiftPM from Linux and Windows.
 - [Provision](https://github.com/Dadoum/Provision) - reverse-engineered Apple ADI machine attestation and anisette provisioning; the foundation of xcross's Apple ID authentication approach.
@@ -908,10 +959,12 @@ Thanks for maintainers for these repositories for their work, i took and adapt a
 xcross is free and open source. If it saves you a Mac, consider giving back:
 
 - **Contribute** - pull requests are welcome, from typo fixes to new features.
-- **Report** - found a bug or missing a feature? [Open an issue](https://github.com/arxdeus/xcross/issues).
+- **Report** - found a bug in this edition or missing a feature? [Open an issue here](https://github.com/Abdelrahman1atef/xcross-studio/issues). For the upstream engine, see [arxdeus/xcross issues](https://github.com/arxdeus/xcross/issues).
 - **Donate** - support ongoing development:
+  - this edition and its iOS compiler builds: [Sociabuzz](https://sociabuzz.com/man_atef/tribe)
+  - the original xcross author:
 
-  [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/E1E0I3G2D)
+    [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/E1E0I3G2D)
 
 ## License
 
