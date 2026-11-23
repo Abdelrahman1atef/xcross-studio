@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>iPhone screen</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  #msg { position: absolute; inset: auto 0 12px 0; text-align: center; color: #9aa0aa;
+         font: 12px/1.4 "Segoe UI", system-ui, sans-serif; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="msg"></div>
+<script>
+// xcross-screen viewer (spec 048): decodes stream.frames with the system's hardware decoder.
+// Frames: [u32 BE length][u8 kind][payload]; kind 1 = SPS/PPS, 2 = key access unit, 3 = delta.
+'use strict';
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+const msg = document.getElementById('msg');
+let decoder = null, config = null, waitingForKey = true, ts = 0;
+let decoded = 0, lastCount = 0, lastTime = performance.now();
+window.screenStats = { fps: 0, width: 0, height: 0 };
+
+function codecString(annexb) {
+  // First NAL after a start code is the SPS: profile, constraints, level.
+  for (let i = 0; i + 7 < annexb.length; i++) {
+    if (annexb[i] === 0 && annexb[i + 1] === 0 && annexb[i + 2] === 1 && (annexb[i + 3] & 0x1f) === 7) {
+      const hex = (b) => b.toString(16).padStart(2, '0');
+      return 'avc1.' + hex(annexb[i + 4]) + hex(annexb[i + 5]) + hex(annexb[i + 6]);
+    }
+  }
+  return 'avc1.640033';
+}
+
+function newDecoder(annexb) {
+  if (decoder && decoder.state !== 'closed') decoder.close();
+  decoder = new VideoDecoder({
+    output: (frame) => {
+      if (canvas.width !== frame.displayWidth || canvas.height !== frame.displayHeight) {
+        canvas.width = frame.displayWidth; canvas.height = frame.displayHeight;
+        window.screenStats.width = frame.displayWidth; window.screenStats.height = frame.displayHeight;
+      }
+      ctx.drawImage(frame, 0, 0);
+      frame.close();
+      decoded++;
+    },
+    error: (e) => { msg.textContent = 'Decoder: ' + e.message; waitingForKey = true; },
+  });
+  decoder.configure({ codec: codecString(annexb), optimizeForLatency: true, hardwareAcceleration: 'prefer-hardware' });
+  waitingForKey = true;
+}
+
+function onFrame(kind, payload) {
+  if (kind === 1) { config = payload; newDecoder(payload); return; }
+  if (!decoder || decoder.state !== 'configured') return;
+  const key = kind === 2;
+  if (waitingForKey && !key) return;
+  let data = payload;
+  if (key && config) {            // in-band parameter sets with every key frame (Annex-B decoding)
+    data = new Uint8Array(config.length + payload.length);
+    data.set(config, 0); data.set(payload, config.length);
+  }
+  waitingForKey = false;
+  if (decoder.decodeQueueSize > 8 && !key) return;   // fall behind? drop deltas until the next key frame
+  decoder.decode(new EncodedVideoChunk({ type: key ? 'key' : 'delta', timestamp: ts, data }));
+  ts += 16667;
+}
+
+async function run() {
+  if (!('VideoDecoder' in window)) { msg.textContent = 'This viewer needs WebCodecs (Edge/Chrome).'; return; }
+  for (;;) {
+    try {
+      msg.textContent = '';
+      const resp = await fetch('stream.frames', { cache: 'no-store' });
+      const reader = resp.body.getReader();
+      let buf = new Uint8Array(0);
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const next = new Uint8Array(buf.length + value.length);
+        next.set(buf, 0); next.set(value, buf.length); buf = next;
+        let off = 0;
+        while (buf.length - off >= 5) {
+          const len = (buf[off] << 24 | buf[off + 1] << 16 | buf[off + 2] << 8 | buf[off + 3]) >>> 0;
+          if (buf.length - off - 4 < len) break;
+          onFrame(buf[off + 4], buf.subarray(off + 5, off + 4 + len).slice());
+          off += 4 + len;
+        }
+        buf = buf.subarray(off);
+      }
+    } catch (e) { msg.textContent = 'Reconnecting…'; }
+    waitingForKey = true;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+}
+
+setInterval(() => {
+  const now = performance.now();
+  window.screenStats.fps = Math.round((decoded - lastCount) * 10000 / (now - lastTime)) / 10;
+  lastCount = decoded; lastTime = now;
+  document.title = 'iPhone screen · ' + window.screenStats.fps + ' fps';
+}, 1000);
+run();
+</script>
+</body>
+</html>

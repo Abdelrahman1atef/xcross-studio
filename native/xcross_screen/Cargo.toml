@@ -1,0 +1,16 @@
+[package]
+name = "xcross-screen"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+description = "xcross iPhone screen helper (spec 048): live iPhone screen over USB for XCross Studio."
+
+[[bin]]
+name = "xcross-screen"
+path = "src/main.rs"
+
+[dependencies]
+zenlink-apple = { path = "../vendor/zenlink-apple" }
+log = "0.4"
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }

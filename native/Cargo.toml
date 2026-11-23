@@ -1,0 +1,17 @@
+# studio: 048 — iPhone screen helper (xcross-screen) and the ZenLink code it reuses.
+[workspace]
+resolver = "2"
+members = ["xcross_screen", "vendor/zenlink-apple", "vendor/zenlink-core"]
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3

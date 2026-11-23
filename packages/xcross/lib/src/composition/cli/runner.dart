@@ -1,3 +1,4 @@
+import 'dart:convert'; // studio: 048
 import 'dart:io'; // studio: 010
 import 'package:apple_developer_kit/shared/errors/errors.dart';
 import 'package:args/args.dart'; // studio: 010
@@ -35,6 +36,8 @@ import 'package:studio_ext/target/iphone/device/crashes_command.dart'; // studio
 import 'package:studio_ext/target/iphone/device/device_log_backend.dart'; // studio: 010
 import 'package:studio_ext/target/iphone/device/devices_command.dart'; // studio: 008
 import 'package:studio_ext/target/iphone/device/logs_command.dart'; // studio: 010
+import 'package:studio_ext/target/iphone/device/screen_command.dart'; // studio: 048
+import 'package:studio_ext/target/iphone/device/screen_helper.dart'; // studio: 048
 import 'package:xcross/src/composition/cli/appstore_commands.dart'; // studio: 021
 import 'package:xcross/src/composition/cli/asc_commands.dart'; // studio: 018
 import 'package:xcross/src/composition/cli/cache_command.dart';
@@ -436,6 +439,31 @@ abstract final class XcrossCli {
         paths: runtime.host.paths.context,
         cacheRoot: runtime.host.paths.temporaryRoot,
         writeBytes: stdout.add,
+      ),
+      // studio: 048 — live iPhone screen through the bundled xcross-screen helper.
+      ScreenCommand(
+        helper: HostScreenHelper(
+          host: runtime.host,
+          xcrossExecutable: Platform.resolvedExecutable,
+        ),
+        writeBytes: stdout.add,
+        writeError: stderr.writeln,
+        // Studio stops the screen by writing "xcross-screen-stop" (or closing
+        // stdin), so the helper can put the iPhone's USB configuration back;
+        // typing "stop" or Ctrl+C works too.
+        untilStopped: () => Future.any([
+          ProcessSignal.sigint.watch().first,
+          stdin
+              .transform(utf8.decoder)
+              .transform(const LineSplitter())
+              .firstWhere(
+                (line) => const {
+                  'stop',
+                  'xcross-screen-stop',
+                }.contains(line.trim()),
+                orElse: () => '',
+              ),
+        ]),
       ),
     ];
     for (final command in commands) {
