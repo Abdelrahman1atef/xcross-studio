@@ -64,11 +64,17 @@ final class WdaTouchLink implements ScreenTouchLink {
   }
 }
 
-/// A started tool process as a [TouchProcess].
+/// A started tool process as a [TouchProcess] (output may have several
+/// listeners).
 @internal
 final class HostTouchProcess implements TouchProcess {
   HostTouchProcess(this._process, this._processes)
-    : output = StreamGroupLines.merge(_process.stdout, _process.stderr);
+    // Broadcast: the start check and the link both read it; it keeps reading
+    // the pipes in between, so they never fill up.
+    : output = StreamGroupLines.merge(
+        _process.stdout,
+        _process.stderr,
+      ).asBroadcastStream();
 
   final Process _process;
   final HostProcessInterface _processes;

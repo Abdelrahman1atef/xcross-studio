@@ -93,9 +93,31 @@ final class PymdScreenTouchTools implements ScreenTouchTools {
 /// Touch through WebDriverAgent: finds the touch helper on the iPhone, mounts
 /// the developer image, starts it with XCTest and forwards its port 8100.
 final class WdaScreenTouch implements ScreenTouch {
-  WdaScreenTouch(this._tools);
+  WdaScreenTouch(
+    this._tools, {
+    this.retryDelay = const Duration(seconds: 4),
+    this.startTimeout = const Duration(seconds: 45),
+    this.attempts = 3,
+  });
 
   final ScreenTouchTools _tools;
+
+  /// The wait before starting the touch helper again after it closed early.
+  /// Right after a previous session was stopped (Studio restarting the
+  /// screen), the iPhone needs a few seconds before XCTest starts again.
+  final Duration retryDelay;
+
+  /// How long to wait for XCTest to report the touch helper running.
+  final Duration startTimeout;
+
+  /// Starts tried before giving up.
+  final int attempts;
+
+  /// Lines pymobiledevice3 prints once the touch helper's test is running.
+  static const _startedMarkers = [
+    'didBeginExecutingTestPlan',
+    'testCaseDidStart',
+  ];
 
   /// The executable of WebDriverAgent's runner app, whatever its bundle id.
   static const runnerExecutable = 'WebDriverAgentRunner-Runner';
@@ -120,15 +142,35 @@ final class WdaScreenTouch implements ScreenTouch {
     if (bundleId == null) {
       throw const ScreenTouchUnavailable('not_installed', notInstalledMessage);
     }
-    final port = await _tools.freePort();
     // iOS 17 and later reach XCTest through the tunnel.
-    final runner = await _tools.start([
+    final xcuitest = [
       'developer',
       'dvt',
       'xcuitest',
       ...(major >= 17 ? ['--tunnel', udid] : lockdown),
       bundleId,
-    ]);
+    ];
+    TouchProcess? runner;
+    var problem = '';
+    for (var attempt = 1; attempt <= attempts; attempt++) {
+      final process = await _tools.start(xcuitest);
+      final failed = await _waitStarted(process);
+      if (failed == null) {
+        runner = process;
+        break;
+      }
+      problem = failed;
+      await process.kill();
+      if (attempt < attempts) await Future<void>.delayed(retryDelay);
+    }
+    if (runner == null) {
+      throw ScreenTouchUnavailable(
+        'error',
+        'The touch helper did not start on the iPhone'
+            '${problem.isEmpty ? '' : ': $problem'}',
+      );
+    }
+    final port = await _tools.freePort();
     final TouchProcess forward;
     try {
       forward = await _tools.start([
@@ -148,6 +190,34 @@ final class WdaScreenTouch implements ScreenTouch {
       runner: runner,
       forward: forward,
     );
+  }
+
+  /// Null once XCTest reports the touch helper running (or after
+  /// [startTimeout], leaving the final word to the screen helper); else why
+  /// it closed.
+  Future<String?> _waitStarted(TouchProcess process) async {
+    final lines = <String>[];
+    final outcome = Completer<String?>();
+    final sub = process.output.listen((line) {
+      lines.add(line);
+      if (lines.length > 40) lines.removeAt(0);
+      if (_startedMarkers.any(line.contains) && !outcome.isCompleted) {
+        outcome.complete(null);
+      }
+    });
+    unawaited(
+      process.exitCode.then((_) {
+        if (outcome.isCompleted) return;
+        final why = WdaTouchLink.lastProblem(lines);
+        outcome.complete(why.isEmpty ? 'it closed' : why);
+      }),
+    );
+    final result = await outcome.future.timeout(
+      startTimeout,
+      onTimeout: () => null,
+    );
+    await sub.cancel();
+    return result;
   }
 
   /// The bundle id of the installed WebDriverAgent runner, or null.

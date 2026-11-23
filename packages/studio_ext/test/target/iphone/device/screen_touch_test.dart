@@ -12,7 +12,7 @@ final class FakeTouchProcess implements TouchProcess {
   FakeTouchProcess(this.args);
 
   final List<String> args;
-  final lines = StreamController<String>();
+  final lines = StreamController<String>.broadcast();
   final exit = Completer<int>();
   bool killed = false;
 
@@ -32,10 +32,19 @@ final class FakeTouchProcess implements TouchProcess {
 
 @internal
 final class FakeTools implements ScreenTouchTools {
-  FakeTools({required this.version, required this.apps});
+  FakeTools({
+    required this.version,
+    required this.apps,
+    this.runnerStarts = const [true],
+  });
 
   final String version;
   final Map<String, Object?> apps;
+
+  /// Per XCTest start: true = the touch helper comes up, false = it closes
+  /// early (as right after a previous session); the last value repeats.
+  final List<bool> runnerStarts;
+  int _runnerAttempts = 0;
   final runs = <List<String>>[];
   final started = <FakeTouchProcess>[];
 
@@ -53,6 +62,24 @@ final class FakeTools implements ScreenTouchTools {
   Future<TouchProcess> start(List<String> args) async {
     final p = FakeTouchProcess(args);
     started.add(p);
+    if (args.contains('xcuitest')) {
+      final i = _runnerAttempts++;
+      final ok =
+          runnerStarts[i < runnerStarts.length ? i : runnerStarts.length - 1];
+      Timer.run(() {
+        if (ok) {
+          p.lines.add(
+            'PC pymobiledevice3.x[1] INFO [IDE] didBeginExecutingTestPlan',
+          );
+        } else {
+          p.lines.add(
+            'PC pymobiledevice3.x[1] ERROR The DTX connection closed before '
+            'the device opened the expected proxied service.',
+          );
+          p.exit.complete(1);
+        }
+      });
+    }
     return p;
   }
 
@@ -74,7 +101,10 @@ void main() {
           'com.team.xcross.touch.xctrunner': _runner,
         },
       );
-      final link = await WdaScreenTouch(tools).start('UDID1');
+      final link = await WdaScreenTouch(
+        tools,
+        retryDelay: Duration.zero,
+      ).start('UDID1');
       expect(link.url, 'http://127.0.0.1:18100');
       expect(tools.runs.map((r) => r.take(2).join(' ')), [
         'lockdown info',
@@ -100,7 +130,7 @@ void main() {
 
   test('AC-048-T2 iOS 17 and later go through the tunnel', () async {
     final tools = FakeTools(version: '17.5', apps: {'a.xctrunner': _runner});
-    await WdaScreenTouch(tools).start('UDID2');
+    await WdaScreenTouch(tools, retryDelay: Duration.zero).start('UDID2');
     expect(tools.started.first.args, [
       'developer',
       'dvt',
@@ -121,7 +151,7 @@ void main() {
         },
       );
       await expectLater(
-        WdaScreenTouch(tools).start('UDID3'),
+        WdaScreenTouch(tools, retryDelay: Duration.zero).start('UDID3'),
         throwsA(
           isA<ScreenTouchUnavailable>().having(
             (e) => e.reason,
@@ -152,6 +182,47 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       runner.exit.complete(1);
       expect(await link.ended, 'Device is locked');
+    },
+  );
+
+  test(
+    'AC-048-T9 the touch helper closing early (just after a previous session) is started again',
+    () async {
+      final tools = FakeTools(
+        version: '16.7.16',
+        apps: {'a.xctrunner': _runner},
+        runnerStarts: [false, true],
+      );
+      final link = await WdaScreenTouch(
+        tools,
+        retryDelay: Duration.zero,
+      ).start('UDID1');
+      final runners = tools.started.where((p) => p.args.contains('xcuitest'));
+      expect(runners, hasLength(2));
+      expect(runners.first.killed, isTrue);
+      expect(tools.started.last.args.take(2), ['usbmux', 'forward']);
+      expect(link.url, 'http://127.0.0.1:18100');
+    },
+  );
+
+  test(
+    'AC-048-T10 it keeps closing: touch is off with the reason, no forward left',
+    () async {
+      final tools = FakeTools(
+        version: '16.7.16',
+        apps: {'a.xctrunner': _runner},
+        runnerStarts: [false],
+      );
+      await expectLater(
+        WdaScreenTouch(tools, retryDelay: Duration.zero).start('UDID1'),
+        throwsA(
+          isA<ScreenTouchUnavailable>()
+              .having((e) => e.reason, 'reason', 'error')
+              .having((e) => e.message, 'message', contains('DTX connection')),
+        ),
+      );
+      expect(tools.started, hasLength(3), reason: 'three tries, no forward');
+      expect(tools.started.every((p) => p.killed), isTrue);
     },
   );
 }
