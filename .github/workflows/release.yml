@@ -264,6 +264,20 @@ jobs:
           Copy-Item -Recurse "$bundle/bin" dist/bin
           Copy-Item -Recurse "$bundle/lib" dist/lib
 
+      # studio: 048 — the iPhone screen helper (Rust, reuses ZenLink's code) and
+      # its Windows driver files. x64 only: the bundled libusb-win32 driver is
+      # amd64. The runner image has rustup with the stable toolchain.
+      - name: Build xcross-screen
+        if: matrix.architecture == 'x64'
+        shell: pwsh
+        run: |
+          cargo build --release --locked --manifest-path native/Cargo.toml -p xcross-screen
+          if ($LASTEXITCODE -ne 0) { throw 'cargo build failed' }
+          cargo test --release --locked --manifest-path native/Cargo.toml -p xcross-screen
+          if ($LASTEXITCODE -ne 0) { throw 'cargo test failed' }
+          Copy-Item native/target/release/xcross-screen.exe dist/bin/xcross-screen.exe
+          Copy-Item -Recurse native/vendor/zenlink-drivers dist/bin/screen-drivers
+
       - name: Package Windows release
         shell: pwsh
         run: |
@@ -277,6 +291,11 @@ jobs:
           Copy-Item `
             third_party/OpenAppleMacros/LICENSE.md `
             dist/THIRD_PARTY_LICENSES/OpenAppleMacros.txt
+          if ('${{ matrix.architecture }}' -eq 'x64') {
+            # studio: 048 — ZenLink (GPL-3.0) code in xcross-screen, and where it came from.
+            Copy-Item native/vendor/LICENSE-ZenLink-GPL-3.0 dist/THIRD_PARTY_LICENSES/ZenLink.txt
+            Copy-Item native/vendor/ZENLINK.md dist/THIRD_PARTY_LICENSES/ZenLink-origin.md
+          }
           # The bundled server statically includes swift-syntax and, on
           # Windows, ships the Swift runtime DLLs: both Apache 2.0 with the
           # Runtime Library Exception.
@@ -300,7 +319,19 @@ jobs:
             'lib/OpenAppleMacrosServer.exe'
             'lib/swiftCore.dll'
             'lib/sysv_abi_bridge.dll'
-          ) | Sort-Object
+          )
+          if ('${{ matrix.architecture }}' -eq 'x64') {
+            # studio: 048 — iPhone screen helper and its driver files.
+            $required += @(
+              'bin/xcross-screen.exe'
+              'bin/screen-drivers/tools/usb_filter.ps1'
+              'bin/screen-drivers/drivers/libusb-win32/amd64/libusb0.dll'
+              'bin/screen-drivers/drivers/libusb-win32/amd64/libusb0.sys'
+              'THIRD_PARTY_LICENSES/ZenLink.txt'
+              'THIRD_PARTY_LICENSES/ZenLink-origin.md'
+            )
+          }
+          $required = $required | Sort-Object
           $root = Resolve-Path smoke
           $actual = Get-ChildItem smoke -File -Recurse | ForEach-Object {
             [IO.Path]::GetRelativePath($root, $_.FullName).Replace('\', '/')
@@ -327,6 +358,10 @@ jobs:
 
           & smoke/bin/xcross.exe --help | Out-Null
           if ($LASTEXITCODE -ne 0) { throw 'xcross.exe --help failed' }
+          if ('${{ matrix.architecture }}' -eq 'x64') {
+            & smoke/bin/xcross-screen.exe --version | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'xcross-screen.exe --version failed' }
+          }
 
       - name: Attest build provenance
         if: startsWith(github.ref, 'refs/tags/')

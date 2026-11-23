@@ -17,6 +17,7 @@ on:
     paths:
       - "packages/**"
       - "third_party/**"
+      - "native/**"
       - "pubspec.yaml"
       - "pubspec.lock"
   workflow_dispatch:
