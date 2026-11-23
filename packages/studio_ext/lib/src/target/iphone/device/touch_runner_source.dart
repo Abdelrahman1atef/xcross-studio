@@ -170,6 +170,35 @@ static NSString *XTWiFiAddress(void) {
 
 static CGSize gScreen;
 
+@protocol XTApplication
+- (id)initWithBundleIdentifier:(NSString *)bundleId;
+- (CGRect)frame;
+@end
+
+/// The screen in points, portrait. The runner app has no launch screen, so UIKit runs it in the
+/// old 320x480 compatibility size and UIScreen (even nativeBounds) reports that; the home
+/// screen's frame is the real size (375x812 on an iPhone X). Asked once, at start.
+static CGSize XTRealScreen(void) {
+  CGSize size = CGSizeMake(0, 0);  // (CGSizeZero would need CoreGraphics linked)
+  Class appClass = NSClassFromString(@"XCUIApplication");
+  if (appClass != nil) {
+    @try {
+      id springboard = [(id<XTApplication>)[appClass alloc] initWithBundleIdentifier:@"com.apple.springboard"];
+      size = [(id<XTApplication>)springboard frame].size;
+    } @catch (NSException *e) {
+      NSLog(@"xcross touch: no home screen size (%@)", e.reason);
+    }
+  }
+  if (size.width < 1 || size.height < 1) {
+    UIScreen *screen = UIScreen.mainScreen;
+    CGFloat scale = screen.nativeScale > 0 ? screen.nativeScale : 1;
+    size = CGSizeMake(screen.nativeBounds.size.width / scale, screen.nativeBounds.size.height / scale);
+  }
+  CGSize portrait = CGSizeMake(MIN(size.width, size.height), MAX(size.width, size.height));
+  NSLog(@"xcross touch: screen %.0fx%.0f points", portrait.width, portrait.height);
+  return portrait;
+}
+
 static NSDictionary *XTStatus(void) {
   NSString *ip = XTWiFiAddress();
   return @{
@@ -313,12 +342,7 @@ static void XTServe(void) {
 
 - (void)testRunner {
   self.continueAfterFailure = YES;
-  // The runner app has no launch screen, so UIKit runs it in the old 320x480 compatibility
-  // size; the native pixels and scale give the real screen in points (375x812 on an iPhone X).
-  UIScreen *screen = UIScreen.mainScreen;
-  CGFloat scale = screen.nativeScale > 0 ? screen.nativeScale : 1;
-  CGSize pixels = screen.nativeBounds.size;
-  gScreen = CGSizeMake(MIN(pixels.width, pixels.height) / scale, MAX(pixels.width, pixels.height) / scale);
+  gScreen = XTRealScreen();
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^{
     XTServe();
   });
