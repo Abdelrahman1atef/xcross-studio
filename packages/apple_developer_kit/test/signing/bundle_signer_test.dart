@@ -789,6 +789,96 @@ void main() {
     });
   }
 
+  test(
+    'AC-048-W1 signs an XCUITest runner: PlugIns/<Name>.xctest with the host '
+    'identity, no profile and no entitlements',
+    () async {
+      final app = _app(temporaryDirectory, 'xctrunner', 'dev.xcross.Runner');
+      final plugIns = Directory(p.join(app.path, 'PlugIns'))..createSync();
+      final xctest = Directory(p.join(plugIns.path, 'Agent.xctest'))
+        ..createSync();
+      _writeInfo(xctest.path, 'Agent', 'com.example.Agent');
+      File(
+        p.join(xctest.path, 'Agent'),
+      ).writeAsBytesSync(_macho(fileType: _mhBundle));
+      // WebDriverAgent ships its library inside the test bundle.
+      final nestedFrameworks = Directory(p.join(xctest.path, 'Frameworks'))
+        ..createSync();
+      _framework(nestedFrameworks.path, 'AgentLib', 'com.example.AgentLib');
+
+      await BundleSigner(
+        exactAsset,
+        hostServices: testHostServices,
+      ).signApp(app.path, signingTime: signingTime);
+
+      expect(
+        File(
+          p.join(xctest.path, '_CodeSignature', 'CodeResources'),
+        ).existsSync(),
+        isTrue,
+      );
+      expect(
+        File(
+          p.join(
+            nestedFrameworks.path,
+            'AgentLib.framework',
+            '_CodeSignature',
+            'CodeResources',
+          ),
+        ).existsSync(),
+        isTrue,
+      );
+      // Signed like a framework: not provisioned and not entitled.
+      expect(
+        File(p.join(xctest.path, 'embedded.mobileprovision')).existsSync(),
+        isFalse,
+      );
+      expect(
+        _entitlements(File(p.join(xctest.path, 'Agent')).readAsBytesSync()),
+        isEmpty,
+      );
+      // The test bundle seals its framework; the app seals the test bundle.
+      final testSeal = _map(
+        _plist(
+          File(
+            p.join(xctest.path, '_CodeSignature', 'CodeResources'),
+          ).readAsBytesSync(),
+        )['files2'],
+      );
+      expect(testSeal.keys, contains('Frameworks/AgentLib.framework/AgentLib'));
+      final rootSeal = File(
+        p.join(app.path, '_CodeSignature', 'CodeResources'),
+      ).readAsStringSync();
+      expect(
+        rootSeal,
+        contains('PlugIns/Agent.xctest/_CodeSignature/CodeResources'),
+      );
+    },
+  );
+
+  test('AC-048-W2 refuses a .xctest outside PlugIns', () async {
+    final app = _app(temporaryDirectory, 'strayxctest', 'dev.xcross.Runner');
+    final stray = Directory(p.join(app.path, 'Stray.xctest'))..createSync();
+    _writeInfo(stray.path, 'Stray', 'com.example.Stray');
+    File(
+      p.join(stray.path, 'Stray'),
+    ).writeAsBytesSync(_macho(fileType: _mhBundle));
+
+    await expectLater(
+      BundleSigner(
+        exactAsset,
+        hostServices: testHostServices,
+      ).preflight(app.path),
+      throwsA(
+        isA<AppleError>().having(
+          (error) => error.message,
+          'message',
+          allOf(contains('Stray.xctest'), contains('PlugIns')),
+        ),
+      ),
+    );
+  });
+
   test('refuses a .appex outside PlugIns', () async {
     final app = _app(temporaryDirectory, 'strayappex', 'dev.xcross.Runner');
     final stray = Directory(p.join(app.path, 'Stray.appex'))..createSync();
@@ -979,6 +1069,7 @@ void _name(Uint8List bytes, int offset, String value) {
 
 const _mhExecute = 2;
 const _mhDylib = 6;
+const _mhBundle = 8;
 
 int _u32le(Uint8List bytes, int offset) =>
     ByteData.sublistView(bytes).getUint32(offset, Endian.little);

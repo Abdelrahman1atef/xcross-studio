@@ -21,8 +21,9 @@ const _forbiddenDirectoryNames = {
   'XPCServices',
 };
 
-/// Bundle suffixes that carry their own signature. `.framework` and `.appex`
-/// are the nested bundle kinds xcross knows how to sign.
+/// Bundle suffixes that carry their own signature. `.framework`, `.appex` and
+/// an XCUITest runner's `PlugIns/<Name>.xctest` are the nested bundle kinds
+/// xcross knows how to sign.
 ///
 /// `.bundle` is absent on purpose: on iOS it is almost always a resource-only
 /// bundle (SwiftPM `<Package>_<Target>.bundle`, CocoaPods resource bundles,
@@ -31,20 +32,18 @@ const _forbiddenDirectoryNames = {
 /// exactly as `codesign` does. A `.bundle` that declares `CFBundleExecutable`
 /// is still rejected below, and any Mach-O hidden inside one is rejected as
 /// unknown nested code during inspection.
-const _unsupportedBundleSuffixes = {
-  '.app',
-  '.xctest',
-  '.xpc',
-  '.plugin',
-  '.xcframework',
-};
+const _unsupportedBundleSuffixes = {'.app', '.xpc', '.plugin', '.xcframework'};
 
 /// Nested bundle suffixes this signer handles itself.
 @internal
 const frameworkSuffix = '.framework';
 const _appExtensionSuffix = '.appex';
 
-/// The only directory an embedded app extension may live in.
+/// An XCUITest bundle (studio: 048, WebDriverAgent's runner). Like a framework
+/// it is signed with the host app's identity and no entitlements of its own.
+const _testBundleSuffix = '.xctest';
+
+/// The only directory an embedded app extension or test bundle may live in.
 const _plugInsDirectory = 'PlugIns';
 
 /// Every Mach-O magic, read little-endian: fat and thin, 32- and 64-bit, both
@@ -187,6 +186,18 @@ class BundleTree {
         }
         continue;
       }
+      if (name.endsWith(_testBundleSuffix)) {
+        // An XCUITest runner loads its test bundle from PlugIns/ only.
+        if (!isEmbeddedTestBundle(entry.relativePath)) {
+          bundleFail(
+            root,
+            entry.path,
+            'test bundle "$name" must live directly in $_plugInsDirectory/',
+            paths: hostServices.host.paths,
+          );
+        }
+        continue;
+      }
       if (!name.endsWith(frameworkSuffix) &&
           (_unsupportedBundleSuffixes.any(name.endsWith) ||
               _declaresBundleExecutable(entry.path))) {
@@ -205,6 +216,14 @@ class BundleTree {
     return segments.length == 2 &&
         segments.first == _plugInsDirectory &&
         segments.last.endsWith(_appExtensionSuffix);
+  }
+
+  /// Whether [relativePath] is an XCUITest bundle (`PlugIns/<Name>.xctest`).
+  static bool isEmbeddedTestBundle(String relativePath) {
+    final segments = relativePath.split('/');
+    return segments.length == 2 &&
+        segments.first == _plugInsDirectory &&
+        segments.last.endsWith(_testBundleSuffix);
   }
 
   bool _declaresBundleExecutable(String directory) {
