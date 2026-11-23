@@ -1,0 +1,297 @@
+//! Touch on iPhones without Apple's touch service (iOS 16 and older, spec 048): WebDriverAgent
+//! runs on the phone (started by the engine) and this sends it taps, swipes and buttons.
+//!
+//! Coordinates arrive normalized (0..1 of the picture) and are turned into WDA points with the
+//! session's window size. Plain HTTP/1.1 on 127.0.0.1 (the engine forwards the phone's port).
+
+use std::io::{Read, Write};
+use std::net::TcpStream;
+use std::sync::Mutex;
+use std::time::Duration;
+
+use serde_json::{json, Value};
+
+pub struct Wda {
+    host: String,
+    port: u16,
+    session: Mutex<Option<(String, f64, f64)>>,
+}
+
+/// A tap or a drag from the viewer, in 0..1 of the picture.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Gesture {
+    /// `hold` seconds: a long press when the mouse was held.
+    Tap { x: f64, y: f64, hold: f64 },
+    Swipe { x1: f64, y1: f64, x2: f64, y2: f64, seconds: f64 },
+}
+
+impl Gesture {
+    /// Parses the viewer's JSON body for `tap` or `swipe`; values are clamped to the picture.
+    pub fn parse(kind: &str, body: &str) -> Option<Self> {
+        let v: Value = serde_json::from_str(body).ok()?;
+        let n = |k: &str| v.get(k).and_then(Value::as_f64).map(|f| f.clamp(0.0, 1.0));
+        match kind {
+            "tap" => Some(Gesture::Tap {
+                x: n("x")?,
+                y: n("y")?,
+                hold: v.get("hold").and_then(Value::as_f64).unwrap_or(0.03).clamp(0.03, 3.0),
+            }),
+            "swipe" => Some(Gesture::Swipe {
+                x1: n("x1")?,
+                y1: n("y1")?,
+                x2: n("x2")?,
+                y2: n("y2")?,
+                seconds: v.get("seconds").and_then(Value::as_f64).unwrap_or(0.2).clamp(0.05, 1.5),
+            }),
+            _ => None,
+        }
+    }
+
+    /// The WDA request (path after the session, body) for a window of `w` x `h` points: W3C
+    /// pointer actions, the quickest way through XCTest.
+    pub fn request(&self, w: f64, h: f64) -> (&'static str, Value) {
+        let pt = |x: f64, y: f64| ((x * w).round(), (y * h).round());
+        let steps = match *self {
+            Gesture::Tap { x, y, hold } => {
+                let (px, py) = pt(x, y);
+                json!([
+                    { "type": "pointerMove", "duration": 0, "x": px, "y": py },
+                    { "type": "pointerDown" },
+                    { "type": "pause", "duration": (hold * 1000.0).round() },
+                    { "type": "pointerUp" },
+                ])
+            }
+            Gesture::Swipe { x1, y1, x2, y2, seconds } => {
+                let ((ax, ay), (bx, by)) = (pt(x1, y1), pt(x2, y2));
+                json!([
+                    { "type": "pointerMove", "duration": 0, "x": ax, "y": ay },
+                    { "type": "pointerDown" },
+                    { "type": "pointerMove", "duration": (seconds * 1000.0).round(), "x": bx, "y": by },
+                    { "type": "pointerUp" },
+                ])
+            }
+        };
+        (
+            "/actions",
+            json!({ "actions": [{
+                "type": "pointer", "id": "finger1", "parameters": { "pointerType": "touch" }, "actions": steps,
+            }] }),
+        )
+    }
+}
+
+impl Wda {
+    /// `base` is `http://127.0.0.1:<port>` (anything else is refused: the phone is reached only
+    /// through the engine's local forward).
+    pub fn new(base: &str) -> Option<Self> {
+        let rest = base.trim().trim_end_matches('/').strip_prefix("http://127.0.0.1:")?;
+        let port: u16 = rest.parse().ok()?;
+        Some(Self { host: "127.0.0.1".into(), port, session: Mutex::new(None) })
+    }
+
+    fn call(&self, method: &str, path: &str, body: Option<&Value>) -> Result<Value, String> {
+        self.call_within(method, path, body, Duration::from_secs(20))
+    }
+
+    fn call_within(&self, method: &str, path: &str, body: Option<&Value>, wait: Duration) -> Result<Value, String> {
+        let mut conn = TcpStream::connect((self.host.as_str(), self.port)).map_err(|e| format!("touch helper: {e}"))?;
+        let _ = conn.set_read_timeout(Some(wait));
+        let payload = body.map(|b| b.to_string()).unwrap_or_default();
+        let head = format!(
+            "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            payload.len()
+        );
+        conn.write_all(head.as_bytes()).and_then(|_| conn.write_all(payload.as_bytes())).map_err(|e| e.to_string())?;
+        parse_response(&read_response(&mut conn).map_err(|e| format!("touch helper: {e}"))?)
+    }
+
+    /// The session id and window size, creating the session on first use.
+    fn session(&self) -> Result<(String, f64, f64), String> {
+        if let Some(s) = self.session.lock().unwrap().clone() {
+            return Ok(s);
+        }
+        // No waiting for the app to be idle before each touch (1.4 s -> 0.5 s per tap on an iPhone X).
+        let caps = json!({ "capabilities": { "alwaysMatch": {
+            "shouldWaitForQuiescence": false, "waitForIdleTimeout": 0,
+            "shouldUseTestManagerForVisibilityDetection": false,
+        } } });
+        let created = self.call("POST", "/session", Some(&caps))?;
+        let sid = created
+            .get("sessionId")
+            .or_else(|| created.pointer("/value/sessionId"))
+            .and_then(Value::as_str)
+            .ok_or("touch helper: no session")?
+            .to_string();
+        let settings = json!({ "settings": { "waitForIdleTimeout": 0, "animationCoolOffTimeout": 0 } });
+        if let Err(e) = self.call("POST", &format!("/session/{sid}/appium/settings"), Some(&settings)) {
+            log::info!("touch: settings not taken ({e})");
+        }
+        let size = self.call("GET", &format!("/session/{sid}/window/size"), None)?;
+        let w = size.pointer("/value/width").and_then(Value::as_f64).unwrap_or(375.0);
+        let h = size.pointer("/value/height").and_then(Value::as_f64).unwrap_or(812.0);
+        let s = (sid, w, h);
+        *self.session.lock().unwrap() = Some(s.clone());
+        Ok(s)
+    }
+
+    /// Sends a gesture; retries once with a new session (WDA drops idle sessions).
+    pub fn gesture(&self, g: Gesture) -> Result<(), String> {
+        for attempt in 0..2 {
+            let (sid, w, h) = self.session()?;
+            let (path, body) = g.request(w, h);
+            match self.call("POST", &format!("/session/{sid}{path}"), Some(&body)) {
+                Ok(_) => return Ok(()),
+                Err(e) if attempt == 0 => {
+                    log::info!("touch: retrying with a new session ({e})");
+                    *self.session.lock().unwrap() = None;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(())
+    }
+
+    /// `home` (Home button); other names are refused.
+    pub fn button(&self, name: &str) -> Result<(), String> {
+        match name {
+            "home" => self.call("POST", "/wda/homescreen", None).map(|_| ()),
+            _ => Err(format!("unknown button {name}")),
+        }
+    }
+
+    /// Opens the session ahead of the first touch.
+    pub fn prepare(&self) -> Result<(), String> {
+        self.session().map(|_| ())
+    }
+
+    /// Whether WDA answers.
+    pub fn ready(&self) -> bool {
+        // Short: before WDA is up, the port forward keeps the connection open without answering.
+        self.call_within("GET", "/status", None, Duration::from_secs(2)).is_ok()
+    }
+}
+
+/// Reads one HTTP response: up to Content-Length, to the last chunk, or to the end. WDA (behind a
+/// port forward) keeps the connection open after answering, so "read to the end" alone hangs.
+pub fn read_response(conn: &mut impl Read) -> std::io::Result<Vec<u8>> {
+    let mut raw = Vec::new();
+    let mut buf = [0u8; 8192];
+    loop {
+        if let Some(split) = raw.windows(4).position(|w| w == b"\r\n\r\n") {
+            let head = String::from_utf8_lossy(&raw[..split]).to_ascii_lowercase();
+            let length = head
+                .lines()
+                .find_map(|l| l.strip_prefix("content-length:"))
+                .and_then(|v| v.trim().parse::<usize>().ok());
+            let chunked = head.contains("transfer-encoding: chunked");
+            let body = raw.len() - split - 4;
+            match length {
+                Some(n) if body >= n => return Ok(raw),
+                None if chunked && raw.ends_with(b"0\r\n\r\n") => return Ok(raw),
+                _ => {}
+            }
+        }
+        let n = conn.read(&mut buf)?;
+        if n == 0 {
+            return Ok(raw);
+        }
+        raw.extend_from_slice(&buf[..n]);
+    }
+}
+
+/// The JSON body of an HTTP response; an HTTP error or a WDA error status is an Err.
+pub fn parse_response(raw: &[u8]) -> Result<Value, String> {
+    let split = raw.windows(4).position(|w| w == b"\r\n\r\n").ok_or("touch helper: bad reply")?;
+    let head = String::from_utf8_lossy(&raw[..split]);
+    let status: u16 = head.split_whitespace().nth(1).and_then(|s| s.parse().ok()).unwrap_or(0);
+    let mut body = raw[split + 4..].to_vec();
+    if head.to_ascii_lowercase().contains("transfer-encoding: chunked") {
+        body = dechunk(&body);
+    }
+    let v: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
+    if !(200..300).contains(&status) {
+        let msg = v.pointer("/value/message").and_then(Value::as_str).unwrap_or("error");
+        return Err(format!("touch helper HTTP {status}: {msg}"));
+    }
+    Ok(v)
+}
+
+fn dechunk(mut data: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    while let Some(nl) = data.windows(2).position(|w| w == b"\r\n") {
+        let size = usize::from_str_radix(String::from_utf8_lossy(&data[..nl]).trim(), 16).unwrap_or(0);
+        if size == 0 || data.len() < nl + 2 + size {
+            break;
+        }
+        out.extend_from_slice(&data[nl + 2..nl + 2 + size]);
+        data = &data[(nl + 4 + size).min(data.len())..];
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_a_local_forward_is_accepted() {
+        assert!(Wda::new("http://127.0.0.1:18100").is_some());
+        assert!(Wda::new("http://127.0.0.1:18100/").is_some());
+        assert!(Wda::new("http://192.168.1.5:8100").is_none());
+        assert!(Wda::new("https://127.0.0.1:1").is_none());
+        assert!(Wda::new("http://127.0.0.1:notaport").is_none());
+    }
+
+    #[test]
+    fn gestures_parse_clamp_and_scale_to_points() {
+        let t = Gesture::parse("tap", r#"{"x":0.5,"y":1.4}"#).unwrap();
+        assert_eq!(t, Gesture::Tap { x: 0.5, y: 1.0, hold: 0.03 });
+        let (path, body) = t.request(375.0, 812.0);
+        assert_eq!(path, "/actions");
+        let steps = &body["actions"][0]["actions"];
+        assert_eq!((steps[0]["x"].clone(), steps[0]["y"].clone()), (json!(188.0), json!(812.0)));
+        assert_eq!(steps[2]["duration"], 30.0);
+        let long = Gesture::parse("tap", r#"{"x":0.1,"y":0.1,"hold":0.8}"#).unwrap();
+        assert_eq!(long.request(375.0, 812.0).1["actions"][0]["actions"][2]["duration"], 800.0);
+
+        let s = Gesture::parse("swipe", r#"{"x1":0.5,"y1":0.9,"x2":0.5,"y2":0.2,"seconds":9}"#).unwrap();
+        let (path, body) = s.request(375.0, 812.0);
+        assert_eq!(path, "/actions");
+        let steps = &body["actions"][0]["actions"];
+        assert_eq!(steps[0]["y"], 731.0);
+        assert_eq!(steps[2]["y"], 162.0);
+        assert_eq!(steps[2]["duration"], 1500.0, "duration clamped");
+
+        assert!(Gesture::parse("tap", r#"{"x":0.5}"#).is_none());
+        assert!(Gesture::parse("pinch", r#"{}"#).is_none());
+    }
+
+    /// A reader that never ends: like WDA behind a forward that keeps the connection open.
+    struct Open(std::io::Cursor<Vec<u8>>);
+    impl Read for Open {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            match self.0.read(buf)? {
+                0 => Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "would hang")),
+                n => Ok(n),
+            }
+        }
+    }
+
+    #[test]
+    fn a_response_is_complete_without_the_connection_closing() {
+        let sized = b"HTTP/1.1 200 OK\r\nContent-Length: 11\r\n\r\n{\"value\":1}".to_vec();
+        assert_eq!(read_response(&mut Open(std::io::Cursor::new(sized.clone()))).unwrap(), sized);
+        let chunked = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\n{}\r\n0\r\n\r\n".to_vec();
+        assert_eq!(read_response(&mut Open(std::io::Cursor::new(chunked.clone()))).unwrap(), chunked);
+    }
+
+    #[test]
+    fn responses_parse_plain_and_chunked_and_report_errors() {
+        let ok = b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"value\":{\"width\":375}}";
+        assert_eq!(parse_response(ok).unwrap()["value"]["width"], 375);
+        let chunked = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n6\r\n{\"a\":1\r\n1\r\n}\r\n0\r\n\r\n";
+        assert_eq!(parse_response(chunked).unwrap()["a"], 1);
+        let err = b"HTTP/1.1 404 Not Found\r\n\r\n{\"value\":{\"message\":\"invalid session id\"}}";
+        assert!(parse_response(err).unwrap_err().contains("invalid session id"));
+    }
+}

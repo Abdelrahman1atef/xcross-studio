@@ -5,13 +5,15 @@
 //!   xcross-screen stream --serial <udid> [--listen 127.0.0.1:0] [--seconds N]
 //!
 //! `stream` uses Apple's QuickTime screen capture over USB (ZenLink's `usbdirect`), serves the
-//! H.264 stream on 127.0.0.1 behind a random token, and stops when stdin closes.
+//! H.264 stream on 127.0.0.1 behind a random token, and stops when stdin closes. Its stdin also
+//! takes `wda http://127.0.0.1:<port>` (touch through WebDriverAgent, started by the engine).
 
 mod annexb;
 mod driver;
 mod hub;
+mod wda;
 
-use std::io::Read;
+
 use std::net::TcpListener;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -215,13 +217,43 @@ fn stream(args: &[String]) -> i32 {
         false,
     );
 
-    // Stop when stdin closes (the engine or Studio cancelled us), or after --seconds.
+    // Commands on stdin, one per line: "wda http://127.0.0.1:<port>" turns touch on (the engine
+    // started WebDriverAgent on the phone), "stop" stops. Stdin closing also stops.
     {
         let stop = control.stop.clone();
+        let hub = hub.clone();
         std::thread::spawn(move || {
-            let mut sink = [0u8; 64];
-            let mut stdin = std::io::stdin();
-            while matches!(stdin.read(&mut sink), Ok(n) if n > 0) {}
+            for line in std::io::stdin().lines() {
+                let Ok(line) = line else { break };
+                let line = line.trim();
+                if line == "stop" {
+                    break;
+                }
+                if let Some(url) = line.strip_prefix("wda ") {
+                    let Some(w) = wda::Wda::new(url) else {
+                        log::warn!("touch: refused address {url}");
+                        continue;
+                    };
+                    // The engine has just started WebDriverAgent; it takes a few seconds to answer.
+                    let hub = hub.clone();
+                    std::thread::spawn(move || {
+                        let deadline = Instant::now() + Duration::from_secs(90);
+                        while !w.ready() {
+                            if Instant::now() > deadline {
+                                emit(json!({ "type": "screen_touch", "available": false, "reason": "error", "message": "The touch helper on the iPhone did not answer." }));
+                                return;
+                            }
+                            std::thread::sleep(Duration::from_millis(500));
+                        }
+                        // Open the touch session now, so the first tap is not the slow one.
+                        if let Err(e) = w.prepare() {
+                            log::info!("touch: session not ready yet ({e})");
+                        }
+                        hub.set_wda(w);
+                        emit(json!({ "type": "screen_touch", "available": true }));
+                    });
+                }
+            }
             stop.store(true, Ordering::Relaxed);
         });
     }

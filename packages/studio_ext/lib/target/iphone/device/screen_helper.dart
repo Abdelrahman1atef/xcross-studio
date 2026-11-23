@@ -19,6 +19,9 @@ abstract interface class ScreenHelperProcess {
   Stream<String> get errors;
   Future<int> get exitCode;
 
+  /// Writes one command line to the helper (e.g. `wda http://127.0.0.1:<port>`).
+  void send(String line);
+
   /// Asks the helper to stop (closes its stdin); kills it if it has not ended
   /// after [grace].
   Future<void> stop({Duration grace = const Duration(seconds: 5)});

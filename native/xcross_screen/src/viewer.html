@@ -98,6 +98,52 @@ async function run() {
   }
 }
 
+// ---- Touch (spec 048): click = tap, drag = swipe, when the engine turned touch on. ----
+let touch = false, down = null;
+async function refreshTouch() {
+  try { touch = (await (await fetch('info', { cache: 'no-store' })).json()).touch === true; } catch (_) {}
+  canvas.style.cursor = touch ? 'pointer' : 'default';
+}
+// Where the picture is drawn inside the canvas element (object-fit: contain).
+function toPicture(ev) {
+  const r = canvas.getBoundingClientRect();
+  const cw = canvas.width || 1, ch = canvas.height || 1;
+  const scale = Math.min(r.width / cw, r.height / ch);
+  const w = cw * scale, h = ch * scale, left = r.left + (r.width - w) / 2, top = r.top + (r.height - h) / 2;
+  return { x: (ev.clientX - left) / w, y: (ev.clientY - top) / h, px: ev.clientX, py: ev.clientY };
+}
+function ripple(p) {
+  const d = document.createElement('div');
+  d.style.cssText = `position:absolute;left:${p.px - 16}px;top:${p.py - 16}px;width:32px;height:32px;border-radius:50%;` +
+    'border:2px solid rgba(255,255,255,.9);background:rgba(10,132,255,.35);pointer-events:none;transition:all .35s ease-out;';
+  document.body.appendChild(d);
+  requestAnimationFrame(() => { d.style.transform = 'scale(1.6)'; d.style.opacity = '0'; });
+  setTimeout(() => d.remove(), 400);
+}
+function send(kind, body) {
+  fetch(kind, { method: 'POST', body: JSON.stringify(body) }).then((r) => {
+    if (r.status === 409) { touch = false; canvas.style.cursor = 'default'; }
+  }).catch(() => {});
+}
+canvas.addEventListener('pointerdown', (ev) => {
+  if (!touch || ev.button !== 0) return;
+  down = { p: toPicture(ev), t: performance.now() };
+  canvas.setPointerCapture(ev.pointerId);
+});
+canvas.addEventListener('pointerup', (ev) => {
+  if (!touch || !down) return;
+  const p = toPicture(ev), d = down; down = null;
+  if (d.p.x < 0 || d.p.x > 1 || d.p.y < 0 || d.p.y > 1) return;
+  ripple(p);
+  const moved = Math.hypot(p.px - d.p.px, p.py - d.p.py);
+  const held = (performance.now() - d.t) / 1000;
+  if (moved < 8) send('tap', { x: d.p.x, y: d.p.y, hold: held > 0.35 ? Math.min(held, 3) : 0.03 });
+  else send('swipe', { x1: d.p.x, y1: d.p.y, x2: p.x, y2: p.y, seconds: (performance.now() - d.t) / 1000 });
+});
+canvas.addEventListener('contextmenu', (ev) => ev.preventDefault());
+refreshTouch();
+setInterval(refreshTouch, 3000);
+
 setInterval(() => {
   const now = performance.now();
   window.screenStats.fps = Math.round((decoded - lastCount) * 10000 / (now - lastTime)) / 10;

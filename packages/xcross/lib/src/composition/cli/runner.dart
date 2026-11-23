@@ -38,6 +38,7 @@ import 'package:studio_ext/target/iphone/device/devices_command.dart'; // studio
 import 'package:studio_ext/target/iphone/device/logs_command.dart'; // studio: 010
 import 'package:studio_ext/target/iphone/device/screen_command.dart'; // studio: 048
 import 'package:studio_ext/target/iphone/device/screen_helper.dart'; // studio: 048
+import 'package:studio_ext/target/iphone/device/screen_touch.dart'; // studio: 048
 import 'package:xcross/src/composition/cli/appstore_commands.dart'; // studio: 021
 import 'package:xcross/src/composition/cli/asc_commands.dart'; // studio: 018
 import 'package:xcross/src/composition/cli/cache_command.dart';
@@ -448,6 +449,23 @@ abstract final class XcrossCli {
         ),
         writeBytes: stdout.add,
         writeError: stderr.writeln,
+        // Taps and swipes on iPhones whose picture has no touch (QuickTime):
+        // WebDriverAgent on the phone, started with pymobiledevice3.
+        touch: WdaScreenTouch(
+          PymdScreenTouchTools(
+            pymd: pymd,
+            processes: runtime.host.processes,
+            freePort: () async {
+              final socket = await ServerSocket.bind(
+                InternetAddress.loopbackIPv4,
+                0,
+              );
+              final port = socket.port;
+              await socket.close();
+              return port;
+            },
+          ),
+        ),
         // Studio stops the screen by writing "xcross-screen-stop" (or closing
         // stdin), so the helper can put the iPhone's USB configuration back;
         // typing "stop" or Ctrl+C works too.
@@ -457,10 +475,8 @@ abstract final class XcrossCli {
               .transform(utf8.decoder)
               .transform(const LineSplitter())
               .firstWhere(
-                (line) => const {
-                  'stop',
-                  'xcross-screen-stop',
-                }.contains(line.trim()),
+                (line) =>
+                    const {'stop', 'xcross-screen-stop'}.contains(line.trim()),
                 orElse: () => '',
               ),
         ]),

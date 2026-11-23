@@ -10,14 +10,16 @@
 //! A viewer that falls behind is dropped (it reconnects and restarts at a key frame). No frame
 //! is ever logged.
 
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TrySendError};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Instant;
 
 const VIEWER_QUEUE: usize = 240;
 const VIEWER_PAGE: &str = include_str!("viewer.html");
+
+use crate::wda::{Gesture, Wda};
 
 pub const KIND_CONFIG: u8 = 1;
 pub const KIND_KEY: u8 = 2;
@@ -44,6 +46,8 @@ pub struct Hub {
     state: Mutex<State>,
     token: String,
     started: Instant,
+    /// Touch through WebDriverAgent, once the engine has started it (iOS 16 and older).
+    wda: RwLock<Option<Arc<Wda>>>,
 }
 
 /// `[u32 BE length][u8 kind][payload]`, the length counting the kind byte.
@@ -54,7 +58,16 @@ pub fn frame_header(kind: u8, payload_len: usize) -> [u8; 5] {
 
 impl Hub {
     pub fn new(token: String) -> Arc<Self> {
-        Arc::new(Self { state: Mutex::default(), token, started: Instant::now() })
+        Arc::new(Self { state: Mutex::default(), token, started: Instant::now(), wda: RwLock::new(None) })
+    }
+
+    /// Turns touch on: gestures from the viewer go to [wda].
+    pub fn set_wda(&self, wda: Wda) {
+        *self.wda.write().unwrap() = Some(Arc::new(wda));
+    }
+
+    pub fn touch(&self) -> bool {
+        self.wda.read().unwrap().is_some()
     }
 
     pub fn token(&self) -> &str {
@@ -132,7 +145,7 @@ impl Hub {
 
     fn handle(&self, mut conn: TcpStream) {
         let _ = conn.set_nodelay(true);
-        let Some(path) = read_request_path(&conn) else { return };
+        let Some((method, path, body)) = read_request(&conn) else { return };
         let base = format!("/{}/", self.token);
         let route = path.split('?').next().unwrap_or("");
         let Some(name) = route.strip_prefix(&base) else {
@@ -142,17 +155,40 @@ impl Hub {
             "stream.h264" => self.stream(&mut conn, "video/h264", false),
             "stream.frames" => self.stream(&mut conn, "application/octet-stream", true),
             "viewer" => respond(&mut conn, "text/html; charset=utf-8", VIEWER_PAGE.as_bytes()),
+            "tap" | "swipe" | "button" if method == "POST" => self.touch_request(&mut conn, name, &path, &body),
             "info" => {
                 let (w, h) = self.size();
                 let (frames, bytes) = self.counters();
                 let body = serde_json::json!({
                     "codec": "h264", "width": w, "height": h, "frames": frames, "bytes": bytes,
-                    "uptimeMs": self.started.elapsed().as_millis() as u64,
+                    "uptimeMs": self.started.elapsed().as_millis() as u64, "touch": self.touch(),
                 })
                 .to_string();
                 respond(&mut conn, "application/json", body.as_bytes());
             }
             _ => not_found(&mut conn),
+        }
+    }
+
+    fn touch_request(&self, conn: &mut TcpStream, name: &str, path: &str, body: &str) {
+        let Some(wda) = self.wda.read().unwrap().clone() else {
+            return status(conn, "409 Conflict", "touch is not available for this iPhone");
+        };
+        let result = if name == "button" {
+            let button = path.split("name=").nth(1).unwrap_or("").split('&').next().unwrap_or("");
+            wda.button(button)
+        } else {
+            match Gesture::parse(name, body) {
+                Some(g) => wda.gesture(g),
+                None => return status(conn, "400 Bad Request", "bad gesture"),
+            }
+        };
+        match result {
+            Ok(()) => status(conn, "204 No Content", ""),
+            Err(e) => {
+                log::warn!("touch failed: {e}");
+                status(conn, "502 Bad Gateway", "the iPhone did not take the touch")
+            }
         }
     }
 
@@ -191,22 +227,44 @@ fn respond(conn: &mut TcpStream, content_type: &str, body: &[u8]) {
     let _ = conn.write_all(head.as_bytes()).and_then(|_| conn.write_all(body));
 }
 
+fn status(conn: &mut TcpStream, code: &str, text: &str) {
+    let head = format!(
+        "HTTP/1.1 {code}\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{text}",
+        text.len()
+    );
+    let _ = conn.write_all(head.as_bytes());
+}
+
 fn not_found(conn: &mut TcpStream) {
     let _ = conn.write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
 }
 
-fn read_request_path(conn: &TcpStream) -> Option<String> {
+/// Method, path and body (bodies over 64 KiB are refused).
+fn read_request(conn: &TcpStream) -> Option<(String, String, String)> {
     let mut reader = BufReader::new(conn.try_clone().ok()?);
     let mut line = String::new();
     reader.read_line(&mut line).ok()?;
-    let path = line.split_whitespace().nth(1)?.to_string();
+    let mut parts = line.split_whitespace();
+    let method = parts.next()?.to_string();
+    let path = parts.next()?.to_string();
+    let mut length = 0usize;
     loop {
         let mut h = String::new();
         if reader.read_line(&mut h).ok()? == 0 || h == "\r\n" || h == "\n" {
             break;
         }
+        if let Some((k, v)) = h.split_once(':') {
+            if k.trim().eq_ignore_ascii_case("content-length") {
+                length = v.trim().parse().unwrap_or(0);
+            }
+        }
     }
-    Some(path)
+    if length > 65536 {
+        return None;
+    }
+    let mut body = vec![0u8; length];
+    reader.read_exact(&mut body).ok()?;
+    Some((method, path, String::from_utf8_lossy(&body).into_owned()))
 }
 
 #[cfg(test)]
@@ -300,6 +358,60 @@ mod tests {
         assert!(s.starts_with("HTTP/1.1 200"));
         assert!(s.contains("Content-Security-Policy: default-src 'self'"));
         assert!(s.contains("VideoDecoder"));
+    }
+
+    fn post(port: u16, path: &str, body: &str) -> String {
+        let mut c = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        write!(c, "POST {path} HTTP/1.1\r\nHost: x\r\nContent-Length: {}\r\n\r\n{body}", body.len()).unwrap();
+        let mut s = String::new();
+        c.read_to_string(&mut s).unwrap();
+        s
+    }
+
+    /// A fake WebDriverAgent: answers session, window size and tap; records the tap body.
+    fn fake_wda() -> (u16, std::sync::mpsc::Receiver<String>) {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = l.local_addr().unwrap().port();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            for conn in l.incoming().flatten() {
+                let Some((method, path, body)) = read_request(&conn) else { continue };
+                let reply = match (method.as_str(), path.as_str()) {
+                    ("POST", "/session") => r#"{"sessionId":"S1","value":{"sessionId":"S1"}}"#.to_string(),
+                    ("GET", "/session/S1/window/size") => r#"{"value":{"width":375,"height":812}}"#.to_string(),
+                    ("POST", "/session/S1/actions") => {
+                        tx.send(body).unwrap();
+                        r#"{"value":null}"#.to_string()
+                    }
+                    _ => r#"{"value":null}"#.to_string(),
+                };
+                let mut conn = conn;
+                let _ = write!(conn, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{reply}", reply.len());
+            }
+        });
+        (port, rx)
+    }
+
+    #[test]
+    fn touch_is_refused_until_the_engine_turns_it_on() {
+        let hub = Hub::new("t".into());
+        let port = start(&hub);
+        assert!(post(port, "/t/tap", r#"{"x":0.5,"y":0.5}"#).starts_with("HTTP/1.1 409"));
+        assert!(post(port, "/other/tap", r#"{"x":0.5,"y":0.5}"#).starts_with("HTTP/1.1 404"));
+    }
+
+    #[test]
+    fn a_tap_reaches_webdriveragent_in_points() {
+        let (wda_port, taps) = fake_wda();
+        let hub = Hub::new("t".into());
+        hub.set_wda(Wda::new(&format!("http://127.0.0.1:{wda_port}")).unwrap());
+        let port = start(&hub);
+        assert!(post(port, "/t/tap", r#"{"x":0.5,"y":0.5}"#).starts_with("HTTP/1.1 204"));
+        let body: serde_json::Value = serde_json::from_str(&taps.recv_timeout(Duration::from_secs(2)).unwrap()).unwrap();
+        let first = &body["actions"][0]["actions"][0];
+        assert_eq!(first["x"], 188.0);
+        assert_eq!(first["y"], 406.0);
+        assert!(post(port, "/t/tap", r#"{"nope":1}"#).starts_with("HTTP/1.1 400"));
     }
 
     #[test]

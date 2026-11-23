@@ -11,6 +11,7 @@ import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:meta/meta.dart';
 import 'package:studio_ext/target/iphone/device/screen_command.dart';
 import 'package:studio_ext/target/iphone/device/screen_helper.dart';
+import 'package:studio_ext/target/iphone/device/screen_touch.dart';
 import 'package:test/test.dart';
 
 @internal
@@ -42,10 +43,46 @@ final class FakeScreenProcess implements ScreenHelperProcess {
   @override
   Future<int> get exitCode => _exit.future;
 
+  final sent = <String>[];
+
+  @override
+  void send(String line) => sent.add(line);
+
   @override
   Future<void> stop({Duration grace = const Duration(seconds: 5)}) async {
     stopped = true;
     await finish();
+  }
+}
+
+@internal
+final class FakeTouchLink implements ScreenTouchLink {
+  final endedWith = Completer<String>();
+  bool closed = false;
+
+  @override
+  String get url => 'http://127.0.0.1:18100';
+
+  @override
+  Future<String> get ended => endedWith.future;
+
+  @override
+  Future<void> close() async => closed = true;
+}
+
+@internal
+final class FakeTouch implements ScreenTouch {
+  FakeTouch({this.unavailable});
+
+  final ScreenTouchUnavailable? unavailable;
+  final link = FakeTouchLink();
+  final started = <String>[];
+
+  @override
+  Future<ScreenTouchLink> start(String udid) async {
+    started.add(udid);
+    if (unavailable case final u?) throw u;
+    return link;
   }
 }
 
@@ -83,6 +120,7 @@ void main() {
   CommandRunner<void> runner(
     ScreenHelper helper, {
     Future<void> Function()? untilStopped,
+    ScreenTouch? touch,
   }) => CommandRunner<void>('xcross', 'test')
     ..addCommand(
       ScreenCommand(
@@ -90,8 +128,19 @@ void main() {
         writeBytes: out.addAll,
         writeError: err.add,
         untilStopped: untilStopped ?? () => Completer<void>().future,
+        touch: touch,
       ),
     );
+
+  const ready = {
+    'type': 'screen_ready',
+    'url': 'http://127.0.0.1:5/t/stream.h264',
+    'codec': 'h264',
+    'width': 1126,
+    'height': 2436,
+    'method': 'quicktime',
+    'touch': false,
+  };
 
   test(
     'AC-048-E1 stream starts the helper for the iPhone and passes its events through',
@@ -366,6 +415,116 @@ void main() {
           ),
         ),
       );
+    },
+  );
+
+  test(
+    'AC-048-E12 once the picture is up, touch starts and the helper gets its address',
+    () async {
+      final process = FakeScreenProcess();
+      final touch = FakeTouch();
+      final run = runner(
+        FakeScreenHelper(process),
+        touch: touch,
+      ).run(['screen', 'stream', '--udid', 'ABC123', '--json']);
+      await Future<void>.delayed(Duration.zero);
+      expect(touch.started, isEmpty, reason: 'not before the picture');
+      process.emit(ready);
+      await Future<void>.delayed(Duration.zero);
+      expect(touch.started, ['ABC123']);
+      expect(process.sent, ['wda http://127.0.0.1:18100']);
+      process
+        ..emit({'type': 'screen_touch', 'available': true})
+        ..emit({'type': 'screen_end', 'reason': 'stopped', 'message': ''});
+      await process.finish();
+      await run;
+      expect(events().map((e) => e['type']), [
+        'screen_ready',
+        'screen_touch',
+        'screen_touch',
+        'screen_end',
+      ]);
+      expect(events()[1]['state'], 'starting');
+      expect(events()[2]['available'], true);
+      expect(touch.link.closed, isTrue, reason: 'touch ends with the screen');
+    },
+  );
+
+  test(
+    'AC-048-E13 no touch helper on the iPhone: the picture goes on, Studio is told why',
+    () async {
+      final process = FakeScreenProcess();
+      final touch = FakeTouch(
+        unavailable: const ScreenTouchUnavailable(
+          'not_installed',
+          WdaScreenTouch.notInstalledMessage,
+        ),
+      );
+      final run = runner(
+        FakeScreenHelper(process),
+        touch: touch,
+      ).run(['screen', 'stream', '--udid', 'ABC123', '--json']);
+      await Future<void>.delayed(Duration.zero);
+      process.emit(ready);
+      await Future<void>.delayed(Duration.zero);
+      process.emit({'type': 'screen_end', 'reason': 'stopped', 'message': ''});
+      await process.finish();
+      await run;
+      final off = events().lastWhere((e) => e['type'] == 'screen_touch');
+      expect(off['available'], false);
+      expect(off['reason'], 'not_installed');
+      expect(process.sent, isEmpty);
+    },
+  );
+
+  test(
+    'AC-048-E14 --no-touch and a picture with its own touch skip touch',
+    () async {
+      for (final (args, event) in [
+        (['--no-touch'], ready),
+        (const <String>[], {...ready, 'touch': true}),
+      ]) {
+        final process = FakeScreenProcess();
+        final touch = FakeTouch();
+        final run = runner(
+          FakeScreenHelper(process),
+          touch: touch,
+        ).run(['screen', 'stream', '--udid', 'ABC123', '--json', ...args]);
+        await Future<void>.delayed(Duration.zero);
+        process.emit(event);
+        await Future<void>.delayed(Duration.zero);
+        process.emit({
+          'type': 'screen_end',
+          'reason': 'stopped',
+          'message': '',
+        });
+        await process.finish();
+        await run;
+        expect(touch.started, isEmpty);
+      }
+    },
+  );
+
+  test(
+    'AC-048-E15 the touch helper stopping on the phone is reported',
+    () async {
+      final process = FakeScreenProcess();
+      final touch = FakeTouch();
+      final run = runner(
+        FakeScreenHelper(process),
+        touch: touch,
+      ).run(['screen', 'stream', '--udid', 'ABC123', '--json']);
+      await Future<void>.delayed(Duration.zero);
+      process.emit(ready);
+      await Future<void>.delayed(Duration.zero);
+      touch.link.endedWith.complete('Device is locked');
+      await Future<void>.delayed(Duration.zero);
+      process.emit({'type': 'screen_end', 'reason': 'stopped', 'message': ''});
+      await process.finish();
+      await run;
+      final off = events().lastWhere((e) => e['type'] == 'screen_touch');
+      expect(off['available'], false);
+      expect(off['message'], contains('Device is locked'));
     },
   );
 }

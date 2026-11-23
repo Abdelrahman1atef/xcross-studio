@@ -31,6 +31,15 @@ final class HostScreenHelperProcess implements ScreenHelperProcess {
   Future<int> get exitCode => _process.exitCode;
 
   @override
+  void send(String line) {
+    try {
+      _process.stdin.writeln(line);
+    } on Object {
+      // Already gone.
+    }
+  }
+
+  @override
   Future<void> stop({Duration grace = const Duration(seconds: 5)}) async {
     try {
       await _process.stdin.close();

@@ -7,6 +7,7 @@ import 'package:args/command_runner.dart';
 import 'package:cli_kit/shared/errors/errors.dart';
 import 'package:studio_ext/src/target/iphone/device/log_output.dart';
 import 'package:studio_ext/target/iphone/device/screen_helper.dart';
+import 'package:studio_ext/target/iphone/device/screen_touch.dart';
 
 /// `xcross screen`: the live screen of a USB-connected iPhone, through the
 /// bundled `xcross-screen` helper.
@@ -16,6 +17,7 @@ final class ScreenCommand extends Command<void> {
     required void Function(List<int>) writeBytes,
     required void Function(String) writeError,
     Future<void> Function()? untilStopped,
+    ScreenTouch? touch,
   }) {
     addSubcommand(
       ScreenStreamCommand(
@@ -23,6 +25,7 @@ final class ScreenCommand extends Command<void> {
         writeBytes: writeBytes,
         writeError: writeError,
         untilStopped: untilStopped,
+        touch: touch,
       ),
     );
     addSubcommand(ScreenDevicesCommand(helper: helper, writeBytes: writeBytes));
@@ -53,24 +56,34 @@ CliError _helperMissingError() => CliError(
   'hint: Update the engine from XCross Studio (Setup), then try again.',
 );
 
-/// `xcross screen stream --udid <udid> [--json]`.
+/// `xcross screen stream --udid <udid> [--no-touch] [--json]`.
 final class ScreenStreamCommand extends Command<void> {
   ScreenStreamCommand({
     required ScreenHelper helper,
     required void Function(List<int>) writeBytes,
     required void Function(String) writeError,
     Future<void> Function()? untilStopped,
+    ScreenTouch? touch,
   }) : _helper = helper,
+       _touch = touch,
        _writeBytes = writeBytes,
        _writeError = writeError,
        _untilStopped =
            untilStopped ?? (() => ProcessSignal.sigint.watch().first) {
     argParser
       ..addOption('udid', help: 'The iPhone to show.', mandatory: true)
+      ..addFlag(
+        'touch',
+        defaultsTo: true,
+        help:
+            'Taps and swipes through the touch helper on the iPhone, when the '
+            'picture has no touch of its own.',
+      )
       ..addFlag('json', negatable: false, help: 'One JSON event per line.');
   }
 
   final ScreenHelper _helper;
+  final ScreenTouch? _touch;
   final void Function(List<int>) _writeBytes;
   final void Function(String) _writeError;
   final Future<void> Function() _untilStopped;
@@ -84,7 +97,8 @@ final class ScreenStreamCommand extends Command<void> {
       'stopped.';
 
   @override
-  String get invocation => 'xcross screen stream --udid <udid> [--json]';
+  String get invocation =>
+      'xcross screen stream --udid <udid> [--no-touch] [--json]';
 
   @override
   Future<void> run() async {
@@ -96,23 +110,91 @@ final class ScreenStreamCommand extends Command<void> {
       throw _helperMissingError();
     }
     String? endReason;
+    var stopping = false;
+    Future<ScreenTouchLink?>? touch;
+    final touchWanted = argResults!.flag('touch') && _touch != null;
     final linesDone = process.lines.forEach((line) {
       final event = _parse(line);
       if (event == null) return; // never pass through non-JSON stdout
       if (event['type'] == 'screen_end') endReason = event['reason'] as String?;
       _write(event, json: json);
+      if (event['type'] == 'screen_ready' &&
+          event['touch'] != true &&
+          touchWanted &&
+          touch == null) {
+        touch = _startTouch(
+          udid,
+          process,
+          json: json,
+          stopping: () => stopping,
+        );
+      }
     });
     final errorsDone = process.errors.forEach(_writeError);
     final stop = _untilStopped().then((_) => process.stop());
     final code = await process.exitCode;
+    stopping = true;
     await Future.wait([linesDone, errorsDone]);
     unawaited(stop);
+    // The touch helper's processes must not outlive the screen.
+    final link = await touch?.timeout(
+      const Duration(seconds: 10),
+      onTimeout: () => null,
+    );
+    await link?.close();
     if (code != 0) {
       throw CliError(
         '[screen.${endReason ?? 'error'}] The iPhone screen stopped '
         '(helper exit $code).',
       );
     }
+  }
+
+  /// Starts the touch helper and hands its address to the screen helper,
+  /// which says `screen_touch` available once it answers.
+  Future<ScreenTouchLink?> _startTouch(
+    String udid,
+    ScreenHelperProcess process, {
+    required bool json,
+    required bool Function() stopping,
+  }) async {
+    void touchEvent(Map<String, Object?> fields) =>
+        _write({'v': 1, 'type': 'screen_touch', ...fields}, json: json);
+    touchEvent({'state': 'starting'});
+    try {
+      final link = await _touch!.start(udid);
+      if (stopping()) {
+        await link.close();
+        return null;
+      }
+      process.send('wda ${link.url}');
+      unawaited(
+        link.ended.then((why) {
+          if (stopping()) return;
+          touchEvent({
+            'available': false,
+            'reason': 'error',
+            'message': why.isEmpty
+                ? 'The touch helper on the iPhone stopped.'
+                : 'The touch helper on the iPhone stopped: $why',
+          });
+        }),
+      );
+      return link;
+    } on ScreenTouchUnavailable catch (e) {
+      touchEvent({
+        'available': false,
+        'reason': e.reason,
+        'message': e.message,
+      });
+    } on Object catch (e) {
+      touchEvent({
+        'available': false,
+        'reason': 'error',
+        'message': 'Touch could not start: $e',
+      });
+    }
+    return null;
   }
 
   void _write(Map<String, Object?> event, {required bool json}) {
@@ -288,6 +370,11 @@ String? _describe(Map<String, Object?> e) => switch (e['type']) {
   'screen_ready' =>
     'Screen ready: ${e['url']} (${e['width']}x${e['height']}, ${e['codec']}, ${e['method']})',
   'screen_stats' => 'Live: ${e['fps']} fps, ${e['mbps']} Mbps',
+  'screen_touch' => switch (e) {
+    {'state': 'starting'} => '… Starting the touch helper on the iPhone',
+    {'available': true} => 'Touch: on (click = tap, drag = swipe)',
+    _ => 'Touch: off (${e['message'] ?? e['reason']})',
+  },
   'screen_end' =>
     'Screen ended: ${e['reason']}'
         '${(e['message'] as String?)?.isNotEmpty == true ? ' (${e['message']})' : ''}',
