@@ -16,7 +16,7 @@
 #
 # USAGE
 #   curl -fsSL \
-#     https://raw.githubusercontent.com/arxdeus/xcross/main/install.sh | sh
+#     https://raw.githubusercontent.com/Abdelrahman1atef/xcross-studio/main/install.sh | sh
 #
 #   # Pin a version and/or install somewhere else:
 #   XCROSS_VERSION=v1.2.3 INSTALL_DIR="$HOME/.local/bin" sh install.sh
@@ -62,7 +62,7 @@ done
 # ---------------------------------------------------------------------------
 
 # GitHub repository that publishes the releases.
-REPO="arxdeus/xcross"
+REPO="Abdelrahman1atef/xcross-studio"
 
 # Name of the executable inside the release archive and after installation.
 BINARY_NAME="xcross"

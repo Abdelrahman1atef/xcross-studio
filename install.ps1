@@ -24,13 +24,13 @@
   Environment variable. Installation root. Default: %LOCALAPPDATA%\xcross.
 
 .EXAMPLE
-  irm https://raw.githubusercontent.com/arxdeus/xcross/main/install.ps1 | iex
+  irm https://raw.githubusercontent.com/Abdelrahman1atef/xcross-studio/main/install.ps1 | iex
 
 .EXAMPLE
   # Pin a version and install elsewhere:
   $env:XCROSS_VERSION = 'v1.2.3'
   $env:XCROSS_INSTALL_DIR = 'D:\tools\xcross'
-  irm https://raw.githubusercontent.com/arxdeus/xcross/main/install.ps1 | iex
+  irm https://raw.githubusercontent.com/Abdelrahman1atef/xcross-studio/main/install.ps1 | iex
 #>
 
 # Turn non-terminating errors (a failed download, a failed copy) into
@@ -46,7 +46,7 @@ $ErrorActionPreference = 'Stop'
 # ---------------------------------------------------------------------------
 
 # GitHub repository that publishes the releases.
-$Repo = 'arxdeus/xcross'
+$Repo = 'Abdelrahman1atef/xcross-studio'
 
 # Windows assets published per release, keyed by native CPU architecture. The
 # one to download is picked by the architecture check below.
