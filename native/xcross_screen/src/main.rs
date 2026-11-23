@@ -245,6 +245,11 @@ fn stream(args: &[String]) -> i32 {
                             }
                             std::thread::sleep(Duration::from_millis(500));
                         }
+                        // Straight to the phone over Wi-Fi when it answers there (faster than the
+                        // forward); the forward stays the way otherwise.
+                        if w.prefer_direct().is_none() {
+                            log::info!("touch: through the port forward");
+                        }
                         // Open the touch session now, so the first tap is not the slow one.
                         if let Err(e) = w.prepare() {
                             log::info!("touch: session not ready yet ({e})");

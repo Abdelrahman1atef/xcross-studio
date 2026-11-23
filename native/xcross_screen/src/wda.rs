@@ -2,18 +2,24 @@
 //! runs on the phone (started by the engine) and this sends it taps, swipes and buttons.
 //!
 //! Coordinates arrive normalized (0..1 of the picture) and are turned into WDA points with the
-//! session's window size. Plain HTTP/1.1 on 127.0.0.1 (the engine forwards the phone's port).
+//! session's window size. Plain HTTP/1.1 on one kept-open connection: first through the engine's
+//! port forward on 127.0.0.1, then straight to the phone over Wi-Fi when it answers there (the
+//! address comes from WDA itself), which saves about 50 ms per touch.
 
 use std::io::{Read, Write};
-use std::net::TcpStream;
+use std::net::{SocketAddr, TcpStream};
 use std::sync::Mutex;
 use std::time::Duration;
 
 use serde_json::{json, Value};
 
 pub struct Wda {
-    host: String,
-    port: u16,
+    /// Where requests go: the engine's forward, or the phone's own address.
+    target: Mutex<SocketAddr>,
+    /// WDA's port on the phone (8100), for the direct route.
+    device_port: u16,
+    /// The kept-open connection; one request at a time, so touches stay in order.
+    conn: Mutex<Option<TcpStream>>,
     session: Mutex<Option<(String, f64, f64)>>,
 }
 
@@ -86,7 +92,40 @@ impl Wda {
     pub fn new(base: &str) -> Option<Self> {
         let rest = base.trim().trim_end_matches('/').strip_prefix("http://127.0.0.1:")?;
         let port: u16 = rest.parse().ok()?;
-        Some(Self { host: "127.0.0.1".into(), port, session: Mutex::new(None) })
+        Some(Self {
+            target: Mutex::new(SocketAddr::from(([127, 0, 0, 1], port))),
+            device_port: 8100,
+            conn: Mutex::new(None),
+            session: Mutex::new(None),
+        })
+    }
+
+    #[cfg(test)]
+    fn with_device_port(mut self, port: u16) -> Self {
+        self.device_port = port;
+        self
+    }
+
+    /// Switches to the phone's own address when WDA answers there (same Wi-Fi); keeps the
+    /// forward otherwise. Returns the address used.
+    pub fn prefer_direct(&self) -> Option<SocketAddr> {
+        let status = self.call("GET", "/status", None).ok()?;
+        let ip: std::net::IpAddr = status.pointer("/value/ios/ip")?.as_str()?.parse().ok()?;
+        let addr = SocketAddr::new(ip, self.device_port);
+        let mut probe = TcpStream::connect_timeout(&addr, Duration::from_millis(800)).ok()?;
+        let _ = probe.set_nodelay(true);
+        let _ = probe.set_read_timeout(Some(Duration::from_secs(2)));
+        let head = "GET /status HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 0\r\n\r\n";
+        probe.write_all(head.as_bytes()).ok()?;
+        let answer = parse_response(&read_response(&mut probe).ok()?).ok()?;
+        // The same phone answers there (it reports the same address).
+        if answer.pointer("/value/ios/ip") != status.pointer("/value/ios/ip") {
+            return None;
+        }
+        *self.target.lock().unwrap() = addr;
+        *self.conn.lock().unwrap() = Some(probe);
+        log::info!("touch: straight to the iPhone over Wi-Fi ({addr})");
+        Some(addr)
     }
 
     fn call(&self, method: &str, path: &str, body: Option<&Value>) -> Result<Value, String> {
@@ -94,15 +133,46 @@ impl Wda {
     }
 
     fn call_within(&self, method: &str, path: &str, body: Option<&Value>, wait: Duration) -> Result<Value, String> {
-        let mut conn = TcpStream::connect((self.host.as_str(), self.port)).map_err(|e| format!("touch helper: {e}"))?;
-        let _ = conn.set_read_timeout(Some(wait));
         let payload = body.map(|b| b.to_string()).unwrap_or_default();
-        let head = format!(
-            "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        let request = format!(
+            "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{payload}",
             payload.len()
         );
-        conn.write_all(head.as_bytes()).and_then(|_| conn.write_all(payload.as_bytes())).map_err(|e| e.to_string())?;
-        parse_response(&read_response(&mut conn).map_err(|e| format!("touch helper: {e}"))?)
+        let mut conn = self.conn.lock().unwrap();
+        for attempt in 0..2 {
+            if conn.is_none() {
+                let target = *self.target.lock().unwrap();
+                let stream = TcpStream::connect_timeout(&target, Duration::from_secs(3))
+                    .map_err(|e| format!("touch helper: {e}"))?;
+                let _ = stream.set_nodelay(true);
+                *conn = Some(stream);
+            }
+            let stream = conn.as_mut().expect("connected above");
+            let _ = stream.set_read_timeout(Some(wait));
+            // A kept-open connection the other side has dropped fails here or answers nothing:
+            // the request was not taken, so sending it again on a new connection is safe.
+            if stream.write_all(request.as_bytes()).is_err() {
+                *conn = None;
+                continue;
+            }
+            match read_response(stream) {
+                Ok(raw) if raw.is_empty() && attempt == 0 => {
+                    *conn = None;
+                }
+                Ok(raw) => {
+                    if keeps_open(&raw) == Some(false) {
+                        *conn = None;
+                    }
+                    return parse_response(&raw);
+                }
+                Err(e) => {
+                    // Sent but no answer: never send a touch twice.
+                    *conn = None;
+                    return Err(format!("touch helper: {e}"));
+                }
+            }
+        }
+        Err("touch helper: the connection keeps closing".into())
     }
 
     /// The session id and window size, creating the session on first use.
@@ -122,7 +192,12 @@ impl Wda {
             .and_then(Value::as_str)
             .ok_or("touch helper: no session")?
             .to_string();
-        let settings = json!({ "settings": { "waitForIdleTimeout": 0, "animationCoolOffTimeout": 0 } });
+        // snapshotMaxDepth 1: WDA looks at the app in front before each touch; a shallow look
+        // cuts a tap from ~660 to ~430 ms on an iPhone X while it streams (Studio never asks
+        // for elements).
+        let settings = json!({ "settings": {
+            "waitForIdleTimeout": 0, "animationCoolOffTimeout": 0, "snapshotMaxDepth": 1,
+        } });
         if let Err(e) = self.call("POST", &format!("/session/{sid}/appium/settings"), Some(&settings)) {
             log::info!("touch: settings not taken ({e})");
         }
@@ -167,7 +242,11 @@ impl Wda {
     /// Whether WDA answers.
     pub fn ready(&self) -> bool {
         // Short: before WDA is up, the port forward keeps the connection open without answering.
-        self.call_within("GET", "/status", None, Duration::from_secs(2)).is_ok()
+        let ok = self.call_within("GET", "/status", None, Duration::from_secs(2)).is_ok();
+        if !ok {
+            *self.conn.lock().unwrap() = None;
+        }
+        ok
     }
 }
 
@@ -197,6 +276,13 @@ pub fn read_response(conn: &mut impl Read) -> std::io::Result<Vec<u8>> {
         }
         raw.extend_from_slice(&buf[..n]);
     }
+}
+
+/// Whether the response lets the connection stay open (`Connection: close` says no).
+fn keeps_open(raw: &[u8]) -> Option<bool> {
+    let split = raw.windows(4).position(|w| w == b"\r\n\r\n")?;
+    let head = String::from_utf8_lossy(&raw[..split]).to_ascii_lowercase();
+    Some(!head.lines().any(|l| l.starts_with("connection:") && l.contains("close")))
 }
 
 /// The JSON body of an HTTP response; an HTTP error or a WDA error status is an Err.
@@ -283,6 +369,80 @@ mod tests {
         assert_eq!(read_response(&mut Open(std::io::Cursor::new(sized.clone()))).unwrap(), sized);
         let chunked = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\n{}\r\n0\r\n\r\n".to_vec();
         assert_eq!(read_response(&mut Open(std::io::Cursor::new(chunked.clone()))).unwrap(), chunked);
+    }
+
+    /// A WDA stand-in that keeps connections open: counts connections and requests.
+    fn keep_alive_server(ip: &str) -> (u16, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = l.local_addr().unwrap().port();
+        let conns = std::sync::Arc::new(AtomicUsize::new(0));
+        let counter = conns.clone();
+        let status = format!(r#"{{"value":{{"ios":{{"ip":"{ip}"}}}}}}"#);
+        std::thread::spawn(move || {
+            for conn in l.incoming().flatten() {
+                counter.fetch_add(1, Ordering::SeqCst);
+                let status = status.clone();
+                std::thread::spawn(move || {
+                    let mut reader = std::io::BufReader::new(conn.try_clone().unwrap());
+                    let mut conn = conn;
+                    loop {
+                        use std::io::BufRead;
+                        let mut line = String::new();
+                        if reader.read_line(&mut line).unwrap_or(0) == 0 {
+                            return;
+                        }
+                        let mut length = 0;
+                        loop {
+                            let mut h = String::new();
+                            reader.read_line(&mut h).unwrap();
+                            if h == "\r\n" {
+                                break;
+                            }
+                            if let Some(v) = h.to_ascii_lowercase().strip_prefix("content-length:") {
+                                length = v.trim().parse().unwrap();
+                            }
+                        }
+                        let mut body = vec![0; length];
+                        reader.read_exact(&mut body).unwrap();
+                        let reply = if line.starts_with("GET /status") { status.clone() } else { r#"{"value":null}"#.to_string() };
+                        write!(conn, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{reply}", reply.len()).unwrap();
+                    }
+                });
+            }
+        });
+        (port, conns)
+    }
+
+    #[test]
+    fn requests_share_one_kept_open_connection() {
+        use std::sync::atomic::Ordering;
+        let (port, conns) = keep_alive_server("10.0.0.9");
+        let wda = Wda::new(&format!("http://127.0.0.1:{port}")).unwrap();
+        for _ in 0..3 {
+            assert!(wda.ready());
+        }
+        assert!(wda.button("home").is_ok());
+        assert_eq!(conns.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn the_direct_route_is_used_only_when_the_phone_answers_there() {
+        // The "phone" reports 127.0.0.1, where a second WDA stand-in listens.
+        let (direct_port, direct_conns) = keep_alive_server("127.0.0.1");
+        let (fwd_port, _) = keep_alive_server("127.0.0.1");
+        let wda = Wda::new(&format!("http://127.0.0.1:{fwd_port}")).unwrap().with_device_port(direct_port);
+        let addr = wda.prefer_direct().expect("direct route");
+        assert_eq!(addr.port(), direct_port);
+        assert!(wda.button("home").is_ok());
+        assert_eq!(direct_conns.load(std::sync::atomic::Ordering::SeqCst), 1, "the probe connection is kept");
+
+        // Nothing listens at the reported address: stay on the forward.
+        let (fwd2, _) = keep_alive_server("127.0.0.1");
+        let free = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+        let stay = Wda::new(&format!("http://127.0.0.1:{fwd2}")).unwrap().with_device_port(free);
+        assert!(stay.prefer_direct().is_none());
+        assert!(stay.ready());
     }
 
     #[test]
