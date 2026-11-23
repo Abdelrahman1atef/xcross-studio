@@ -39,6 +39,7 @@ import 'package:studio_ext/target/iphone/device/logs_command.dart'; // studio: 0
 import 'package:studio_ext/target/iphone/device/screen_command.dart'; // studio: 048
 import 'package:studio_ext/target/iphone/device/screen_helper.dart'; // studio: 048
 import 'package:studio_ext/target/iphone/device/screen_touch.dart'; // studio: 048
+import 'package:studio_ext/target/iphone/device/touch_helper_setup.dart'; // studio: 048
 import 'package:xcross/src/composition/cli/appstore_commands.dart'; // studio: 021
 import 'package:xcross/src/composition/cli/asc_commands.dart'; // studio: 018
 import 'package:xcross/src/composition/cli/cache_command.dart';
@@ -49,6 +50,7 @@ import 'package:xcross/src/composition/cli/install_command.dart'; // studio: 005
 import 'package:xcross/src/composition/cli/publish_commands.dart'; // studio: 019
 import 'package:xcross/src/composition/cli/sign_command.dart'; // studio: 011
 import 'package:xcross/src/composition/cli/testflight_commands.dart'; // studio: 020
+import 'package:xcross/src/composition/cli/touch_helper_services.dart'; // studio: 048
 import 'package:xcross/src/composition/ios_target.dart';
 import 'package:xcross/src/composition/xcross_application.dart';
 import 'package:xcross/src/shared/cli/basic/auth_command.dart';
@@ -449,6 +451,16 @@ abstract final class XcrossCli {
         ),
         writeBytes: stdout.add,
         writeError: stderr.writeln,
+        // One-click install of the touch helper (WebDriverAgent), signed
+        // with the user's Apple account.
+        touchSetup: ScreenTouchSetupCommand(
+          services: EngineTouchHelperServices(runtime, pymd),
+          workRoot: runtime.host.paths.context.join(
+            runtime.host.paths.temporaryRoot,
+            'xcross-touch-helper',
+          ),
+          writeBytes: stdout.add,
+        ),
         // Taps and swipes on iPhones whose picture has no touch (QuickTime):
         // WebDriverAgent on the phone, started with pymobiledevice3.
         touch: WdaScreenTouch(

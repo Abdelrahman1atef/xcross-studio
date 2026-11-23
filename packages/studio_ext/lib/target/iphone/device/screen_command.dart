@@ -18,6 +18,7 @@ final class ScreenCommand extends Command<void> {
     required void Function(String) writeError,
     Future<void> Function()? untilStopped,
     ScreenTouch? touch,
+    Command<void>? touchSetup,
   }) {
     addSubcommand(
       ScreenStreamCommand(
@@ -30,6 +31,7 @@ final class ScreenCommand extends Command<void> {
     );
     addSubcommand(ScreenDevicesCommand(helper: helper, writeBytes: writeBytes));
     addSubcommand(ScreenDriverCommand(helper: helper, writeBytes: writeBytes));
+    if (touchSetup != null) addSubcommand(touchSetup);
   }
 
   @override
