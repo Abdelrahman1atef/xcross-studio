@@ -37,6 +37,7 @@ import 'package:studio_ext/target/iphone/device/device_log_backend.dart'; // stu
 import 'package:studio_ext/target/iphone/device/devices_command.dart'; // studio: 008
 import 'package:studio_ext/target/iphone/device/logs_command.dart'; // studio: 010
 import 'package:studio_ext/target/iphone/device/screen_command.dart'; // studio: 048
+import 'package:studio_ext/target/iphone/device/screen_core_device.dart'; // studio: 048
 import 'package:studio_ext/target/iphone/device/screen_helper.dart'; // studio: 048
 import 'package:studio_ext/target/iphone/device/screen_touch.dart'; // studio: 048
 import 'package:studio_ext/target/iphone/device/touch_helper_setup.dart'; // studio: 048
@@ -463,6 +464,13 @@ abstract final class XcrossCli {
         ),
         // Taps and swipes on iPhones whose picture has no touch (QuickTime):
         // WebDriverAgent on the phone, started with pymobiledevice3.
+        coreDevice: PymdCoreDeviceScreen(
+          PymdScreenTouchTools(
+            pymd: pymd,
+            processes: runtime.host.processes,
+            freePort: _freeLoopbackPort,
+          ),
+        ),
         touch: WdaScreenTouch(
           PymdScreenTouchTools(
             pymd: pymd,
@@ -720,4 +728,12 @@ abstract final class XcrossCli {
       _ => 'error: $error\n$stackTrace',
     };
   }
+}
+
+/// A free port on 127.0.0.1 (spec 048 screen tools).
+Future<int> _freeLoopbackPort() async {
+  final socket = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+  final port = socket.port;
+  await socket.close();
+  return port;
 }

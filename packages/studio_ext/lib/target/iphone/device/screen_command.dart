@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:args/command_runner.dart';
 import 'package:cli_kit/shared/errors/errors.dart';
 import 'package:studio_ext/src/target/iphone/device/log_output.dart';
+import 'package:studio_ext/target/iphone/device/screen_core_device.dart';
 import 'package:studio_ext/target/iphone/device/screen_helper.dart';
 import 'package:studio_ext/target/iphone/device/screen_touch.dart';
 
@@ -18,6 +19,7 @@ final class ScreenCommand extends Command<void> {
     required void Function(String) writeError,
     Future<void> Function()? untilStopped,
     ScreenTouch? touch,
+    CoreDeviceScreen? coreDevice,
     Command<void>? touchSetup,
   }) {
     addSubcommand(
@@ -27,6 +29,7 @@ final class ScreenCommand extends Command<void> {
         writeError: writeError,
         untilStopped: untilStopped,
         touch: touch,
+        coreDevice: coreDevice,
       ),
     );
     addSubcommand(ScreenDevicesCommand(helper: helper, writeBytes: writeBytes));
@@ -66,8 +69,10 @@ final class ScreenStreamCommand extends Command<void> {
     required void Function(String) writeError,
     Future<void> Function()? untilStopped,
     ScreenTouch? touch,
+    CoreDeviceScreen? coreDevice,
   }) : _helper = helper,
        _touch = touch,
+       _coreDevice = coreDevice,
        _writeBytes = writeBytes,
        _writeError = writeError,
        _untilStopped =
@@ -86,6 +91,7 @@ final class ScreenStreamCommand extends Command<void> {
 
   final ScreenHelper _helper;
   final ScreenTouch? _touch;
+  final CoreDeviceScreen? _coreDevice;
   final void Function(List<int>) _writeBytes;
   final void Function(String) _writeError;
   final Future<void> Function() _untilStopped;
@@ -106,6 +112,12 @@ final class ScreenStreamCommand extends Command<void> {
   Future<void> run() async {
     final json = argResults!.flag('json');
     final udid = argResults!.option('udid')!;
+    final core = _coreDevice;
+    if (core != null &&
+        await core.iosMajor(udid) >= PymdCoreDeviceScreen.firstIos) {
+      await _runCoreDevice(core, udid, json: json);
+      return;
+    }
     final process = await _helper.start(['stream', '--serial', udid]);
     if (process == null) {
       _write(_helperMissing(), json: json);
@@ -148,6 +160,64 @@ final class ScreenStreamCommand extends Command<void> {
       throw CliError(
         '[screen.${endReason ?? 'error'}] The iPhone screen stopped '
         '(helper exit $code).',
+      );
+    }
+  }
+
+  /// iOS 27+: Apple's screen service (HEVC picture and live touch in its
+  /// viewer page), no driver change and no touch helper.
+  Future<void> _runCoreDevice(
+    CoreDeviceScreen core,
+    String udid, {
+    required bool json,
+  }) async {
+    _write({
+      'v': 1,
+      'type': 'screen_preparing',
+      'detail': "Starting Apple's screen service",
+    }, json: json);
+    final CoreDeviceScreenSession session;
+    try {
+      session = await core.start(udid);
+    } on CoreDeviceScreenUnavailable catch (e) {
+      _write({
+        'v': 1,
+        'type': 'screen_end',
+        'reason': 'coredevice_failed',
+        'message': e.message,
+      }, json: json);
+      throw CliError('[screen.coredevice_failed] ${e.message}');
+    }
+    final viewer = session.viewer.toString();
+    _write({
+      'v': 1,
+      'type': 'screen_ready',
+      'url': viewer,
+      'viewer': viewer,
+      'codec': 'hevc',
+      'width': 0,
+      'height': 0,
+      'method': 'coredevice',
+      'touch': true,
+    }, json: json);
+    final outputDone = session.output.drain<void>();
+    var stopped = false;
+    final stop = _untilStopped().then((_) {
+      stopped = true;
+      return session.stop();
+    });
+    final code = await session.exitCode;
+    unawaited(stop);
+    unawaited(outputDone);
+    _write({
+      'v': 1,
+      'type': 'screen_end',
+      'reason': stopped ? 'stopped' : 'coredevice_ended',
+      'message': stopped ? '' : "Apple's screen service stopped (exit $code).",
+    }, json: json);
+    if (!stopped) {
+      throw CliError(
+        "[screen.coredevice_ended] Apple's screen service stopped.",
       );
     }
   }

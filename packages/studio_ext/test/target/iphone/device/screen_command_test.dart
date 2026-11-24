@@ -10,6 +10,7 @@ import 'package:cli_kit/shared/errors/errors.dart';
 import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:meta/meta.dart';
 import 'package:studio_ext/target/iphone/device/screen_command.dart';
+import 'package:studio_ext/target/iphone/device/screen_core_device.dart';
 import 'package:studio_ext/target/iphone/device/screen_helper.dart';
 import 'package:studio_ext/target/iphone/device/screen_touch.dart';
 import 'package:test/test.dart';
@@ -121,6 +122,7 @@ void main() {
     ScreenHelper helper, {
     Future<void> Function()? untilStopped,
     ScreenTouch? touch,
+    CoreDeviceScreen? coreDevice,
   }) => CommandRunner<void>('xcross', 'test')
     ..addCommand(
       ScreenCommand(
@@ -129,6 +131,7 @@ void main() {
         writeError: err.add,
         untilStopped: untilStopped ?? () => Completer<void>().future,
         touch: touch,
+        coreDevice: coreDevice,
       ),
     );
 
@@ -527,4 +530,86 @@ void main() {
       expect(off['message'], contains('Device is locked'));
     },
   );
+
+  test(
+    "AC-048-E16 iOS 27+: Apple's screen service is used (no helper, live touch) and stops with xcross",
+    () async {
+      final core = FakeCoreDevice(27);
+      final helper = FakeScreenHelper(FakeScreenProcess());
+      final stopped = Completer<void>();
+      final run = runner(
+        helper,
+        untilStopped: () => stopped.future,
+        coreDevice: core,
+      ).run(['screen', 'stream', '--udid', 'NEW27', '--json']);
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      expect(core.startedFor, 'NEW27');
+      expect(helper.startedWith, isNull);
+      stopped.complete();
+      await run;
+      expect(core.session.stopped, isTrue);
+      final e = events();
+      expect(e.map((x) => x['type']), [
+        'screen_preparing',
+        'screen_ready',
+        'screen_end',
+      ]);
+      expect(e[1], containsPair('method', 'coredevice'));
+      expect(e[1], containsPair('touch', true));
+      expect(e[1], containsPair('viewer', 'http://127.0.0.1:7/'));
+      expect(e[2], containsPair('reason', 'stopped'));
+    },
+  );
+
+  test('AC-048-E17 older iPhones keep the USB picture', () async {
+    final core = FakeCoreDevice(16);
+    final process = FakeScreenProcess();
+    final helper = FakeScreenHelper(process);
+    final run = runner(
+      helper,
+      coreDevice: core,
+    ).run(['screen', 'stream', '--udid', 'OLD16', '--json']);
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+    expect(core.startedFor, isNull);
+    expect(helper.startedWith, ['stream', '--serial', 'OLD16']);
+    await process.finish();
+    await run;
+  });
+}
+
+final class FakeCoreDevice implements CoreDeviceScreen {
+  FakeCoreDevice(this.major);
+
+  final int major;
+  String? startedFor;
+  final session = FakeCoreSession();
+
+  @override
+  Future<int> iosMajor(String udid) async => major;
+
+  @override
+  Future<CoreDeviceScreenSession> start(String udid) async {
+    startedFor = udid;
+    return session;
+  }
+}
+
+final class FakeCoreSession implements CoreDeviceScreenSession {
+  final _exit = Completer<int>();
+  bool stopped = false;
+
+  @override
+  Uri get viewer => Uri.parse('http://127.0.0.1:7/');
+
+  @override
+  Stream<String> get output => const Stream.empty();
+
+  @override
+  Future<int> get exitCode => _exit.future;
+
+  @override
+  Future<void> stop() async {
+    stopped = true;
+    if (!_exit.isCompleted) _exit.complete(0);
+  }
 }
