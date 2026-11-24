@@ -135,6 +135,8 @@ xcross flutter sdk list   # does my Flutter have a compiler?
 xcross flutter sdk auto   # no: use the nearest Flutter that has one, for iOS builds only
 ```
 
+**Which versions have a compiler today:** Flutter 3.44.0 to 3.47.9, with 3.50 and the rest of the 3.x releases (back to 3.0) being added, newest first. Every new Flutter stable release is built within hours. The live list is the [xcross-compilers releases](https://github.com/Abdelrahman1atef/xcross-compilers/releases) plus [xcross_gen_snapshot](https://github.com/arxdeus/xcross_gen_snapshot/releases); `xcross flutter sdk list` prints it for your machine, and the XCross Studio app shows it under Setup › Flutter for iOS builds.
+
 Details: [Flutter versions and iOS compilers](docs/guide/flutter-versions.md)
 
 ## What this edition adds
