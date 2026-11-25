@@ -104,7 +104,7 @@ const _runner = {'CFBundleExecutable': WdaScreenTouch.runnerExecutable};
 
 void main() {
   test(
-    'AC-048-T1 iOS 16: finds the runner by its executable, mounts, starts XCTest and the forward',
+    'AC-048-T1 iOS 16: mounts, starts the helper by its known name without listing the apps, then the forward',
     () async {
       final tools = FakeTools(
         version: '16.7.16',
@@ -122,9 +122,8 @@ void main() {
       expect(tools.runs.map((r) => r.take(2).join(' ')), [
         'usbmux list',
         'lockdown info',
-        'apps list',
         'mounter auto-mount',
-      ]);
+      ], reason: 'no slow "apps list" over Wi-Fi when the helper starts');
       expect(tools.runs.last, ['mounter', 'auto-mount', '--udid', 'UDID1']);
       expect(tools.started.map((p) => p.args), [
         [
@@ -133,7 +132,7 @@ void main() {
           'xcuitest',
           '--udid',
           'UDID1',
-          'com.team.xcross.touch.xctrunner',
+          'com.xcross.touchhelper.xctrunner',
         ],
         ['usbmux', 'forward', '--serial', 'UDID1', '18100', '8100'],
       ]);
@@ -191,18 +190,19 @@ void main() {
       'xcuitest',
       '--tunnel',
       'UDID2',
-      'a.xctrunner',
+      'com.xcross.touchhelper.xctrunner',
     ]);
   });
 
   test(
-    'AC-048-T3 no runner on the phone: not_installed, nothing started',
+    'AC-048-T3 no runner on the phone: not_installed after the try by its name',
     () async {
       final tools = FakeTools(
         version: '16.7',
         apps: {
           'com.example.app': {'CFBundleExecutable': 'Runner'},
         },
+        runnerStarts: [false],
       );
       await expectLater(
         WdaScreenTouch(tools, retryDelay: Duration.zero).start('UDID3'),
@@ -214,7 +214,8 @@ void main() {
           ),
         ),
       );
-      expect(tools.started, isEmpty);
+      expect(tools.started, hasLength(1), reason: 'only the try by its name');
+      expect(tools.started.single.killed, isTrue);
     },
   );
 
@@ -225,6 +226,7 @@ void main() {
         version: '16.7',
         apps: const {'a.xctrunner': _runner},
         failApps: true,
+        runnerStarts: [false],
       );
       await expectLater(
         WdaScreenTouch(tools, retryDelay: Duration.zero).start('UDID3'),
@@ -236,11 +238,11 @@ void main() {
           ),
         ),
       );
-      expect(tools.started, isEmpty);
+      expect(tools.started, hasLength(1), reason: 'only the try by its name');
       expect(
         tools.runs.where((r) => r.take(2).join(' ') == 'apps list'),
-        hasLength(4),
-        reason: 'two queries, twice',
+        hasLength(2),
+        reason: 'two queries, one round (the engine asks again by itself)',
       );
     },
   );
@@ -281,6 +283,12 @@ void main() {
       final runners = tools.started.where((p) => p.args.contains('xcuitest'));
       expect(runners, hasLength(2));
       expect(runners.first.killed, isTrue);
+      expect(runners.first.args.last, 'com.xcross.touchhelper.xctrunner');
+      expect(
+        runners.last.args.last,
+        'a.xctrunner',
+        reason: 'the listed runner',
+      );
       expect(tools.started.last.args.take(2), ['usbmux', 'forward']);
       expect(link.url, 'http://127.0.0.1:18100');
     },
@@ -302,7 +310,12 @@ void main() {
               .having((e) => e.message, 'message', contains('DTX connection')),
         ),
       );
-      expect(tools.started, hasLength(3), reason: 'three tries, no forward');
+      expect(
+        tools.started,
+        hasLength(4),
+        reason:
+            'by its name once, then the listed runner three times, no forward',
+      );
       expect(tools.started.every((p) => p.killed), isTrue);
     },
   );

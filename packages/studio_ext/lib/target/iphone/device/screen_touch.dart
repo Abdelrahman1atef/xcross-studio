@@ -90,11 +90,17 @@ final class PymdScreenTouchTools implements ScreenTouchTools {
   Future<int> freePort() => _freePort();
 }
 
-/// The phone's id the way Apple's service spells it. pymobiledevice3 matches
-/// the text exactly ("no device matching udid" for another upper/lower case or
-/// with/without the dash), and a phone in Smooth mode is known by its USB
-/// serial: upper case, no dashes. Unchanged when the phone is not listed.
-Future<String> canonicalUdid(ScreenTouchTools tools, String udid) async {
+/// The phone as Apple's service lists it: its id spelled the way it spells it,
+/// and the iOS major version it reports (no query over Wi-Fi needed).
+///
+/// pymobiledevice3 matches the id exactly ("no device matching udid" for another
+/// upper/lower case or with/without the dash), and a phone in Smooth mode is
+/// known by its USB serial: upper case, no dashes. Unchanged when the phone is
+/// not listed.
+Future<({String id, int? major})> phoneInfo(
+  ScreenTouchTools tools,
+  String udid,
+) async {
   String normal(String s) => s.replaceAll('-', '').toUpperCase();
   try {
     final Object? list = jsonDecode(
@@ -104,14 +110,24 @@ Future<String> canonicalUdid(ScreenTouchTools tools, String udid) async {
       for (final entry in list) {
         if (entry is! Map<Object?, Object?>) continue;
         final id = entry['Identifier'] ?? entry['UniqueDeviceID'];
-        if (id is String && normal(id) == normal(udid)) return id;
+        if (id is String && normal(id) == normal(udid)) {
+          final version = entry['ProductVersion'];
+          final major = version is String
+              ? int.tryParse(version.split('.').first)
+              : null;
+          return (id: id, major: major);
+        }
       }
     }
   } on Object {
     // Not listed or unreadable: use the id as given.
   }
-  return udid;
+  return (id: udid, major: null);
 }
+
+/// [phoneInfo]'s id.
+Future<String> canonicalUdid(ScreenTouchTools tools, String udid) async =>
+    (await phoneInfo(tools, udid)).id;
 
 /// Touch through WebDriverAgent: finds the touch helper on the iPhone, mounts
 /// the developer image, starts it with XCTest and forwards its port 8100.
@@ -152,55 +168,42 @@ final class WdaScreenTouch implements ScreenTouch {
       'The touch helper is not on this iPhone yet. Set it up once from the '
       'Device screen (menu > Set up touch).';
 
+  /// The name the touch helper Studio installs has on the iPhone.
+  static const knownRunnerBundleId = 'com.xcross.touchhelper.xctrunner';
+
   @override
   Future<ScreenTouchLink> start(String requestedUdid) async {
-    final udid = await canonicalUdid(_tools, requestedUdid);
-    // Each query costs seconds over Wi-Fi: ask all three at once. They are
+    final phone = await phoneInfo(_tools, requestedUdid);
+    final udid = phone.id;
+    // Every query over Wi-Fi costs seconds (20 and more on a sleepy phone):
+    // the iOS version comes from Apple's list when it is there. These are
     // lockdown services (no tunnel needed, even on iOS 17+).
     final lockdown = ['--udid', udid];
-    final (int, String?, void) found;
-    try {
-      found = await (
-        _iosMajor(udid),
-        findRunner(lockdown),
-        _mountDeveloperImage(lockdown),
-      ).wait;
-      // ignore: avoid_catching_errors
-    } on ParallelWaitError<Object?, Object?> catch (e) {
-      // `.wait` wraps the failure: hand on the one the caller understands.
-      final errors = e.errors;
-      if (errors is (AsyncError?, AsyncError?, AsyncError?)) {
-        for (final failure in [errors.$1, errors.$2, errors.$3]) {
-          final inner = failure?.error;
-          if (inner is ScreenTouchUnavailable) throw inner;
-        }
-      }
-      rethrow;
-    }
-    final (major, bundleId, _) = found;
-    if (bundleId == null) {
-      throw const ScreenTouchUnavailable('not_installed', notInstalledMessage);
-    }
+    final (major, _) = await (
+      phone.major == null ? _iosMajor(udid) : Future<int>.value(phone.major),
+      _mountDeveloperImage(lockdown),
+    ).wait;
     // iOS 17 and later reach XCTest through the tunnel.
-    final xcuitest = [
+    List<String> xcuitest(String bundleId) => [
       'developer',
       'dvt',
       'xcuitest',
       ...(major >= 17 ? ['--tunnel', udid] : lockdown),
       bundleId,
     ];
-    TouchProcess? runner;
-    var problem = '';
-    for (var attempt = 1; attempt <= attempts; attempt++) {
-      final process = await _tools.start(xcuitest);
-      final failed = await _waitStarted(process);
-      if (failed == null) {
-        runner = process;
-        break;
+    // The helper has a fixed name: start it without asking the iPhone what is
+    // installed. Only when that does not work, ask (slow over Wi-Fi) which
+    // runner is there: another name (WebDriverAgent), or none.
+    var (runner, problem) = await _launch(xcuitest(knownRunnerBundleId), 1);
+    if (runner == null) {
+      final bundleId = await findRunner(lockdown);
+      if (bundleId == null) {
+        throw const ScreenTouchUnavailable(
+          'not_installed',
+          notInstalledMessage,
+        );
       }
-      problem = failed;
-      await process.kill();
-      if (attempt < attempts) await Future<void>.delayed(retryDelay);
+      (runner, problem) = await _launch(xcuitest(bundleId), attempts);
     }
     if (runner == null) {
       throw ScreenTouchUnavailable(
@@ -229,6 +232,21 @@ final class WdaScreenTouch implements ScreenTouch {
       runner: runner,
       forward: forward,
     );
+  }
+
+  /// Starts XCTest with [args] up to [tries] times (it closes early right
+  /// after a previous session): the running process, or null and why.
+  Future<(TouchProcess?, String)> _launch(List<String> args, int tries) async {
+    var problem = '';
+    for (var attempt = 1; attempt <= tries; attempt++) {
+      final process = await _tools.start(args);
+      final failed = await _waitStarted(process);
+      if (failed == null) return (process, '');
+      problem = failed;
+      await process.kill();
+      if (attempt < tries) await Future<void>.delayed(retryDelay);
+    }
+    return (null, problem);
   }
 
   /// Null once XCTest reports the touch helper running (or after
@@ -270,17 +288,16 @@ final class WdaScreenTouch implements ScreenTouch {
   /// `unreachable` when it could not be asked at all: that is not "not
   /// installed" (a phone in Smooth mode is hidden from Apple's service).
   Future<String?> findRunner(List<String> device) async {
-    for (var pass = 0; pass < 2; pass++) {
-      var answered = false;
-      for (final flags in const [
-        ['--type', 'User'],
-        ['--user'],
-      ]) {
-        final id = await _runnerIn(flags, device, () => answered = true);
-        if (id != null) return id;
-        if (answered) return null;
-      }
-      if (pass == 0) await Future<void>.delayed(retryDelay);
+    // One round: the engine asks again by itself while the answer is
+    // "unreachable" (each query can take half a minute over Wi-Fi).
+    var answered = false;
+    for (final flags in const [
+      ['--type', 'User'],
+      ['--user'],
+    ]) {
+      final id = await _runnerIn(flags, device, () => answered = true);
+      if (id != null) return id;
+      if (answered) return null;
     }
     throw const ScreenTouchUnavailable('unreachable', unreachableMessage);
   }
