@@ -22,7 +22,7 @@ const touchRunnerSource = r'''
 //
 //   GET  /status          {"value":{"ready":true,"xcrossTouch":1,"ios":{"ip":..},"screen":{..}}}
 //   POST /touch/tap       {"x":pt,"y":pt,"hold":seconds}
-//   POST /touch/swipe     {"x1":pt,"y1":pt,"x2":pt,"y2":pt,"seconds":s}
+//   POST /touch/swipe     {"x1":pt,"y1":pt,"x2":pt,"y2":pt,"seconds":s,"hold":s}  (hold: rest before lifting)
 //   POST /touch/home
 //
 // Private XCTest classes are looked up at run time (NSClassFromString), so the bundle links only
@@ -134,11 +134,12 @@ static NSString *XTTap(CGPoint p, double hold) {
   return record ? XTSynthesize(record) : @"XCTest event classes not found";
 }
 
-static NSString *XTSwipe(CGPoint a, CGPoint b, double seconds) {
+static NSString *XTSwipe(CGPoint a, CGPoint b, double seconds, double hold) {
   double d = MIN(MAX(seconds, 0.05), 1.5);
   id path = XTPath(a);
   [(id<XTPointerEventPath>)path moveToPoint:b atOffset:d];
-  [(id<XTPointerEventPath>)path liftUpAtOffset:d];
+  // The finger rests at the end for `hold` seconds: the app switcher needs it.
+  [(id<XTPointerEventPath>)path liftUpAtOffset:d + MIN(MAX(hold, 0.0), 2.0)];
   id record = XTRecord(@"xcross swipe", path);
   return record ? XTSynthesize(record) : @"XCTest event classes not found";
 }
@@ -250,7 +251,8 @@ static void XTRoute(int fd, NSString *method, NSString *path, NSData *body) {
   } else if ([method isEqualToString:@"POST"] && [path isEqualToString:@"/touch/swipe"]) {
     error = XTSwipe(CGPointMake(XTNum(args, @"x1", 0), XTNum(args, @"y1", 0)),
                     CGPointMake(XTNum(args, @"x2", 0), XTNum(args, @"y2", 0)),
-                    XTNum(args, @"seconds", 0.2));
+                    XTNum(args, @"seconds", 0.2),
+                    XTNum(args, @"hold", 0.0));
   } else if ([method isEqualToString:@"POST"] && [path isEqualToString:@"/touch/home"]) {
     error = XTHome();
   } else {

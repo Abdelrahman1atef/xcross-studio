@@ -127,8 +127,14 @@ function send(kind, body) {
 }
 canvas.addEventListener('pointerdown', (ev) => {
   if (!touch || ev.button !== 0) return;
-  down = { p: toPicture(ev), t: performance.now() };
+  const p = toPicture(ev), now = performance.now();
+  down = { p, t: now, last: { px: p.px, py: p.py, t: now } };  // `last`: when the mouse last really moved
   canvas.setPointerCapture(ev.pointerId);
+});
+canvas.addEventListener('pointermove', (ev) => {
+  if (!touch || !down) return;
+  const p = toPicture(ev);
+  if (Math.hypot(p.px - down.last.px, p.py - down.last.py) >= 6) down.last = { px: p.px, py: p.py, t: performance.now() };
 });
 canvas.addEventListener('pointerup', (ev) => {
   if (!touch || !down) return;
@@ -138,7 +144,19 @@ canvas.addEventListener('pointerup', (ev) => {
   const moved = Math.hypot(p.px - d.p.px, p.py - d.p.py);
   const held = (performance.now() - d.t) / 1000;
   if (moved < 8) send('tap', { x: d.p.x, y: d.p.y, hold: held > 0.35 ? Math.min(held, 3) : 0.03 });
-  else send('swipe', { x1: d.p.x, y1: d.p.y, x2: p.x, y2: p.y, seconds: (performance.now() - d.t) / 1000 });
+  else {
+    const end = performance.now();
+    let seconds = (end - d.t) / 1000, hold = 0;
+    // Mouse stopped before it was let go: the finger rests there (app switcher: up from the
+    // bottom, wait), instead of the whole drag being spread over the time it was held.
+    const rest = (end - d.last.t) / 1000;
+    if (rest > 0.3) { hold = Math.min(rest, 2); seconds = Math.max(0.05, (d.last.t - d.t) / 1000); }
+    let y1 = d.p.y;
+    // Up from the bottom edge is the system's Home / app switcher gesture: iOS needs the finger
+    // to start at the very edge and (for Home) to be quick.
+    if (y1 > 0.93 && p.y < y1 - 0.08) { y1 = 0.997; if (!hold) seconds = Math.min(seconds, 0.25); }
+    send('swipe', { x1: d.p.x, y1, x2: p.x, y2: p.y, seconds, hold });
+  }
 });
 canvas.addEventListener('contextmenu', (ev) => ev.preventDefault());
 refreshTouch();

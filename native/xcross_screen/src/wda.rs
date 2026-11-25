@@ -31,7 +31,8 @@ pub struct Wda {
 pub enum Gesture {
     /// `hold` seconds: a long press when the mouse was held.
     Tap { x: f64, y: f64, hold: f64 },
-    Swipe { x1: f64, y1: f64, x2: f64, y2: f64, seconds: f64 },
+    /// `hold` seconds: the finger rests at the end before it lifts (the app switcher needs it).
+    Swipe { x1: f64, y1: f64, x2: f64, y2: f64, seconds: f64, hold: f64 },
 }
 
 impl Gesture {
@@ -51,6 +52,7 @@ impl Gesture {
                 x2: n("x2")?,
                 y2: n("y2")?,
                 seconds: v.get("seconds").and_then(Value::as_f64).unwrap_or(0.2).clamp(0.05, 1.5),
+                hold: v.get("hold").and_then(Value::as_f64).unwrap_or(0.0).clamp(0.0, 2.0),
             }),
             _ => None,
         }
@@ -70,14 +72,18 @@ impl Gesture {
                     { "type": "pointerUp" },
                 ])
             }
-            Gesture::Swipe { x1, y1, x2, y2, seconds } => {
+            Gesture::Swipe { x1, y1, x2, y2, seconds, hold } => {
                 let ((ax, ay), (bx, by)) = (pt(x1, y1), pt(x2, y2));
-                json!([
-                    { "type": "pointerMove", "duration": 0, "x": ax, "y": ay },
-                    { "type": "pointerDown" },
-                    { "type": "pointerMove", "duration": (seconds * 1000.0).round(), "x": bx, "y": by },
-                    { "type": "pointerUp" },
-                ])
+                let mut steps = vec![
+                    json!({ "type": "pointerMove", "duration": 0, "x": ax, "y": ay }),
+                    json!({ "type": "pointerDown" }),
+                    json!({ "type": "pointerMove", "duration": (seconds * 1000.0).round(), "x": bx, "y": by }),
+                ];
+                if hold > 0.0 {
+                    steps.push(json!({ "type": "pause", "duration": (hold * 1000.0).round() }));
+                }
+                steps.push(json!({ "type": "pointerUp" }));
+                Value::Array(steps)
             }
         };
         (
@@ -95,9 +101,9 @@ impl Gesture {
         let pt = |v: f64, size: f64| (v * size * 10.0).round() / 10.0;
         match *self {
             Gesture::Tap { x, y, hold } => ("/touch/tap", json!({ "x": pt(x, w), "y": pt(y, h), "hold": hold })),
-            Gesture::Swipe { x1, y1, x2, y2, seconds } => (
+            Gesture::Swipe { x1, y1, x2, y2, seconds, hold } => (
                 "/touch/swipe",
-                json!({ "x1": pt(x1, w), "y1": pt(y1, h), "x2": pt(x2, w), "y2": pt(y2, h), "seconds": seconds }),
+                json!({ "x1": pt(x1, w), "y1": pt(y1, h), "x2": pt(x2, w), "y2": pt(y2, h), "seconds": seconds, "hold": hold }),
             ),
         }
     }
@@ -385,6 +391,17 @@ mod tests {
         assert_eq!(steps[0]["y"], 731.0);
         assert_eq!(steps[2]["y"], 162.0);
         assert_eq!(steps[2]["duration"], 1500.0, "duration clamped");
+        assert_eq!(steps.as_array().unwrap().len(), 4, "no pause without a hold");
+
+        // The app switcher: up from the bottom edge, then rest before the finger lifts.
+        let hold = Gesture::parse("swipe", r#"{"x1":0.5,"y1":0.997,"x2":0.5,"y2":0.55,"seconds":0.3,"hold":0.7}"#).unwrap();
+        let steps = &hold.request(375.0, 812.0).1["actions"][0]["actions"];
+        assert_eq!(steps.as_array().unwrap().len(), 5);
+        assert_eq!(steps[3], json!({ "type": "pause", "duration": 700.0 }));
+        assert_eq!(steps[4]["type"], "pointerUp");
+        assert_eq!(hold.fast_request(375.0, 812.0).1["hold"], 0.7);
+        let long = Gesture::parse("swipe", r#"{"x1":0,"y1":0,"x2":1,"y2":1,"hold":99}"#).unwrap();
+        assert_eq!(long.fast_request(375.0, 812.0).1["hold"], 2.0, "hold clamped");
 
         assert!(Gesture::parse("tap", r#"{"x":0.5}"#).is_none());
         assert!(Gesture::parse("pinch", r#"{}"#).is_none());
