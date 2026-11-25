@@ -230,6 +230,25 @@ try {
         }
     }
 
+    # Removes ZenLink packages made with the old rank (FeatureScore 0x6F, better than
+    # Apple's), which Windows picks for every iPhone. "bind" builds a new one with the
+    # low rank. pnputil without /force refuses a package a device still uses, so a
+    # phone that is on such a package now is never touched; the exit code is used,
+    # never pnputil's translated text.
+    function Remove-OldRankPackages {
+        $removed = $false
+        $infs = Get-ChildItem (Join-Path $env:WINDIR "INF") -Filter "oem*.inf" -File -ErrorAction SilentlyContinue
+        foreach ($f in $infs) {
+            $t = Read-InfText $f.FullName
+            if ($t -notmatch 'SourceName\s*=\s*"ZenLink USB Direct driver"') { continue }
+            if ($t -notmatch 'FeatureScore\s*=\s*0x6F\b') { continue }
+            & pnputil.exe /delete-driver $f.Name 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) { Step "removed the old-rank ZenLink package $($f.Name)"; $removed = $true }
+            else { Step "kept the old-rank ZenLink package $($f.Name): a device still uses it" }
+        }
+        if ($removed) { Repair-ZenLinkCerts }
+    }
+
     # Build and sign a libusb-win32 driver package for this device model, the
     # way libwdi (TikTok LIVE Studio, Zadig) does: an INF for this PID, the
     # libusb-win32 binaries already on this PC, a catalog signed with a
@@ -327,7 +346,11 @@ libusb0.dll, libusb0_x86.dll
 
 [LIBUSB_WIN32_DEV.NTAMD64]
 CopyFiles = libusb_files_sys, libusb_files_dll, libusb_files_dll_wow64
-FeatureScore = 0x6F
+; 0xFF ranks this package BELOW Apple's own driver (0x7F; a higher FeatureScore is
+; a worse rank). Windows therefore never picks it for an iPhone on its own; only the
+; forced install of "bind" (UpdateDriverForPlugAndPlayDevices, flag 1) puts it on the
+; one chosen device. Packages made before this change used 0x6F and caught every iPhone.
+FeatureScore = 0xFF
 
 [LIBUSB_WIN32_DEV.NTAMD64.HW]
 DelReg = libusb_del_reg_hw
@@ -424,6 +447,7 @@ ServiceBinary = %12%\libusb0.sys
     $result.backup = $backup
     Step "backup saved"
     Repair-ZenLinkCerts
+    if ($Action -ne "removefilter") { Remove-OldRankPackages }
 
     switch ($Action) {
         "bind" {

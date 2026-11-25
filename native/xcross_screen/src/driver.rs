@@ -220,6 +220,22 @@ mod tests {
         assert!(cmd.contains("exit 1223"));
     }
 
+    /// AC-048: the Smooth mode package must rank below Apple's driver (FeatureScore 0x7F), or
+    /// Windows hands it to every iPhone that is plugged in, not only the chosen one.
+    #[test]
+    fn smooth_mode_package_ranks_below_apples_driver() {
+        let script = include_str!("../../vendor/zenlink-drivers/tools/usb_filter.ps1");
+        let scores: Vec<&str> = script
+            .lines()
+            .filter_map(|l| l.trim().strip_prefix("FeatureScore"))
+            .collect();
+        assert_eq!(scores.len(), 1, "one FeatureScore line in the generated INF");
+        let value = scores[0].trim_start_matches([' ', '=']).trim();
+        let score = u32::from_str_radix(value.trim_start_matches("0x"), 16).expect("hex score");
+        assert!(score > 0x7F, "FeatureScore {value} must be worse (higher) than Apple's 0x7F");
+        assert!(script.contains("function Remove-OldRankPackages"), "old 0x6F packages are migrated away");
+    }
+
     #[test]
     fn result_file_becomes_the_event_body() {
         let r = parse_result("\u{feff}{\"ok\":true,\"message\":\"Apple driver restored. Unplug the cable and plug it in again.\",\"rolledBack\":false,\"reboot\":false}");
