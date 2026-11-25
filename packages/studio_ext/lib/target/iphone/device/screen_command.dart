@@ -21,6 +21,7 @@ final class ScreenCommand extends Command<void> {
     ScreenTouch? touch,
     CoreDeviceScreen? coreDevice,
     Command<void>? touchSetup,
+    Duration touchRetryDelay = const Duration(seconds: 12),
   }) {
     addSubcommand(
       ScreenStreamCommand(
@@ -30,6 +31,7 @@ final class ScreenCommand extends Command<void> {
         untilStopped: untilStopped,
         touch: touch,
         coreDevice: coreDevice,
+        touchRetryDelay: touchRetryDelay,
       ),
     );
     addSubcommand(ScreenDevicesCommand(helper: helper, writeBytes: writeBytes));
@@ -70,7 +72,9 @@ final class ScreenStreamCommand extends Command<void> {
     Future<void> Function()? untilStopped,
     ScreenTouch? touch,
     CoreDeviceScreen? coreDevice,
+    Duration touchRetryDelay = const Duration(seconds: 12),
   }) : _helper = helper,
+       _touchRetryDelay = touchRetryDelay,
        _touch = touch,
        _coreDevice = coreDevice,
        _writeBytes = writeBytes,
@@ -91,6 +95,11 @@ final class ScreenStreamCommand extends Command<void> {
 
   final ScreenHelper _helper;
   final ScreenTouch? _touch;
+
+  /// The wait before asking the iPhone for touch again while Apple's service
+  /// cannot reach it (right after a driver switch, before Wi-Fi is back).
+  final Duration _touchRetryDelay;
+  static const _touchRetries = 10;
   final CoreDeviceScreen? _coreDevice;
   final void Function(List<int>) _writeBytes;
   final void Function(String) _writeError;
@@ -233,40 +242,52 @@ final class ScreenStreamCommand extends Command<void> {
     void touchEvent(Map<String, Object?> fields) =>
         _write({'v': 1, 'type': 'screen_touch', ...fields}, json: json);
     touchEvent({'state': 'starting'});
-    try {
-      final link = await _touch!.start(udid);
-      if (stopping()) {
-        await link.close();
+    for (var attempt = 0; ; attempt++) {
+      try {
+        final link = await _touch!.start(udid);
+        if (stopping()) {
+          await link.close();
+          return null;
+        }
+        process.send('wda ${link.url}');
+        unawaited(
+          link.ended.then((why) {
+            if (stopping()) return;
+            touchEvent({
+              'available': false,
+              'reason': 'error',
+              'message': why.isEmpty
+                  ? 'The touch helper on the iPhone stopped.'
+                  : 'The touch helper on the iPhone stopped: $why',
+            });
+          }),
+        );
+        return link;
+      } on ScreenTouchUnavailable catch (e) {
+        touchEvent({
+          'available': false,
+          'reason': e.reason,
+          'message': e.message,
+        });
+        // Not reachable yet is not final: Apple's service finds a phone in
+        // Smooth mode over Wi-Fi a little after a driver switch. Ask again.
+        if (e.reason != 'unreachable' ||
+            attempt >= _touchRetries ||
+            stopping()) {
+          return null;
+        }
+        await Future<void>.delayed(_touchRetryDelay);
+        if (stopping()) return null;
+        touchEvent({'state': 'starting'});
+      } on Object catch (e) {
+        touchEvent({
+          'available': false,
+          'reason': 'error',
+          'message': 'Touch could not start: $e',
+        });
         return null;
       }
-      process.send('wda ${link.url}');
-      unawaited(
-        link.ended.then((why) {
-          if (stopping()) return;
-          touchEvent({
-            'available': false,
-            'reason': 'error',
-            'message': why.isEmpty
-                ? 'The touch helper on the iPhone stopped.'
-                : 'The touch helper on the iPhone stopped: $why',
-          });
-        }),
-      );
-      return link;
-    } on ScreenTouchUnavailable catch (e) {
-      touchEvent({
-        'available': false,
-        'reason': e.reason,
-        'message': e.message,
-      });
-    } on Object catch (e) {
-      touchEvent({
-        'available': false,
-        'reason': 'error',
-        'message': 'Touch could not start: $e',
-      });
     }
-    return null;
   }
 
   void _write(Map<String, Object?> event, {required bool json}) {

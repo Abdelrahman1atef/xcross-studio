@@ -71,6 +71,28 @@ final class FakeTouchLink implements ScreenTouchLink {
   Future<void> close() async => closed = true;
 }
 
+/// Apple's service cannot reach the phone for the first [failures] asks.
+@internal
+final class FlakyTouch implements ScreenTouch {
+  FlakyTouch(this.failures);
+
+  int failures;
+  final link = FakeTouchLink();
+  final started = <String>[];
+
+  @override
+  Future<ScreenTouchLink> start(String udid) async {
+    started.add(udid);
+    if (failures-- > 0) {
+      throw const ScreenTouchUnavailable(
+        'unreachable',
+        WdaScreenTouch.unreachableMessage,
+      );
+    }
+    return link;
+  }
+}
+
 @internal
 final class FakeTouch implements ScreenTouch {
   FakeTouch({this.unavailable});
@@ -132,6 +154,7 @@ void main() {
         untilStopped: untilStopped ?? () => Completer<void>().future,
         touch: touch,
         coreDevice: coreDevice,
+        touchRetryDelay: Duration.zero,
       ),
     );
 
@@ -477,6 +500,31 @@ void main() {
       expect(off['available'], false);
       expect(off['reason'], 'not_installed');
       expect(process.sent, isEmpty);
+    },
+  );
+
+  test(
+    'AC-048-E23 the Apple service cannot reach the phone yet: touch is asked for again by itself',
+    () async {
+      final process = FakeScreenProcess();
+      final touch = FlakyTouch(2);
+      final run = runner(
+        FakeScreenHelper(process),
+        touch: touch,
+      ).run(['screen', 'stream', '--udid', 'ABC123', '--json']);
+      await Future<void>.delayed(Duration.zero);
+      process.emit(ready);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(touch.started, ['ABC123', 'ABC123', 'ABC123']);
+      expect(process.sent, ['wda http://127.0.0.1:18100']);
+      final touchEvents = events().where((e) => e['type'] == 'screen_touch');
+      expect(
+        [for (final e in touchEvents) e['reason'] ?? e['state']],
+        ['starting', 'unreachable', 'starting', 'unreachable', 'starting'],
+      );
+      process.emit({'type': 'screen_end', 'reason': 'stopped', 'message': ''});
+      await process.finish();
+      await run;
     },
   );
 
