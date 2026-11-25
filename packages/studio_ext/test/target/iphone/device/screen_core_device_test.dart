@@ -34,6 +34,22 @@ void main() {
     },
   );
 
+  test(
+    'AC-048-E20 the page sets the HEVC decoder size from the stream header (WebView2 would show a 1280x720 corner)',
+    () {
+      final out = PictureOnlyProxy.rewrite(
+        '<html><head></head><body class="frame-on"></body></html>',
+      );
+      expect(out, contains('VideoDecoder.prototype.configure'));
+      expect(out, contains('codedWidth:s.w,codedHeight:s.h'));
+      expect(
+        out.indexOf('VideoDecoder.prototype.configure'),
+        lessThan(out.indexOf('</head>')),
+        reason: 'before the viewer script runs',
+      );
+    },
+  );
+
   test('AC-048-E19 only Origin and Referer are rewritten', () {
     final upstream = Uri.parse('http://127.0.0.1:9000/');
     expect(

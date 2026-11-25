@@ -225,6 +225,53 @@ html,body{margin:0!important;padding:0!important;background:#000!important;overf
 })();
 </script>''';
 
+  /// Runs before the viewer's own script. WebView2's HEVC decoder starts at a
+  /// default 1280x720 when `VideoDecoder.configure` has no `codedWidth` and
+  /// `codedHeight`, and shows only that corner of the phone's picture (a
+  /// browser such as Brave sizes it from the stream itself). The real size is
+  /// in the stream's own header: this reads it from the SPS in the `hvcC`
+  /// description and passes it on. Without a readable SPS nothing changes.
+  static const _decoderSize = r'''
+<script>
+(function(){
+  if(typeof VideoDecoder==='undefined') return;
+  function rbsp(b){var o=[];for(var i=0;i<b.length;i++){if(i>=2&&b[i]===3&&b[i-1]===0&&b[i-2]===0)continue;o.push(b[i]);}return Uint8Array.from(o);}
+  function parse(r){
+    var bit=0;
+    function u(n){var v=0;for(var i=0;i<n;i++){v=v*2+((r[bit>>3]>>(7-(bit&7)))&1);bit++;}return v;}
+    function ue(){var z=0;while(u(1)===0&&z<32)z++;return z===0?0:Math.pow(2,z)-1+u(z);}
+    u(4);var sub=u(3);u(1);u(8);u(32);u(48);u(8);
+    var sp=[],sl=[],i;
+    for(i=0;i<sub;i++){sp.push(u(1));sl.push(u(1));}
+    if(sub>0)for(i=sub;i<8;i++)u(2);
+    for(i=0;i<sub;i++){if(sp[i])u(88);if(sl[i])u(8);}
+    ue();var chroma=ue();if(chroma===3)u(1);
+    return {w:ue(),h:ue()};
+  }
+  function size(d){
+    var b=new Uint8Array(d.buffer?d.buffer.slice(d.byteOffset,d.byteOffset+d.byteLength):d);
+    var p=22,arrays=b[p++];
+    for(var a=0;a<arrays;a++){
+      var type=b[p++]&63,num=(b[p]<<8)|b[p+1];p+=2;
+      for(var n=0;n<num;n++){
+        var len=(b[p]<<8)|b[p+1];p+=2;
+        if(type===33)return parse(rbsp(b.subarray(p+2,p+len)));
+        p+=len;
+      }
+    }
+    return null;
+  }
+  var configure=VideoDecoder.prototype.configure;
+  VideoDecoder.prototype.configure=function(c){
+    try{
+      var s=c&&c.description?size(c.description):null;
+      if(s&&s.w>0&&s.h>0&&!c.codedWidth)c=Object.assign({},c,{codedWidth:s.w,codedHeight:s.h});
+    }catch(e){}
+    return configure.call(this,c);
+  };
+})();
+</script>''';
+
   /// The value of request header [name] as the real viewer should see it.
   /// pymobiledevice3's server answers every POST (touch, buttons, restart,
   /// keyframe request) with 403 when `Origin` is not its own address, and the
@@ -240,7 +287,7 @@ html,body{margin:0!important;padding:0!important;background:#000!important;overf
   /// The viewer page with [_head] and [_tail] added.
   static String rewrite(String html) => html
       .replaceFirst('<body class="frame-on">', '<body>')
-      .replaceFirst('</head>', '$_head</head>')
+      .replaceFirst('</head>', '$_head$_decoderSize</head>')
       .replaceFirst('</body>', '$_tail</body>');
 
   Future<void> _handle(HttpRequest request) async {
