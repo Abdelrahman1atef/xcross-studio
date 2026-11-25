@@ -151,10 +151,9 @@ canvas.addEventListener('pointerup', (ev) => {
     // bottom, wait), instead of the whole drag being spread over the time it was held.
     const rest = (end - d.last.t) / 1000;
     if (rest > 0.3) { hold = Math.min(rest, 2); seconds = Math.max(0.05, (d.last.t - d.t) / 1000); }
-    let y1 = d.p.y;
-    // Up from the bottom edge is the system's Home / app switcher gesture: iOS needs the finger
-    // to start at the very edge and (for Home) to be quick.
-    if (y1 > 0.93 && p.y < y1 - 0.08) { y1 = 0.997; if (!hold) seconds = Math.min(seconds, 0.25); }
+    // Edge swipes (Home, app switcher) cannot be faked: measured on an iPhone X, a swipe from the
+    // bottom edge scrolls the app instead of reaching the system, so the drag is sent as it was made.
+    const y1 = d.p.y;
     send('swipe', { x1: d.p.x, y1, x2: p.x, y2: p.y, seconds, hold });
   }
 });
