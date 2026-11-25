@@ -50,6 +50,88 @@ void main() {
     },
   );
 
+  test(
+    'AC-048-E21 a drag reaches the phone in order, one event at a time, and always ends with the finger up',
+    () async {
+      final seen = <String>[];
+      var busy = 0;
+      var mostBusy = 0;
+      final upstream = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => upstream.close(force: true));
+      upstream.listen((request) async {
+        busy++;
+        if (busy > mostBusy) mostBusy = busy;
+        seen.add(await utf8.decodeStream(request));
+        await Future<void>.delayed(const Duration(milliseconds: 15));
+        busy--;
+        request.response.statusCode = 204;
+        await request.response.close();
+      });
+      final proxy = await PictureOnlyProxy.start(
+        Uri.parse('http://127.0.0.1:${upstream.port}/'),
+      );
+      addTearDown(proxy.close);
+      final client = HttpClient();
+      addTearDown(() => client.close(force: true));
+
+      Future<int> post(String type, int x) async {
+        final request = await client.postUrl(proxy.viewer.resolve('/touch'));
+        request.headers.contentType = ContentType.json;
+        request.write(jsonEncode({'type': type, 'x': x, 'y': 100}));
+        final response = await request.close();
+        await response.drain<void>();
+        return response.statusCode;
+      }
+
+      // Finger down, 40 quick moves, finger up. The page sends them one at a time,
+      // so they arrive in order; the proxy answers at once and thins the moves.
+      final answers = <int>[await post('contact', 0)];
+      for (var x = 1; x <= 40; x++) {
+        answers.add(await post('contact', x));
+      }
+      answers.add(await post('release', 40));
+      expect(answers, everyElement(202));
+      for (var i = 0; i < 100 && seen.length < 3; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      final events = [for (final s in seen) jsonDecode(s) as Map];
+      expect(mostBusy, 1, reason: 'one request to the phone at a time');
+      expect(events.first['x'], 0, reason: 'the gesture starts where it began');
+      expect(events.last['type'], 'release', reason: 'the finger always lifts');
+      expect(events.last['x'], 40);
+      final contacts = [
+        for (final e in events)
+          if (e['type'] == 'contact') e['x'] as int,
+      ];
+      expect(
+        contacts,
+        orderedEquals([...contacts]..sort()),
+        reason: 'in order',
+      );
+      expect(contacts.last, 40, reason: 'the newest position is kept');
+      expect(
+        events.length,
+        lessThan(42),
+        reason: 'a busy phone gets fewer moves',
+      );
+    },
+  );
+
+  test('AC-048-E22 the page sends touch events one at a time, in order', () {
+    final out = PictureOnlyProxy.rewrite(
+      '<html><head></head><body class="frame-on"></body></html>',
+    );
+    expect(out, contains("url!=='/touch'"));
+    expect(out, contains('queue[n-1].contact'));
+    expect(
+      out.indexOf("url!=='/touch'"),
+      lessThan(out.indexOf('</head>')),
+      reason: 'before the viewer script runs',
+    );
+  });
+
   test('AC-048-E19 only Origin and Referer are rewritten', () {
     final upstream = Uri.parse('http://127.0.0.1:9000/');
     expect(

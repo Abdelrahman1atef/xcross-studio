@@ -272,6 +272,41 @@ html,body{margin:0!important;padding:0!important;background:#000!important;overf
 })();
 </script>''';
 
+  /// Runs before the viewer's own script. The viewer posts every pointer event
+  /// with its own `fetch`, all at once: they travel on several connections and
+  /// can arrive out of order, so a "finger up" may land before the last "finger
+  /// moved" and leave the finger down on the phone (a page swipe stops halfway
+  /// and stays there). This sends them one at a time, in order, and thins out
+  /// a run of "moved" events while one is on its way (the first and the newest
+  /// stay; "down" and "up" are never dropped).
+  static const _touchOrder = r'''
+<script>
+(function(){
+  var orig=window.fetch.bind(window),queue=[],running=false;
+  function pump(){
+    if(running)return;running=true;
+    (function next(){
+      var e=queue.shift();
+      if(!e){running=false;return;}
+      orig(e.url,e.opts).then(e.done,function(){e.done(new Response(null,{status:502}));}).then(next,next);
+    })();
+  }
+  window.fetch=function(url,opts){
+    if(url!=='/touch'||!opts||opts.method!=='POST')return orig(url,opts);
+    return new Promise(function(resolve){
+      var contact=false;
+      try{contact=JSON.parse(opts.body).type==='contact';}catch(e){}
+      var item={url:url,opts:opts,done:resolve,contact:contact},n=queue.length;
+      if(contact&&n>=2&&queue[n-1].contact&&queue[n-2].contact){
+        queue[n-1].done(new Response(null,{status:202}));
+        queue[n-1]=item;
+      }else queue.push(item);
+      pump();
+    });
+  };
+})();
+</script>''';
+
   /// The value of request header [name] as the real viewer should see it.
   /// pymobiledevice3's server answers every POST (touch, buttons, restart,
   /// keyframe request) with 403 when `Origin` is not its own address, and the
@@ -287,10 +322,43 @@ html,body{margin:0!important;padding:0!important;background:#000!important;overf
   /// The viewer page with [_head] and [_tail] added.
   static String rewrite(String html) => html
       .replaceFirst('<body class="frame-on">', '<body>')
-      .replaceFirst('</head>', '$_head$_decoderSize</head>')
+      .replaceFirst('</head>', '$_head$_decoderSize$_touchOrder</head>')
       .replaceFirst('</body>', '$_tail</body>');
 
+  late final _TouchRelay _touch = _TouchRelay(_sendTouch);
+
+  Future<void> _sendTouch(String body) async {
+    final out = await _client.openUrl('POST', _upstream.resolve('/touch'));
+    out.headers
+      ..contentType = ContentType.json
+      ..set('origin', _upstream.origin);
+    out.write(body);
+    final response = await out.close();
+    await response.drain<void>();
+  }
+
+  /// The viewer posts every pointer event as its own, unordered request. Over
+  /// several connections the "finger up" can overtake a "finger moved", and
+  /// the phone is left with the finger down halfway between two pages. So
+  /// touch events are answered at once and handed to the phone one at a time,
+  /// in the order they arrived (see [_TouchRelay]).
+  Future<void> _handleTouch(HttpRequest request) async {
+    try {
+      final body = await utf8.decodeStream(request);
+      final Object? json = jsonDecode(body);
+      final contact = json is Map && json['type'] == 'contact';
+      _touch.add(body, contact: contact);
+      request.response.statusCode = HttpStatus.accepted;
+    } on Object {
+      request.response.statusCode = HttpStatus.badRequest;
+    }
+    await request.response.close();
+  }
+
   Future<void> _handle(HttpRequest request) async {
+    if (request.method == 'POST' && request.uri.path == '/touch') {
+      return _handleTouch(request);
+    }
     try {
       final target = _upstream.resolve(request.uri.toString());
       final out = await _client.openUrl(request.method, target);
@@ -335,5 +403,43 @@ html,body{margin:0!important;padding:0!important;background:#000!important;overf
   Future<void> close() async {
     await _server.close(force: true);
     _client.close(force: true);
+  }
+}
+
+/// Hands touch events to the phone one at a time, in order, without ever
+/// dropping a "finger up". While the phone is busy, a run of "finger moved"
+/// events is thinned out: the first of the gesture and the newest are kept.
+final class _TouchRelay {
+  _TouchRelay(this._send);
+
+  final Future<void> Function(String body) _send;
+  final _queue = <({String body, bool contact})>[];
+  bool _running = false;
+
+  void add(String body, {required bool contact}) {
+    final n = _queue.length;
+    if (contact && n >= 2 && _queue[n - 1].contact && _queue[n - 2].contact) {
+      _queue[n - 1] = (body: body, contact: true);
+    } else {
+      _queue.add((body: body, contact: contact));
+    }
+    unawaited(_pump());
+  }
+
+  Future<void> _pump() async {
+    if (_running) return;
+    _running = true;
+    try {
+      while (_queue.isNotEmpty) {
+        final next = _queue.removeAt(0);
+        try {
+          await _send(next.body);
+        } on Object {
+          // The viewer's next event goes on.
+        }
+      }
+    } finally {
+      _running = false;
+    }
   }
 }
