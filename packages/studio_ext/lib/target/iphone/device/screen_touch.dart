@@ -90,6 +90,29 @@ final class PymdScreenTouchTools implements ScreenTouchTools {
   Future<int> freePort() => _freePort();
 }
 
+/// The phone's id the way Apple's service spells it. pymobiledevice3 matches
+/// the text exactly ("no device matching udid" for another upper/lower case or
+/// with/without the dash), and a phone in Smooth mode is known by its USB
+/// serial: upper case, no dashes. Unchanged when the phone is not listed.
+Future<String> canonicalUdid(ScreenTouchTools tools, String udid) async {
+  String normal(String s) => s.replaceAll('-', '').toUpperCase();
+  try {
+    final Object? list = jsonDecode(
+      await tools.run(['usbmux', 'list'], timeout: const Duration(seconds: 20)),
+    );
+    if (list is List<Object?>) {
+      for (final entry in list) {
+        if (entry is! Map<Object?, Object?>) continue;
+        final id = entry['Identifier'] ?? entry['UniqueDeviceID'];
+        if (id is String && normal(id) == normal(udid)) return id;
+      }
+    }
+  } on Object {
+    // Not listed or unreadable: use the id as given.
+  }
+  return udid;
+}
+
 /// Touch through WebDriverAgent: finds the touch helper on the iPhone, mounts
 /// the developer image, starts it with XCTest and forwards its port 8100.
 final class WdaScreenTouch implements ScreenTouch {
@@ -130,7 +153,8 @@ final class WdaScreenTouch implements ScreenTouch {
       'Device screen (menu > Set up touch).';
 
   @override
-  Future<ScreenTouchLink> start(String udid) async {
+  Future<ScreenTouchLink> start(String requestedUdid) async {
+    final udid = await canonicalUdid(_tools, requestedUdid);
     // Each query costs seconds over Wi-Fi: ask all three at once. They are
     // lockdown services (no tunnel needed, even on iOS 17+).
     final lockdown = ['--udid', udid];

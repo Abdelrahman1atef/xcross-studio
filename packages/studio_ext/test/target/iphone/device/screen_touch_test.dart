@@ -37,11 +37,15 @@ final class FakeTools implements ScreenTouchTools {
     required this.apps,
     this.runnerStarts = const [true],
     this.failApps = false,
+    this.usbmux = '',
   });
 
   /// `apps list` cannot be answered (a phone in Smooth mode is hidden from
   /// Apple's service over USB).
   final bool failApps;
+
+  /// What `usbmux list` prints (Apple's service's phones).
+  final String usbmux;
 
   final String version;
   final Map<String, Object?> apps;
@@ -60,6 +64,7 @@ final class FakeTools implements ScreenTouchTools {
       throw Exception('usbmux has no device matching udid');
     }
     return switch (args.take(2).join(' ')) {
+      'usbmux list' => usbmux,
       'lockdown info' => jsonEncode({'ProductVersion': version}),
       'apps list' => jsonEncode(apps),
       _ => '',
@@ -115,6 +120,7 @@ void main() {
       ).start('UDID1');
       expect(link.url, 'http://127.0.0.1:18100');
       expect(tools.runs.map((r) => r.take(2).join(' ')), [
+        'usbmux list',
         'lockdown info',
         'apps list',
         'mounter auto-mount',
@@ -133,6 +139,46 @@ void main() {
       ]);
       await link.close();
       expect(tools.started.every((p) => p.killed), isTrue);
+    },
+  );
+
+  test(
+    'AC-048-T10 the id is spelled the way the Apple service has it (Smooth mode gives upper case)',
+    () async {
+      final tools = FakeTools(
+        version: '16.7',
+        apps: const {'a.xctrunner': _runner},
+        usbmux:
+            '[{"Identifier":"abcdef0123456789","ConnectionType":"Network"}]',
+      );
+      await WdaScreenTouch(
+        tools,
+        retryDelay: Duration.zero,
+      ).start('ABCDEF0123456789');
+      final asked = [
+        for (final r in tools.runs)
+          if (r.contains('--udid')) r[r.indexOf('--udid') + 1],
+      ];
+      expect(asked, isNotEmpty);
+      expect(asked, everyElement('abcdef0123456789'));
+      expect(tools.started.first.args, contains('abcdef0123456789'));
+      // A phone that is not listed keeps the id it came with.
+      expect(
+        await canonicalUdid(FakeTools(version: '16', apps: const {}), 'XYZ'),
+        'XYZ',
+      );
+      // Dashes and case do not matter.
+      expect(
+        await canonicalUdid(
+          FakeTools(
+            version: '16',
+            apps: const {},
+            usbmux: '[{"Identifier":"00008130-001A2C3E0A38001C"}]',
+          ),
+          '000081 30001a2c3e0a38001c'.replaceAll(' ', ''),
+        ),
+        '00008130-001A2C3E0A38001C',
+      );
     },
   );
 

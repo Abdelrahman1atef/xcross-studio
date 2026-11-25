@@ -327,14 +327,30 @@ html,body{margin:0!important;padding:0!important;background:#000!important;overf
 
   late final _TouchRelay _touch = _TouchRelay(_sendTouch);
 
-  Future<void> _sendTouch(String body) async {
-    final out = await _client.openUrl('POST', _upstream.resolve('/touch'));
-    out.headers
-      ..contentType = ContentType.json
-      ..set('origin', _upstream.origin);
-    out.write(body);
-    final response = await out.close();
-    await response.drain<void>();
+  /// One touch event to the phone's viewer. The body has its length set (a
+  /// chunked body made the viewer answer early and Dart's client raise an
+  /// error out of nowhere that ended the whole engine), and whatever goes wrong
+  /// on this connection stays here: a lost touch is not worth the screen.
+  Future<void> _sendTouch(String body) {
+    final done = Completer<void>();
+    runZonedGuarded(
+      () async {
+        final bytes = utf8.encode(body);
+        final out = await _client.openUrl('POST', _upstream.resolve('/touch'));
+        out.headers
+          ..contentType = ContentType.json
+          ..set('origin', _upstream.origin);
+        out.contentLength = bytes.length;
+        out.add(bytes);
+        final response = await out.close();
+        await response.drain<void>();
+        if (!done.isCompleted) done.complete();
+      },
+      (Object error, StackTrace stack) {
+        if (!done.isCompleted) done.complete();
+      },
+    );
+    return done.future;
   }
 
   /// The viewer posts every pointer event as its own, unordered request. Over

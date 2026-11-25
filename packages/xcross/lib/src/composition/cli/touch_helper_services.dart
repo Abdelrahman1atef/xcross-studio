@@ -5,6 +5,7 @@ import 'package:cli_kit/shared/platform/platform_host.dart';
 import 'package:dart_mobile_device/target/iphone/device/pymd/pymd.dart';
 import 'package:dart_mobile_device/target/iphone/device/pymd/pymd_devices.dart';
 import 'package:darwin_sdk_kit/target/iphone/iphone_build_platform.dart';
+import 'package:studio_ext/target/iphone/device/screen_touch.dart';
 import 'package:studio_ext/target/iphone/device/touch_helper_setup.dart';
 import 'package:xcross/src/shared/runtime/xcross_runtime.dart';
 import 'package:xcross/src/target/iphone/device/device_backend.dart';
@@ -38,8 +39,18 @@ final class EngineTouchHelperServices implements TouchHelperServices {
   ).sign(appPath, bundleId: bundleId, deviceUdids: [udid]);
 
   @override
-  Future<void> install(String appPath, {required String udid}) =>
-      PymdDevices(_pymd).install(appPath, udid: udid);
+  Future<void> install(String appPath, {required String udid}) async {
+    // Apple's service spells the id its own way; see [canonicalUdid].
+    final id = await canonicalUdid(
+      PymdScreenTouchTools(
+        pymd: _pymd,
+        processes: _runtime.host.processes,
+        freePort: () async => 0,
+      ),
+      udid,
+    );
+    await PymdDevices(_pymd).install(appPath, udid: id);
+  }
 
   /// Oldest iOS the touch runner is built for.
   static const minimumIos = '15.0';
