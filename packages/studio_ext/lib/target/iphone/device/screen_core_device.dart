@@ -225,6 +225,18 @@ html,body{margin:0!important;padding:0!important;background:#000!important;overf
 })();
 </script>''';
 
+  /// The value of request header [name] as the real viewer should see it.
+  /// pymobiledevice3's server answers every POST (touch, buttons, restart,
+  /// keyframe request) with 403 when `Origin` is not its own address, and the
+  /// page reached through this proxy has the proxy's address: so `Origin` and
+  /// `Referer` are rewritten to the viewer's own. Everything else is kept.
+  static String forwardedHeader(Uri upstream, String name, String value) =>
+      switch (name) {
+        'origin' => upstream.origin,
+        'referer' => '${upstream.origin}/',
+        _ => value,
+      };
+
   /// The viewer page with [_head] and [_tail] added.
   static String rewrite(String html) => html
       .replaceFirst('<body class="frame-on">', '<body>')
@@ -239,7 +251,7 @@ html,body{margin:0!important;padding:0!important;background:#000!important;overf
       request.headers.forEach((name, values) {
         if (name == 'host' || name == 'content-length') return;
         for (final v in values) {
-          out.headers.add(name, v);
+          out.headers.add(name, forwardedHeader(_upstream, name, v));
         }
       });
       if (request.contentLength > 0) out.contentLength = request.contentLength;
