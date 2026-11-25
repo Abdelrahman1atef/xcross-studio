@@ -36,7 +36,12 @@ final class FakeTools implements ScreenTouchTools {
     required this.version,
     required this.apps,
     this.runnerStarts = const [true],
+    this.failApps = false,
   });
+
+  /// `apps list` cannot be answered (a phone in Smooth mode is hidden from
+  /// Apple's service over USB).
+  final bool failApps;
 
   final String version;
   final Map<String, Object?> apps;
@@ -51,6 +56,9 @@ final class FakeTools implements ScreenTouchTools {
   @override
   Future<String> run(List<String> args, {required Duration timeout}) async {
     runs.add(args);
+    if (failApps && args.take(2).join(' ') == 'apps list') {
+      throw Exception('usbmux has no device matching udid');
+    }
     return switch (args.take(2).join(' ')) {
       'lockdown info' => jsonEncode({'ProductVersion': version}),
       'apps list' => jsonEncode(apps),
@@ -161,6 +169,33 @@ void main() {
         ),
       );
       expect(tools.started, isEmpty);
+    },
+  );
+
+  test(
+    'AC-048-T3b the phone cannot be asked (Smooth mode hides it): unreachable, not not_installed',
+    () async {
+      final tools = FakeTools(
+        version: '16.7',
+        apps: const {'a.xctrunner': _runner},
+        failApps: true,
+      );
+      await expectLater(
+        WdaScreenTouch(tools, retryDelay: Duration.zero).start('UDID3'),
+        throwsA(
+          isA<ScreenTouchUnavailable>().having(
+            (e) => e.reason,
+            'reason',
+            'unreachable',
+          ),
+        ),
+      );
+      expect(tools.started, isEmpty);
+      expect(
+        tools.runs.where((r) => r.take(2).join(' ') == 'apps list'),
+        hasLength(4),
+        reason: 'two queries, twice',
+      );
     },
   );
 

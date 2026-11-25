@@ -134,11 +134,26 @@ final class WdaScreenTouch implements ScreenTouch {
     // Each query costs seconds over Wi-Fi: ask all three at once. They are
     // lockdown services (no tunnel needed, even on iOS 17+).
     final lockdown = ['--udid', udid];
-    final (major, bundleId, _) = await (
-      _iosMajor(udid),
-      findRunner(lockdown),
-      _mountDeveloperImage(lockdown),
-    ).wait;
+    final (int, String?, void) found;
+    try {
+      found = await (
+        _iosMajor(udid),
+        findRunner(lockdown),
+        _mountDeveloperImage(lockdown),
+      ).wait;
+      // ignore: avoid_catching_errors
+    } on ParallelWaitError<Object?, Object?> catch (e) {
+      // `.wait` wraps the failure: hand on the one the caller understands.
+      final errors = e.errors;
+      if (errors is (AsyncError?, AsyncError?, AsyncError?)) {
+        for (final failure in [errors.$1, errors.$2, errors.$3]) {
+          final inner = failure?.error;
+          if (inner is ScreenTouchUnavailable) throw inner;
+        }
+      }
+      rethrow;
+    }
+    final (major, bundleId, _) = found;
     if (bundleId == null) {
       throw const ScreenTouchUnavailable('not_installed', notInstalledMessage);
     }
@@ -220,42 +235,68 @@ final class WdaScreenTouch implements ScreenTouch {
     return result;
   }
 
-  /// The bundle id of the installed WebDriverAgent runner, or null.
+  static const unreachableMessage =
+      "Apple's service cannot reach this iPhone for touch right now. In Smooth "
+      'mode it sees the iPhone only over Wi-Fi (turn on Wi-Fi sync for it, and '
+      'give it a minute after a driver switch). Studio tries again by itself '
+      'when the screen restarts.';
+
+  /// The bundle id of the installed WebDriverAgent runner, or null when the
+  /// iPhone answered and has none. Throws [ScreenTouchUnavailable] with
+  /// `unreachable` when it could not be asked at all: that is not "not
+  /// installed" (a phone in Smooth mode is hidden from Apple's service).
   Future<String?> findRunner(List<String> device) async {
-    for (final flags in const [
-      ['--type', 'User'],
-      ['--user'],
-    ]) {
-      final String out;
-      try {
-        out = await _tools.run([
-          'apps',
-          'list',
-          ...flags,
-          ...device,
-        ], timeout: const Duration(seconds: 45));
-      } on Object {
-        continue;
+    for (var pass = 0; pass < 2; pass++) {
+      var answered = false;
+      for (final flags in const [
+        ['--type', 'User'],
+        ['--user'],
+      ]) {
+        final id = await _runnerIn(flags, device, () => answered = true);
+        if (id != null) return id;
+        if (answered) return null;
       }
-      final Object? apps;
-      try {
-        apps = jsonDecode(out);
-      } on FormatException {
-        continue;
-      }
-      if (apps is! Map<Object?, Object?>) continue;
-      final runners = [
-        for (final MapEntry(:key, :value) in apps.entries)
-          if (key is String &&
-              value is Map<Object?, Object?> &&
-              value['CFBundleExecutable'] == runnerExecutable)
-            key,
-      ]..sort();
-      // Prefer the one Studio set up.
-      return runners.where((id) => id.contains('xcross')).firstOrNull ??
-          runners.firstOrNull;
+      if (pass == 0) await Future<void>.delayed(retryDelay);
     }
-    return null;
+    throw const ScreenTouchUnavailable('unreachable', unreachableMessage);
+  }
+
+  /// The runner's bundle id from one `apps list` query; [answered] is called
+  /// once the iPhone gave a readable answer (with or without the runner).
+  Future<String?> _runnerIn(
+    List<String> flags,
+    List<String> device,
+    void Function() answered,
+  ) async {
+    final String out;
+    try {
+      out = await _tools.run([
+        'apps',
+        'list',
+        ...flags,
+        ...device,
+      ], timeout: const Duration(seconds: 45));
+    } on Object {
+      return null;
+    }
+    final Object? apps;
+    try {
+      apps = jsonDecode(out);
+    } on FormatException {
+      return null;
+    }
+    if (apps is! Map<Object?, Object?>) return null;
+    answered();
+    final runners = [
+      for (final MapEntry(:key, :value) in apps.entries)
+        if (key is String &&
+            value is Map<Object?, Object?> &&
+            value['CFBundleExecutable'] == runnerExecutable)
+          key,
+    ]..sort();
+    // Prefer the one Studio set up.
+    return runners.where((id) => id.contains('xcross')).firstOrNull ??
+        runners.firstOrNull;
   }
 
   Future<int> _iosMajor(String udid) async {

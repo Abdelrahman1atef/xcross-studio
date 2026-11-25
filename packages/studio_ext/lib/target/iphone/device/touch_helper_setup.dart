@@ -298,7 +298,20 @@ final class ScreenTouchSetupCommand extends Command<void> {
       );
       failedStep = 'install';
       step('install', 'Installing it on the iPhone');
-      await _services.install(app, udid: udid);
+      try {
+        await _services.install(app, udid: udid);
+      } on CliError catch (e) {
+        // A phone in Smooth mode is hidden from Apple's service over USB.
+        if (e.message.contains('usbmux has no device')) {
+          throw CliError(
+            "[touch_setup.unreachable] Apple's service cannot see this iPhone "
+            'right now: in Smooth mode it is hidden from it over USB. Wait a '
+            'minute and try again (Wi-Fi sync must be on), or turn Smooth '
+            'mode off, set up touch, then turn Smooth mode on.',
+          );
+        }
+        rethrow;
+      }
       _write({
         'v': 1,
         'type': 'touch_setup_done',
