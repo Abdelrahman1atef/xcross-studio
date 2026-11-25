@@ -236,6 +236,20 @@ mod tests {
         assert!(script.contains("function Remove-OldRankPackages"), "old 0x6F packages are migrated away");
     }
 
+    /// AC-048: a driver switch changes ONE phone. Windows' UpdateDriverForPlugAndPlayDevices(hardwareId)
+    /// installs on every device with that hardware ID (measured on a real PC: a second iPhone changed
+    /// too), so the script must only call it through DiInstallDevice on the chosen instance.
+    #[test]
+    fn driver_switch_installs_on_one_device_only() {
+        let script = include_str!("../../vendor/zenlink-drivers/tools/usb_filter.ps1");
+        assert!(script.contains("DiInstallDevice"), "per-device install");
+        assert!(script.contains("[PlOneDevice]::Install($InstanceId"), "installs on the chosen instance");
+        assert!(
+            !script.contains("UpdateDriverForPlugAndPlayDevices([IntPtr]"),
+            "no call by hardware ID, it changes every iPhone"
+        );
+    }
+
     #[test]
     fn result_file_becomes_the_event_body() {
         let r = parse_result("\u{feff}{\"ok\":true,\"message\":\"Apple driver restored. Unplug the cable and plug it in again.\",\"rolledBack\":false,\"reboot\":false}");

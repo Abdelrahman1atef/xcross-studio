@@ -86,6 +86,66 @@ public static class PlNewDev {
 }
 "@
 
+# UpdateDriverForPlugAndPlayDevices(hardwareId) installs the driver on EVERY device with that
+# hardware ID, so every iPhone plugged in changes together. DiInstallDevice installs one driver
+# package on one device node: only the chosen phone changes.
+Add-Type -TypeDefinition @"
+using System; using System.Runtime.InteropServices;
+public static class PlOneDevice {
+  [StructLayout(LayoutKind.Sequential)]
+  public struct DevInfo { public int cbSize; public Guid ClassGuid; public int DevInst; public IntPtr Reserved; }
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  public struct InstallParams {
+    public int cbSize; public int Flags; public int FlagsEx; public IntPtr hwndParent; public IntPtr InstallMsgHandler;
+    public IntPtr InstallMsgHandlerContext; public IntPtr FileQueue; public IntPtr ClassInstallReserved; public int Reserved;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string DriverPath;
+  }
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  public struct DrvInfo {
+    public int cbSize; public int DriverType; public IntPtr Reserved;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)] public string Description;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)] public string MfgName;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)] public string ProviderName;
+    public long DriverDate; public long DriverVersion;
+  }
+  [DllImport("setupapi.dll", SetLastError = true)] static extern IntPtr SetupDiCreateDeviceInfoList(IntPtr classGuid, IntPtr hwnd);
+  [DllImport("setupapi.dll", SetLastError = true, CharSet = CharSet.Unicode)] static extern bool SetupDiOpenDeviceInfoW(IntPtr set, string instanceId, IntPtr hwnd, int flags, ref DevInfo data);
+  [DllImport("setupapi.dll", SetLastError = true, CharSet = CharSet.Unicode)] static extern bool SetupDiGetDeviceInstallParamsW(IntPtr set, ref DevInfo data, ref InstallParams p);
+  [DllImport("setupapi.dll", SetLastError = true, CharSet = CharSet.Unicode)] static extern bool SetupDiSetDeviceInstallParamsW(IntPtr set, ref DevInfo data, ref InstallParams p);
+  [DllImport("setupapi.dll", SetLastError = true)] static extern bool SetupDiBuildDriverInfoList(IntPtr set, ref DevInfo data, int type);
+  [DllImport("setupapi.dll", SetLastError = true, CharSet = CharSet.Unicode)] static extern bool SetupDiEnumDriverInfoW(IntPtr set, ref DevInfo data, int type, int index, ref DrvInfo drv);
+  [DllImport("setupapi.dll", SetLastError = true)] static extern bool SetupDiDestroyDriverInfoList(IntPtr set, ref DevInfo data, int type);
+  [DllImport("setupapi.dll", SetLastError = true)] static extern bool SetupDiDestroyDeviceInfoList(IntPtr set);
+  [DllImport("newdev.dll", SetLastError = true)] static extern bool DiInstallDevice(IntPtr hwnd, IntPtr set, ref DevInfo data, ref DrvInfo drv, int flags, out bool reboot);
+
+  // 0 = installed. Otherwise the Windows error code. reboot says whether Windows wants a restart.
+  public static int Install(string instanceId, string infPath, out bool reboot) {
+    reboot = false;
+    IntPtr set = SetupDiCreateDeviceInfoList(IntPtr.Zero, IntPtr.Zero);
+    if (set == (IntPtr)(-1)) return Marshal.GetLastWin32Error();
+    DevInfo dev = new DevInfo(); dev.cbSize = Marshal.SizeOf(typeof(DevInfo));
+    bool listBuilt = false;
+    try {
+      if (!SetupDiOpenDeviceInfoW(set, instanceId, IntPtr.Zero, 0, ref dev)) return Marshal.GetLastWin32Error();
+      InstallParams p = new InstallParams(); p.cbSize = Marshal.SizeOf(typeof(InstallParams));
+      if (!SetupDiGetDeviceInstallParamsW(set, ref dev, ref p)) return Marshal.GetLastWin32Error();
+      p.Flags |= 0x00010000;            // DI_ENUMSINGLEINF: only the package at DriverPath
+      p.DriverPath = infPath;
+      if (!SetupDiSetDeviceInstallParamsW(set, ref dev, ref p)) return Marshal.GetLastWin32Error();
+      if (!SetupDiBuildDriverInfoList(set, ref dev, 2)) return Marshal.GetLastWin32Error();   // SPDIT_COMPATDRIVER
+      listBuilt = true;
+      DrvInfo drv = new DrvInfo(); drv.cbSize = Marshal.SizeOf(typeof(DrvInfo));
+      if (!SetupDiEnumDriverInfoW(set, ref dev, 2, 0, ref drv)) return Marshal.GetLastWin32Error();
+      if (!DiInstallDevice(IntPtr.Zero, set, ref dev, ref drv, 2, out reboot)) return Marshal.GetLastWin32Error();   // DIIRFLAG_FORCE_INF
+      return 0;
+    } finally {
+      if (listBuilt) SetupDiDestroyDriverInfoList(set, ref dev, 2);
+      SetupDiDestroyDeviceInfoList(set);
+    }
+  }
+}
+"@
+
 try {
     $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
     if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw "Administrator rights are required." }
@@ -153,14 +213,16 @@ try {
     function Find-LibusbInf { Find-OemInf { param($t) $t -match 'AddService\s*=\s*"?libusb0\b' } }
     # Apple's composite-parent package (appleusb.inf from Apple Devices / iTunes).
     function Find-AppleInf { Find-OemInf { param($t) $t -match 'AppleUSB_CCGPDriverInstall' } }
+    # Installs the package at $infPath on THIS device only; 0 or the Windows error code.
+    function Install-OnThisDevice([string]$infPath) {
+        $reboot = $false
+        $code = [PlOneDevice]::Install($InstanceId, $infPath, [ref]$reboot)
+        if ($reboot) { $script:result.reboot = $true }
+        return $code
+    }
     function Bind([string]$inf) {
         $path = Join-Path $env:WINDIR "INF\$inf"
-        $once = {
-            $reboot = $false
-            $ok = [PlNewDev]::UpdateDriverForPlugAndPlayDevices([IntPtr]::Zero, $hwid, $path, 1, [ref]$reboot)
-            if ($reboot) { $script:result.reboot = $true }
-            if ($ok) { 0 } else { [Runtime.InteropServices.Marshal]::GetLastWin32Error() }
-        }
+        $once = { Install-OnThisDevice $path }
         $code = & $once
         if ($code -eq 259) { $code = Invoke-WithAppleServicePaused $once }  # device held open, see bind
         return $code
@@ -275,10 +337,13 @@ try {
             $dll = "$env:WINDIR\System32\libusb0.dll"
             $dll32 = "$env:WINDIR\SysWOW64\libusb0.dll"
         }
-        foreach ($f in $sys, $dll, $dll32) {
+        # The 32-bit DLL is only for 32-bit programs; the 64-bit engine and Studio do not
+        # need it, so a missing one (the bundled files hold only amd64) is left out.
+        if ($dll32 -and -not (Test-Path $dll32)) { $dll32 = $null }
+        foreach ($f in $sys, $dll) {
             if (-not (Test-Path $f)) { throw "libusb-win32 is not installed on this PC ($f missing). Install TikTok LIVE Studio's iOS driver or libusb-win32 first." }
         }
-        foreach ($f in $sys, $dll, $dll32) {
+        foreach ($f in @($sys, $dll, $dll32) | Where-Object { $_ }) {
             $sig = Get-AuthenticodeSignature $f
             if ($sig.Status -ne "Valid") { throw "$f is not validly signed ($($sig.Status)); refusing to package it." }
         }
@@ -287,10 +352,19 @@ try {
         $family = if ($devPid -eq "12AB") { "iPad" } elseif ($devPid -eq "12A8") { "iPhone" } else { "Apple device" }
         $pkg = Join-Path $env:ProgramData "ZenLink\drivers\package-$devPid"
         if (Test-Path $pkg) { Remove-Item $pkg -Recurse -Force }
-        New-Item -ItemType Directory -Force -Path (Join-Path $pkg "amd64"), (Join-Path $pkg "x86") | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $pkg "amd64") | Out-Null
         Copy-Item $sys (Join-Path $pkg "amd64\libusb0.sys")
         Copy-Item $dll (Join-Path $pkg "amd64\libusb0.dll")
-        Copy-Item $dll32 (Join-Path $pkg "x86\libusb0_x86.dll")
+        # INF lines for the optional 32-bit DLL (empty when there is none).
+        $x86Source = ""; $x86Dest = ""; $x86Copy = ""; $x86Section = ""
+        if ($dll32) {
+            New-Item -ItemType Directory -Force -Path (Join-Path $pkg "x86") | Out-Null
+            Copy-Item $dll32 (Join-Path $pkg "x86\libusb0_x86.dll")
+            $x86Source = "libusb0_x86.dll = 1,x86"
+            $x86Dest = "libusb_files_dll_wow64 = 10,syswow64"
+            $x86Copy = ", libusb_files_dll_wow64"
+            $x86Section = "[libusb_files_dll_wow64]`nlibusb0.dll, libusb0_x86.dll"
+        }
         $name = "zenlink_usbdirect_$($devPid.ToLower())"
         $date = (Get-Item $sys).VersionInfo
         $ver = "{0}.{1}.{2}.{3}" -f $date.FileMajorPart, $date.FileMinorPart, $date.FileBuildPart, $date.FilePrivatePart
@@ -328,12 +402,12 @@ HKR,,Icon,,-20
 [SourceDisksFiles.amd64]
 libusb0.sys     = 1,amd64
 libusb0.dll     = 1,amd64
-libusb0_x86.dll = 1,x86
+$x86Source
 
 [DestinationDirs]
 libusb_files_sys       = 10,system32\drivers
 libusb_files_dll       = 10,system32
-libusb_files_dll_wow64 = 10,syswow64
+$x86Dest
 
 [libusb_files_sys]
 libusb0.sys
@@ -341,11 +415,10 @@ libusb0.sys
 [libusb_files_dll]
 libusb0.dll
 
-[libusb_files_dll_wow64]
-libusb0.dll, libusb0_x86.dll
+$x86Section
 
 [LIBUSB_WIN32_DEV.NTAMD64]
-CopyFiles = libusb_files_sys, libusb_files_dll, libusb_files_dll_wow64
+CopyFiles = libusb_files_sys, libusb_files_dll$x86Copy
 ; 0xFF ranks this package BELOW Apple's own driver (0x7F; a higher FeatureScore is
 ; a worse rank). Windows therefore never picks it for an iPhone on its own; only the
 ; forced install of "bind" (UpdateDriverForPlugAndPlayDevices, flag 1) puts it on the
@@ -465,12 +538,7 @@ ServiceBinary = %12%\libusb0.sys
                 $inf = Split-Path -Leaf $infPath
             }
             Remove-LibusbFilters $before
-            $install = {
-                $reboot = $false
-                $ok = [PlNewDev]::UpdateDriverForPlugAndPlayDevices([IntPtr]::Zero, $hwid, $infPath, 1, [ref]$reboot)
-                if ($reboot) { $script:result.reboot = $true }
-                if ($ok) { 0 } else { [Runtime.InteropServices.Marshal]::GetLastWin32Error() }
-            }
+            $install = { Install-OnThisDevice $infPath }
             $code = & $install
             if ($code -eq 259) {
                 # 259: Windows could not remove the device because a program still
@@ -491,6 +559,9 @@ ServiceBinary = %12%\libusb0.sys
                 throw "Windows could not install the libusb-win32 driver (error $code). The device keeps Apple's driver."
             }
             Step "installed $inf as the device driver"
+            # DiInstallDevice often says "restart" while the driver already runs: only a
+            # device that did not reach the driver in time is a real restart.
+            if ($result.reboot -and (Wait-Service "libusb0")) { $result.reboot = $false }
             if ($result.reboot) {
                 # Windows finishes the switch at the next restart; rolling back
                 # now would undo a change that is only waiting for it.
@@ -518,6 +589,7 @@ ServiceBinary = %12%\libusb0.sys
                 if ($code -eq 259) { throw "Windows could not switch the driver because another program has the device open (error 259). Close TikTok LIVE Studio and other capture apps, unplug the cable, plug it in again and retry." }
                 if ($code -ne 0) { throw "Windows could not bind Apple's driver back (error $code)." }
                 Step "bound Apple driver $apple"
+                if ($result.reboot -and (Wait-Service "usbccgp")) { $result.reboot = $false }
                 if ($result.reboot) {
                     $result.message = "Apple's driver is installed, but Windows needs a restart to finish. Restart Windows, then plug the device in again."
                     $result.after = Get-State
