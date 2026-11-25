@@ -184,10 +184,10 @@ mod tests {
 
     #[test]
     fn nodes_parse_from_array_object_and_nothing() {
-        let a = r#"[{"instance":"USB\\VID_05AC&PID_12A8\\388855A5602B2D44E545EC8B4C5E45B95CC1EA47","name":"iPhone (ZenLink USB Direct)","service":"libusb0"}]"#;
+        let a = r#"[{"instance":"USB\\VID_05AC&PID_12A8\\00008030001C2D3E4F5A6B70","name":"iPhone (ZenLink USB Direct)","service":"libusb0"}]"#;
         let n = parse_nodes(a);
         assert_eq!(n.len(), 1);
-        assert_eq!(n[0].serial(), "388855A5602B2D44E545EC8B4C5E45B95CC1EA47");
+        assert_eq!(n[0].serial(), "00008030001C2D3E4F5A6B70");
         assert_eq!(n[0].state(), "smooth");
         let o = "\u{feff}{\"instance\":\"USB\\\\VID_05AC&PID_12A8\\\\00008020-001A2B3C4D5E6F70\",\"name\":\"Apple Mobile Device USB Composite Device\",\"service\":\"usbccgp\"}";
         let n = parse_nodes(o);
