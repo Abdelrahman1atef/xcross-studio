@@ -79,6 +79,11 @@ class BundleInspector {
         if (entry.type == FileSystemEntityType.directory &&
             BundleTree.isEmbeddedAppExtension(entry.relativePath))
           _readBundle(normalized, entry.path, isAppExtension: true),
+      // studio: 048 — signed like a framework (host identity, no entitlements).
+      for (final entry in entries)
+        if (entry.type == FileSystemEntityType.directory &&
+            BundleTree.isEmbeddedTestBundle(entry.relativePath))
+          _readBundle(normalized, entry.path),
     ];
   }
 

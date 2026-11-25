@@ -116,6 +116,18 @@
       "$ref": "#/$defs/event_release_gate"
     },
     {
+      "$ref": "#/$defs/event_screen_end"
+    },
+    {
+      "$ref": "#/$defs/event_screen_preparing"
+    },
+    {
+      "$ref": "#/$defs/event_screen_ready"
+    },
+    {
+      "$ref": "#/$defs/event_screen_touch"
+    },
+    {
       "$ref": "#/$defs/event_splash_check"
     },
     {
@@ -132,6 +144,12 @@
     },
     {
       "$ref": "#/$defs/event_testflight_testers"
+    },
+    {
+      "$ref": "#/$defs/event_touch_setup"
+    },
+    {
+      "$ref": "#/$defs/event_touch_setup_done"
     },
     {
       "$ref": "#/$defs/event_warning"
@@ -1817,6 +1835,197 @@
         "packages/studio_ext/lib/shared/release/release_gate_command.dart"
       ]
     },
+    "event_screen_end": {
+      "title": "screen_end",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "screen_end"
+        },
+        "message": {},
+        "reason": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "ScreenEnd",
+      "x-studio-reads": [
+        "message",
+        "reason"
+      ],
+      "x-cli-writes": [
+        "message",
+        "reason"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/target/iphone/device/screen_command.dart"
+      ],
+      "examples": [
+        {
+          "v": 1,
+          "type": "screen_end",
+          "reason": "stopped",
+          "message": ""
+        }
+      ],
+      "x-example-source": "apps/studio/test/state/device_screen_test.dart"
+    },
+    "event_screen_preparing": {
+      "title": "screen_preparing",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "screen_preparing"
+        },
+        "detail": {},
+        "step": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "ScreenPreparing",
+      "x-studio-reads": [
+        "detail",
+        "step"
+      ],
+      "x-cli-writes": [
+        "detail",
+        "step"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/target/iphone/device/screen_command.dart"
+      ],
+      "examples": [
+        {
+          "v": 1,
+          "type": "screen_preparing",
+          "detail": "Starting Apple's screen service"
+        }
+      ],
+      "x-example-source": "apps/studio/test/state/device_screen_test.dart"
+    },
+    "event_screen_ready": {
+      "title": "screen_ready",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "screen_ready"
+        },
+        "codec": {},
+        "height": {},
+        "method": {},
+        "touch": {},
+        "url": {},
+        "viewer": {},
+        "width": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "ScreenReady",
+      "x-studio-reads": [
+        "codec",
+        "height",
+        "method",
+        "touch",
+        "url",
+        "viewer",
+        "width"
+      ],
+      "x-cli-writes": [
+        "codec",
+        "height",
+        "method",
+        "touch",
+        "url",
+        "viewer",
+        "width"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/target/iphone/device/screen_command.dart"
+      ],
+      "examples": [
+        {
+          "v": 1,
+          "type": "screen_ready",
+          "url": "http://127.0.0.1:5/t/stream.h264",
+          "viewer": "http://127.0.0.1:5/t/viewer",
+          "codec": "h264",
+          "width": 1126,
+          "height": 2436,
+          "method": "quicktime",
+          "touch": false
+        }
+      ],
+      "x-example-source": "apps/studio/test/state/device_screen_test.dart"
+    },
+    "event_screen_touch": {
+      "title": "screen_touch",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "screen_touch"
+        },
+        "available": {},
+        "fast": {},
+        "message": {},
+        "reason": {},
+        "state": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "ScreenTouchState",
+      "x-studio-reads": [
+        "available",
+        "fast",
+        "message",
+        "reason",
+        "state"
+      ],
+      "x-cli-writes": [
+        "available",
+        "fast",
+        "message",
+        "reason",
+        "state"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/target/iphone/device/screen_command.dart"
+      ],
+      "examples": [
+        {
+          "v": 1,
+          "type": "screen_touch",
+          "available": true
+        }
+      ],
+      "x-example-source": "apps/studio/test/state/device_screen_test.dart"
+    },
     "event_splash_check": {
       "title": "splash_check",
       "type": "object",
@@ -2039,6 +2248,99 @@
       "x-cli-emitters": [
         "packages/studio_ext/lib/shared/appstore/testflight_command.dart"
       ]
+    },
+    "event_touch_setup": {
+      "title": "touch_setup",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "touch_setup"
+        },
+        "detail": {},
+        "step": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "TouchSetupStep",
+      "x-studio-reads": [
+        "detail",
+        "step"
+      ],
+      "x-cli-writes": [
+        "detail",
+        "step"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/target/iphone/device/touch_helper_setup.dart"
+      ],
+      "examples": [
+        {
+          "v": 1,
+          "type": "touch_setup",
+          "step": "install",
+          "detail": "Installing it on the iPhone"
+        }
+      ],
+      "x-example-source": "apps/studio/test/state/device_screen_test.dart"
+    },
+    "event_touch_setup_done": {
+      "title": "touch_setup_done",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "touch_setup_done"
+        },
+        "bundleId": {},
+        "fast": {},
+        "message": {},
+        "ok": {},
+        "step": {}
+      },
+      "additionalProperties": true,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "TouchSetupDone",
+      "x-studio-reads": [
+        "bundleId",
+        "fast",
+        "message",
+        "ok",
+        "step"
+      ],
+      "x-cli-writes": [
+        "bundleId",
+        "fast",
+        "message",
+        "ok",
+        "step"
+      ],
+      "x-cli-emitters": [
+        "packages/studio_ext/lib/target/iphone/device/touch_helper_setup.dart"
+      ],
+      "examples": [
+        {
+          "v": 1,
+          "type": "touch_setup_done",
+          "ok": true,
+          "bundleId": "com.xcross.touchhelper.xctrunner",
+          "fast": true,
+          "message": "The fast touch helper is on the iPhone."
+        }
+      ],
+      "x-example-source": "apps/studio/test/state/device_screen_test.dart"
     },
     "event_warning": {
       "title": "warning",

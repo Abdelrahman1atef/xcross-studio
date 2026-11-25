@@ -58,6 +58,6 @@ void main() {
     final schema = _schemaTypes();
     expect(emitted.difference(schema), isEmpty, reason: 'missing from schema');
     expect(schema.difference(emitted), isEmpty, reason: 'stale in schema');
-    expect(emitted, hasLength(44));
+    expect(emitted, hasLength(50));
   });
 }

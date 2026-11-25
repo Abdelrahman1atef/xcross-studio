@@ -1,3 +1,4 @@
+import 'dart:convert'; // studio: 048
 import 'dart:io'; // studio: 010
 import 'package:apple_developer_kit/shared/errors/errors.dart';
 import 'package:args/args.dart'; // studio: 010
@@ -35,6 +36,11 @@ import 'package:studio_ext/target/iphone/device/crashes_command.dart'; // studio
 import 'package:studio_ext/target/iphone/device/device_log_backend.dart'; // studio: 010
 import 'package:studio_ext/target/iphone/device/devices_command.dart'; // studio: 008
 import 'package:studio_ext/target/iphone/device/logs_command.dart'; // studio: 010
+import 'package:studio_ext/target/iphone/device/screen_command.dart'; // studio: 048
+import 'package:studio_ext/target/iphone/device/screen_core_device.dart'; // studio: 048
+import 'package:studio_ext/target/iphone/device/screen_helper.dart'; // studio: 048
+import 'package:studio_ext/target/iphone/device/screen_touch.dart'; // studio: 048
+import 'package:studio_ext/target/iphone/device/touch_helper_setup.dart'; // studio: 048
 import 'package:xcross/src/composition/cli/appstore_commands.dart'; // studio: 021
 import 'package:xcross/src/composition/cli/asc_commands.dart'; // studio: 018
 import 'package:xcross/src/composition/cli/cache_command.dart';
@@ -45,6 +51,7 @@ import 'package:xcross/src/composition/cli/install_command.dart'; // studio: 005
 import 'package:xcross/src/composition/cli/publish_commands.dart'; // studio: 019
 import 'package:xcross/src/composition/cli/sign_command.dart'; // studio: 011
 import 'package:xcross/src/composition/cli/testflight_commands.dart'; // studio: 020
+import 'package:xcross/src/composition/cli/touch_helper_services.dart'; // studio: 048
 import 'package:xcross/src/composition/ios_target.dart';
 import 'package:xcross/src/composition/xcross_application.dart';
 import 'package:xcross/src/shared/cli/basic/auth_command.dart';
@@ -437,6 +444,63 @@ abstract final class XcrossCli {
         cacheRoot: runtime.host.paths.temporaryRoot,
         writeBytes: stdout.add,
       ),
+      // studio: 048 — live iPhone screen through the bundled xcross-screen helper.
+      ScreenCommand(
+        helper: HostScreenHelper(
+          host: runtime.host,
+          xcrossExecutable: Platform.resolvedExecutable,
+        ),
+        writeBytes: stdout.add,
+        writeError: stderr.writeln,
+        // One-click install of the touch helper (WebDriverAgent), signed
+        // with the user's Apple account.
+        touchSetup: ScreenTouchSetupCommand(
+          services: EngineTouchHelperServices(runtime, pymd),
+          workRoot: runtime.host.paths.context.join(
+            runtime.host.paths.temporaryRoot,
+            'xcross-touch-helper',
+          ),
+          writeBytes: stdout.add,
+        ),
+        // Taps and swipes on iPhones whose picture has no touch (QuickTime):
+        // WebDriverAgent on the phone, started with pymobiledevice3.
+        coreDevice: PymdCoreDeviceScreen(
+          PymdScreenTouchTools(
+            pymd: pymd,
+            processes: runtime.host.processes,
+            freePort: _freeLoopbackPort,
+          ),
+        ),
+        touch: WdaScreenTouch(
+          PymdScreenTouchTools(
+            pymd: pymd,
+            processes: runtime.host.processes,
+            freePort: () async {
+              final socket = await ServerSocket.bind(
+                InternetAddress.loopbackIPv4,
+                0,
+              );
+              final port = socket.port;
+              await socket.close();
+              return port;
+            },
+          ),
+        ),
+        // Studio stops the screen by writing "xcross-screen-stop" (or closing
+        // stdin), so the helper can put the iPhone's USB configuration back;
+        // typing "stop" or Ctrl+C works too.
+        untilStopped: () => Future.any([
+          ProcessSignal.sigint.watch().first,
+          stdin
+              .transform(utf8.decoder)
+              .transform(const LineSplitter())
+              .firstWhere(
+                (line) =>
+                    const {'stop', 'xcross-screen-stop'}.contains(line.trim()),
+                orElse: () => '',
+              ),
+        ]),
+      ),
     ];
     for (final command in commands) {
       if (!excluded.contains(command.name.toLowerCase())) {
@@ -664,4 +728,12 @@ abstract final class XcrossCli {
       _ => 'error: $error\n$stackTrace',
     };
   }
+}
+
+/// A free port on 127.0.0.1 (spec 048 screen tools).
+Future<int> _freeLoopbackPort() async {
+  final socket = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+  final port = socket.port;
+  await socket.close();
+  return port;
 }
