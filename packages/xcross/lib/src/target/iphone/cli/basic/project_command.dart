@@ -15,6 +15,8 @@ import 'package:xcross/src/shared/config/project_settings.dart';
 import 'package:xcross/src/shared/errors/errors.dart';
 import 'package:xcross/src/shared/flutter/build/ios_bundle_id.dart';
 import 'package:xcross/src/shared/flutter/project/pbx_project_reader.dart';
+import 'package:xcross/src/shared/flutter/project/project_inspection.dart';
+import 'package:xcross/src/shared/flutter/project/project_rewrite.dart';
 import 'package:xcross/src/shared/flutter/project/pubspec_version.dart';
 import 'package:xcross/src/target/iphone/device/internal/bundle_identity_resolver.dart';
 
@@ -39,6 +41,31 @@ final class ProjectCommand extends Command<void> {
     );
     addSubcommand(
       ProjectVersionCommand(
+        fileSystem: fileSystem,
+        paths: paths,
+        projectRoot: projectRoot,
+        write: write,
+      ),
+    );
+    // studio: 051 — the iOS setup check and its fixes.
+    addSubcommand(
+      ProjectInspectCommand(
+        fileSystem: fileSystem,
+        paths: paths,
+        projectRoot: projectRoot,
+        write: write,
+      ),
+    );
+    addSubcommand(
+      ProjectSetBundleIdCommand(
+        fileSystem: fileSystem,
+        paths: paths,
+        projectRoot: projectRoot,
+        write: write,
+      ),
+    );
+    addSubcommand(
+      ProjectFirebaseImportCommand(
         fileSystem: fileSystem,
         paths: paths,
         projectRoot: projectRoot,
@@ -361,6 +388,234 @@ final class ProjectVersionCommand extends Command<void> {
         'Saved in pubspec.yaml (was '
         '${current == null ? 'not set' : current.text}).\n',
       );
+    }
+  }
+}
+
+/// Shared options of the 051 subcommands.
+@internal
+abstract base class ProjectSubcommandBase extends Command<void> {
+  ProjectSubcommandBase({
+    required this.fileSystem,
+    required this.paths,
+    required this.projectRoot,
+    required this.write,
+  }) {
+    argParser.addFlag(
+      'json',
+      negatable: false,
+      help: 'Print one JSON object instead of text.',
+    );
+  }
+
+  final HostFileSystemInterface fileSystem;
+  final p.Context paths;
+  final String Function() projectRoot;
+  final void Function(String text) write;
+
+  bool get jsonOutput => argResults!.flag('json');
+
+  String root() {
+    final root = projectRoot();
+    if (!fileSystem.directory(paths.join(root, 'ios')).existsSync()) {
+      throw XcrossError(
+        'No ios folder here: run `xcross project $name` in the Flutter '
+        'project.',
+      );
+    }
+    return root;
+  }
+}
+
+/// `xcross project inspect [--json]`: the iOS setup check (spec 051).
+@internal
+final class ProjectInspectCommand extends ProjectSubcommandBase {
+  ProjectInspectCommand({
+    required super.fileSystem,
+    required super.paths,
+    required super.projectRoot,
+    required super.write,
+  });
+
+  @override
+  String get name => 'inspect';
+
+  @override
+  String get description =>
+      'Check the iOS setup: bundle ID, team, minimum iOS, version, push, '
+      'Firebase and other keys, and whether they agree.';
+
+  @override
+  Future<void> run() async {
+    final report = ProjectInspector(
+      fileSystem: fileSystem,
+      paths: paths,
+      projectRoot: root(),
+    ).inspect();
+    if (jsonOutput) {
+      write('${jsonEncode(report.toJson())}\n');
+      return;
+    }
+    for (final group in report.groups) {
+      write('${group.title}\n');
+      for (final item in group.items) {
+        final mark = switch (item.status) {
+          InspectStatus.ok => 'ok  ',
+          InspectStatus.info => '    ',
+          InspectStatus.warning => 'warn',
+          InspectStatus.error => 'FAIL',
+        };
+        final value = item.value == null
+            ? '(none)'
+            : item.secret && item.value!.length > 8
+            ? '${item.value!.substring(0, 4)}…'
+                  '${item.value!.substring(item.value!.length - 3)}'
+            : item.value!;
+        write('  $mark ${item.label.padRight(24)} $value\n');
+        if (item.message case final message?) write('       $message\n');
+      }
+    }
+    final errors = report.count(InspectStatus.error);
+    final warnings = report.count(InspectStatus.warning);
+    write(
+      errors == 0 && warnings == 0
+          ? 'Ready.\n'
+          : '$errors problem${errors == 1 ? '' : 's'}, '
+                '$warnings warning${warnings == 1 ? '' : 's'}.\n',
+    );
+  }
+}
+
+/// `xcross project set-bundle-id <id> [--dry-run] [--json]`.
+@internal
+final class ProjectSetBundleIdCommand extends ProjectSubcommandBase {
+  ProjectSetBundleIdCommand({
+    required super.fileSystem,
+    required super.paths,
+    required super.projectRoot,
+    required super.write,
+  }) {
+    argParser.addFlag(
+      'dry-run',
+      negatable: false,
+      help: 'Show what would change; write nothing.',
+    );
+  }
+
+  @override
+  String get name => 'set-bundle-id';
+
+  @override
+  String get description =>
+      "Change the app's bundle ID in every configuration, and move the test "
+      'and extension targets under it.';
+
+  @override
+  String get invocation => 'xcross project set-bundle-id <bundle-id>';
+
+  @override
+  Future<void> run() async {
+    final rest = argResults!.rest;
+    if (rest.length != 1) usageException('Pass the new bundle ID.');
+    final dryRun = argResults!.flag('dry-run');
+    final result = ProjectRewriter(
+      fileSystem: fileSystem,
+      paths: paths,
+      projectRoot: root(),
+    ).setBundleId(rest.single.trim(), dryRun: dryRun);
+    if (jsonOutput) {
+      write(
+        '${jsonEncode({
+          'v': 1,
+          'type': 'project_bundle_id_change',
+          'bundleId': rest.single.trim(),
+          'previous': result.previous,
+          'dryRun': dryRun,
+          'files': [for (final f in result.files) f.toJson()],
+        })}\n',
+      );
+      return;
+    }
+    if (result.files.isEmpty) {
+      write('The bundle ID is already ${rest.single.trim()}.\n');
+      return;
+    }
+    write(
+      '${dryRun ? 'Would change' : 'Changed'} ${result.previous ?? '(none)'} '
+      '→ ${rest.single.trim()}:\n',
+    );
+    for (final f in result.files) {
+      write('  ${f.path} (${f.changes})\n');
+    }
+    write(
+      'Firebase files were not changed: import the plist for the new ID with '
+      '`xcross project firebase-import <plist>`.\n',
+    );
+  }
+}
+
+/// `xcross project firebase-import <GoogleService-Info.plist> [--json]`.
+@internal
+final class ProjectFirebaseImportCommand extends ProjectSubcommandBase {
+  ProjectFirebaseImportCommand({
+    required super.fileSystem,
+    required super.paths,
+    required super.projectRoot,
+    required super.write,
+  }) {
+    argParser.addFlag(
+      'dry-run',
+      negatable: false,
+      help: 'Show what would change; write nothing.',
+    );
+  }
+
+  @override
+  String get name => 'firebase-import';
+
+  @override
+  String get description =>
+      'Put a GoogleService-Info.plist in ios/Runner and point '
+      'firebase_options.dart and firebase.json at the same iOS app.';
+
+  @override
+  String get invocation => 'xcross project firebase-import <plist>';
+
+  @override
+  Future<void> run() async {
+    final rest = argResults!.rest;
+    if (rest.length != 1) usageException('Pass the plist file.');
+    final dryRun = argResults!.flag('dry-run');
+    final result = ProjectRewriter(
+      fileSystem: fileSystem,
+      paths: paths,
+      projectRoot: root(),
+    ).importFirebasePlist(rest.single, dryRun: dryRun);
+    if (jsonOutput) {
+      write(
+        '${jsonEncode({
+          'v': 1,
+          'type': 'project_firebase_import',
+          'bundleId': result.bundleId,
+          'appId': result.appId,
+          'dryRun': dryRun,
+          'files': [for (final f in result.files) f.toJson()],
+          'notes': result.notes,
+        })}\n',
+      );
+      return;
+    }
+    write(
+      result.files.isEmpty
+          ? 'Already set up for ${result.appId}.\n'
+          : '${dryRun ? 'Would set' : 'Set'} up Firebase iOS app '
+                '${result.appId} (${result.bundleId}):\n',
+    );
+    for (final f in result.files) {
+      write('  ${f.path} (${f.changes})\n');
+    }
+    for (final note in result.notes) {
+      write('Note: $note\n');
     }
   }
 }

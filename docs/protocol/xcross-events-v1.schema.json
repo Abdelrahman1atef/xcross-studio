@@ -107,6 +107,15 @@
       "$ref": "#/$defs/event_project_version"
     },
     {
+      "$ref": "#/$defs/event_project_bundle_id_change"
+    },
+    {
+      "$ref": "#/$defs/event_project_firebase_import"
+    },
+    {
+      "$ref": "#/$defs/event_project_inspect"
+    },
+    {
       "$ref": "#/$defs/event_publish"
     },
     {
@@ -309,7 +318,15 @@
         "sku": {}
       },
       "additionalProperties": true,
-      "x-consumed-by-studio": false,
+      "x-consumed-by-studio": true,
+      "x-studio-class": "AppStoreApp",
+      "x-studio-reads": [
+        "bundleId",
+        "found",
+        "id",
+        "name",
+        "newAppUrl"
+      ],
       "x-cli-writes": [
         "bundleId",
         "found",
@@ -1732,6 +1749,191 @@
         "previous",
         "pubspec",
         "version"
+      ],
+      "x-cli-emitters": [
+        "packages/xcross/lib/src/target/iphone/cli/basic/project_command.dart"
+      ]
+    },
+    "event_project_bundle_id_change": {
+      "title": "project_bundle_id_change",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "project_bundle_id_change"
+        },
+        "bundleId": {},
+        "dryRun": {},
+        "files": {},
+        "previous": {}
+      },
+      "additionalProperties": true,
+      "examples": [
+        {
+          "v": 1,
+          "type": "project_bundle_id_change",
+          "bundleId": "com.new.app",
+          "previous": "com.example.app",
+          "dryRun": false,
+          "files": [
+            {
+              "path": "ios/Runner.xcodeproj/project.pbxproj",
+              "changes": 5
+            }
+          ]
+        }
+      ],
+      "x-consumed-by-studio": true,
+      "x-studio-class": "ProjectFilesChange",
+      "x-studio-reads": [
+        "bundleId",
+        "dryRun",
+        "files",
+        "previous"
+      ],
+      "x-cli-writes": [
+        "bundleId",
+        "dryRun",
+        "files",
+        "previous"
+      ],
+      "x-cli-emitters": [
+        "packages/xcross/lib/src/target/iphone/cli/basic/project_command.dart"
+      ]
+    },
+    "event_project_firebase_import": {
+      "title": "project_firebase_import",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "project_firebase_import"
+        },
+        "appId": {},
+        "bundleId": {},
+        "dryRun": {},
+        "files": {},
+        "notes": {}
+      },
+      "additionalProperties": true,
+      "examples": [
+        {
+          "v": 1,
+          "type": "project_firebase_import",
+          "bundleId": "com.example.app",
+          "appId": "1:111:ios:aaa",
+          "dryRun": true,
+          "files": [
+            {
+              "path": "lib/firebase_options.dart",
+              "changes": 2
+            }
+          ],
+          "notes": []
+        }
+      ],
+      "x-consumed-by-studio": true,
+      "x-studio-class": "ProjectFilesChange",
+      "x-studio-reads": [
+        "appId",
+        "bundleId",
+        "dryRun",
+        "files",
+        "notes"
+      ],
+      "x-cli-writes": [
+        "appId",
+        "bundleId",
+        "dryRun",
+        "files",
+        "notes"
+      ],
+      "x-cli-emitters": [
+        "packages/xcross/lib/src/target/iphone/cli/basic/project_command.dart"
+      ]
+    },
+    "event_project_inspect": {
+      "title": "project_inspect",
+      "type": "object",
+      "required": [
+        "v",
+        "type"
+      ],
+      "properties": {
+        "v": {
+          "const": 1
+        },
+        "type": {
+          "const": "project_inspect"
+        },
+        "build": {},
+        "bundleId": {},
+        "errors": {},
+        "groups": {},
+        "project": {},
+        "teamId": {},
+        "version": {},
+        "warnings": {}
+      },
+      "additionalProperties": true,
+      "examples": [
+        {
+          "v": 1,
+          "type": "project_inspect",
+          "project": "/work/app",
+          "bundleId": "com.example.app",
+          "teamId": "TEAM123456",
+          "version": "1.2.3",
+          "build": 7,
+          "errors": 0,
+          "warnings": 0,
+          "groups": [
+            {
+              "id": "app",
+              "title": "App",
+              "items": [
+                {
+                  "id": "bundle_id",
+                  "label": "Bundle ID",
+                  "value": "com.example.app",
+                  "status": "ok",
+                  "path": "ios/Runner.xcodeproj/project.pbxproj"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "x-consumed-by-studio": true,
+      "x-studio-class": "ProjectInspectReport",
+      "x-studio-reads": [
+        "build",
+        "bundleId",
+        "groups",
+        "teamId",
+        "version"
+      ],
+      "x-cli-writes": [
+        "build",
+        "bundleId",
+        "errors",
+        "groups",
+        "project",
+        "teamId",
+        "version",
+        "warnings"
       ],
       "x-cli-emitters": [
         "packages/xcross/lib/src/target/iphone/cli/basic/project_command.dart"
